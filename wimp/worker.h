@@ -8,8 +8,11 @@
 #include <stddef.h>
 #include <stdio.h>
 
+enum { JOB_PAGE = 0, JOB_THUMB = 1 };
+
 typedef struct {
 	void *owner;             /* the window */
+	int kind;                /* JOB_PAGE or JOB_THUMB */
 	folio_ctx *fc;
 	folio_doc *doc;
 	int page, gen;

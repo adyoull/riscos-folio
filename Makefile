@@ -30,9 +30,9 @@ CORE_SRC := core/doc.c core/render.c core/text.c core/dict.c
 CORE_HDR := core/folio.h core/folio_int.h core/dict.h
 CORE_OBJ = $(CORE_SRC:core/%.c=build/$(1)/%.o) build/$(1)/cJSON.o
 
-WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c wimp/clip.c wimp/dict.c wimp/contents.c wimp/find.c
+WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c wimp/clip.c wimp/dict.c wimp/contents.c wimp/find.c wimp/toolbar.c wimp/thumbs.c
 WIMP_HDR := wimp/app.h wimp/tbx.h wimp/worker.h core/folio.h core/dict.h
-VERSION ?= 0.0.1-test7
+VERSION ?= 0.0.1-test8
 
 all: build/ro/libfolio.a build/al/libfolio.a build/al/core_test build/ro/core_test.elf build/ro/folio.elf
 
@@ -81,6 +81,7 @@ app: build/ro/folio.elf
 	$(RISCOS_TOOLCHAIN)/bin/arm-riscos-gnueabihf-strip -o build/ro/folio.stripped build/ro/folio.elf
 	$(RISCOS_TOOLCHAIN)/bin/elf2aif -e build/ro/folio.stripped 'build/app/!Folio/!RunImage,ff8'
 	python3 -I tools/mksprites.py 'build/app/!Folio/!Sprites,ff9'
+	python3 -I tools/mktoolsprites.py 'build/app/!Folio/Sprites,ff9'
 	cp COPYING 'build/app/!Folio/COPYING,fff'
 	cp third/cjson/LICENSE 'build/app/!Folio/cJSONLicence,fff'
 	cp $(RISCOS_TOOLCHAIN)/riscos/PThrTicker,ffa 'build/app/!Folio/PThrTicker,ffa'

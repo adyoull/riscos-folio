@@ -114,8 +114,10 @@ static void create_objects(void)
 	entry(&vm, 2, VIEW_ZOOM_IN, "Zoom in", 0, EV_ZOOM_IN, "Click to make the pages bigger.");
 	entry(&vm, 3, VIEW_ZOOM_OUT, "Zoom out", 0, EV_ZOOM_OUT, "Click to make the pages smaller.");
 	entry(&vm, 4, VIEW_ZOOM_100, "Actual size", 0, EV_ZOOM_100, "Click to show the pages at their real size.");
-	entry(&vm, 5, VIEW_FIT_WIDTH, "Fit width", 0, EV_FIT_WIDTH, "Click to fit the pages to the window's width.");
-	app.view_menu = make_menu(&vm, "View", 6, EV_VIEW_SHOWN);
+	entry(&vm, 5, VIEW_FIT_WIDTH, "Fit width", MENU_DOTTED, EV_FIT_WIDTH, "Click to fit the pages to the window's width.");
+	entry(&vm, 6, VIEW_TOOLBAR, "Toolbar", 0, EV_TOOLBAR, "Click to show or hide the toolbar.");
+	entry(&vm, 7, VIEW_THUMBS, "Thumbnails", 0, EV_THUMBS, "Click to show or hide the page thumbnails at the left.");
+	app.view_menu = make_menu(&vm, "View", 8, EV_VIEW_SHOWN);
 
 	entry(&nm, 0, 1, "Next page    PageDown", 0, EV_NEXT, "Click to go to the next page.");
 	entry(&nm, 1, 2, "Previous page  PageUp", 0, EV_PREV, "Click to go to the previous page.");
@@ -291,7 +293,7 @@ int main(int argc, char **argv)
 	}
 	app_log("Folio %s", FOLIO_VERSION);
 
-	e = tbx_init("<Folio$Dir>", messages, &app.idb, &app.task, NULL);
+	e = tbx_init("<Folio$Dir>", messages, &app.idb, &app.task, &app.sprites);
 	if (e) {
 		app_log("Toolbox_Initialise: %s", e->errmess);
 		tbx_report_error(e);
@@ -338,12 +340,16 @@ int main(int argc, char **argv)
 				dict_redraw(block);
 			else if (contents_owns(block[0]))
 				contents_redraw(block);
+			else if (thumbs_from_wimp(block[0]))
+				thumbs_redraw(thumbs_from_wimp(block[0]), block);
 			break;
 		}
 		case Wimp_EOpenWindow:
 			/* The pop-up (the Toolbox opens document windows itself). */
 			if (dict_owns(block[0]))
 				_swix(Wimp_OpenWindow, _IN(1), block);
+			else if (thumbs_from_wimp(block[0]))
+				thumbs_open_request(thumbs_from_wimp(block[0]), block);
 			break;
 		case Wimp_ECloseWindow: {
 			docwin *w = docwin_from_wimp(block[0]);
@@ -359,12 +365,20 @@ int main(int argc, char **argv)
 				dict_click(block);
 			else if (contents_owns(block[3]))
 				contents_click(block);
+			else if (thumbs_from_wimp(block[3]))
+				thumbs_click(thumbs_from_wimp(block[3]), block);
+			else if ((w = docwin_from_toolbar(app.idb.self_id)) != NULL)
+				docwin_toolbar_click(w, app.idb.self_component, block);
 			break;
 		}
-		case Wimp_EKeyPressed:
-			/* Keys the window's shortcuts didn't take go on to other tasks. */
-			_swix(Wimp_ProcessKey, _IN(0), block[6]);
+		case Wimp_EKeyPressed: {
+			/* Return or Escape in the toolbar's page field; other keys the
+			 * window's shortcuts didn't take go on to other tasks. */
+			docwin *w = docwin_from_toolbar(app.idb.self_id);
+			if (!(w && docwin_toolbar_key(w, block[6])))
+				_swix(Wimp_ProcessKey, _IN(0), block[6]);
 			break;
+		}
 		case Wimp_EUserMessage:
 		case Wimp_EUserMessageRecorded:
 			quit = message(block);

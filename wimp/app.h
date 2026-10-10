@@ -9,12 +9,13 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test7 (10-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test8 (10-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
 	EV_QUIT = 0x100, EV_HELP,
 	EV_DARK = 0x110, EV_SEPIA, EV_ZOOM_IN, EV_ZOOM_OUT, EV_ZOOM_100, EV_FIT_WIDTH,
+	EV_TOOLBAR, EV_THUMBS,
 	EV_NEXT = 0x120, EV_PREV, EV_FIRST, EV_LAST, EV_LINE_DOWN, EV_LINE_UP,
 	EV_CLOSE = 0x130,
 	EV_VIEW_SHOWN = 0x140, EV_DOCMENU_SHOWN, EV_EDIT_SHOWN,
@@ -29,7 +30,8 @@ enum { EDIT_COPY = 1, EDIT_SELECT_ALL, EDIT_CLEAR };
 enum { DOC_FIND = 5, DOC_DEFINE = 4 };
 /* Navigate menu entries. */
 enum { NAV_CONTENTS = 5 };
-enum { VIEW_DARK = 1, VIEW_SEPIA, VIEW_ZOOM_IN, VIEW_ZOOM_OUT, VIEW_ZOOM_100, VIEW_FIT_WIDTH };
+enum { VIEW_DARK = 1, VIEW_SEPIA, VIEW_ZOOM_IN, VIEW_ZOOM_OUT, VIEW_ZOOM_100, VIEW_FIT_WIDTH,
+	VIEW_TOOLBAR, VIEW_THUMBS };
 
 typedef struct {
 	tbx_idblock idb;
@@ -42,6 +44,7 @@ typedef struct {
 	int screen_w, screen_h;     /* OS units */
 	int epub_type;              /* RISC OS filetype for EPUB, or -1 */
 	FILE *log;
+	void *sprites;              /* <Folio$Dir>.Sprites, loaded by the Toolbox (1 = none) */
 } app_state;
 
 extern app_state app;
@@ -77,6 +80,37 @@ int docwin_is_counting(docwin *w);
 void docwin_go_to(docwin *w, int page);
 /* Selects a found hit (quads on page) and scrolls it into view. */
 void docwin_show_hit(docwin *w, int page, const folio_quad *q, int n);
+
+docwin *docwin_from_toolbar(ObjectId id);
+void docwin_toolbar_click(docwin *w, int component, int *block);
+int docwin_toolbar_key(docwin *w, int key);   /* 1 if taken */
+
+/* toolbar.c */
+int toolbar_height(void);
+ObjectId toolbar_create(docwin *w);
+void toolbar_attach(ObjectId win, ObjectId tb, int on);
+void toolbar_update(ObjectId tb, int page, int pages, int exact, float zoom,
+		int dark, int thumbs, int has_selection);
+int toolbar_event_for(int component);
+int toolbar_typed_page(ObjectId tb);
+int toolbar_is_page_field(int component);
+
+/* thumbs.c: the thumbnail drawer */
+typedef struct thumbs thumbs;
+thumbs *thumbs_new(docwin *w);
+void thumbs_free(thumbs *t);
+thumbs *thumbs_from_wimp(int handle);
+int thumbs_width(void);
+int thumbs_shown(thumbs *t);
+void thumbs_show(thumbs *t, int on, int top);
+void thumbs_reopen(thumbs *t, int top);
+void thumbs_layout(thumbs *t, float page_w, float page_h, int pages, folio_page_mode mode);
+void thumbs_set_current(thumbs *t, int page, int scroll);
+int thumbs_wanted(thumbs *t, int busy_page, int *px_w, int *px_h, float *ppp, int *gen);
+void thumbs_take(thumbs *t, int page, int gen, int *area, int ok);
+void thumbs_redraw(thumbs *t, int *block);
+void thumbs_click(thumbs *t, int *block);
+void thumbs_open_request(thumbs *t, int *block);
 
 /* contents.c */
 void contents_open(docwin *w);

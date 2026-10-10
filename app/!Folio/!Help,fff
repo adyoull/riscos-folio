@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test7)
+Folio (test build 0.0.1-test8)
 ==============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -18,6 +18,17 @@ In a document window
                  Actual size, Fit width. Navigate: the page moves above,
                  and Contents. Find... and Define "word".
   Close with Adjust also opens the document's directory.
+
+The toolbar and thumbnails
+  The toolbar along the top of each document window has, from the left:
+  thumbnails on/off, Contents, previous page, the page number (type a
+  number and press Return to go there), next page, zoom out, the scale,
+  zoom in, fit width, dark page, Find and Define. The highlighter,
+  underline, strike-out and note tools are shaded: annotations come in a
+  later test build. View > Toolbar hides or shows it.
+  The thumbnails drawer (View > Thumbnails, or the first toolbar button)
+  shows small pages down the left of the window; the page you're reading
+  is framed in blue, and a click on a thumbnail goes to that page.
 
 Contents and Find
   Navigate > Contents... lists the document's chapters and sections, with

@@ -52,6 +52,11 @@ struct docwin {
 	folio_point sel_a, sel_b;
 	folio_quad sel_q[SEL_QUADS];
 	char sel_word[64];        /* set by a double-click on a word */
+	/* Toolbar and thumbnail drawer. */
+	ObjectId toolbar;
+	int show_toolbar, show_thumbs;
+	thumbs *thumbs;
+	int top, left;            /* work area kept clear for them, OS units */
 };
 
 typedef struct {
@@ -80,12 +85,12 @@ static float px_per_pt(const docwin *w)
 
 static int page_top(const docwin *w, int i)
 {
-	return -(GAP + i * (w->slot_h + GAP));
+	return -(w->top + GAP + i * (w->slot_h + GAP));
 }
 
 static int page_left(const docwin *w)
 {
-	return (w->ext_w - w->slot_w) / 2;
+	return w->left + (w->ext_w - w->left - w->slot_w) / 2;
 }
 
 static const char *leafname(const char *path)
@@ -170,9 +175,9 @@ static cache_entry *cache_slot(size_t bytes)
 
 /* A sprite area for one page at w's size (PRM p1177-1178): the worker
  * draws into its pixels. */
-static int *new_page_area(docwin *w, size_t *bytes_out)
+static int *new_area(int px_w, int px_h, size_t *bytes_out)
 {
-	size_t img = (size_t)w->px_w * 4 * w->px_h;
+	size_t img = (size_t)px_w * 4 * px_h;
 	size_t bytes = 16 + 44 + img;
 	int dpi = 180 >> app.xeig;
 	int *area = malloc(bytes), *spr;
@@ -186,8 +191,8 @@ static int *new_page_area(docwin *w, size_t *bytes_out)
 	spr[0] = (int)(44 + img);
 	memset(spr + 1, 0, 12);
 	strcpy((char *)(spr + 1), "page");
-	spr[4] = w->px_w - 1;
-	spr[5] = w->px_h - 1;
+	spr[4] = px_w - 1;
+	spr[5] = px_h - 1;
 	spr[6] = 0;
 	spr[7] = 31;
 	spr[8] = 44;
@@ -196,6 +201,38 @@ static int *new_page_area(docwin *w, size_t *bytes_out)
 	spr[10] = (6 << 27) | (dpi << 14) | (dpi << 1) | 1;
 	*bytes_out = bytes;
 	return area;
+}
+
+static int *new_page_area(docwin *w, size_t *bytes_out)
+{
+	return new_area(w->px_w, w->px_h, bytes_out);
+}
+
+/* Hands thumbnail 'page' of w to the worker. */
+static int submit_thumb(docwin *w, int page, int px_w, int px_h, float ppp, int gen)
+{
+	render_job j;
+	memset(&j, 0, sizeof j);
+	if (folio_loc_from_number(w->doc, page, &j.loc))
+		return 0;
+	j.area = new_area(px_w, px_h, &j.bytes);
+	if (!j.area)
+		return 0;
+	j.kind = JOB_THUMB;
+	j.owner = w;
+	j.fc = app.fc;
+	j.doc = w->doc;
+	j.page = page;
+	j.gen = gen;
+	j.mode = w->mode;
+	j.ppp = ppp;
+	j.px_w = px_w;
+	j.px_h = px_h;
+	if (worker_submit(&j)) {
+		free(j.area);
+		return 0;
+	}
+	return 1;
 }
 
 /* Hands page 'page' of w to the worker. */
@@ -225,6 +262,7 @@ static int submit_page(docwin *w, int page)
 }
 
 static int is_window(docwin *w);
+static void tb_update(docwin *w);
 static void abort_for(docwin *w);
 static void sel_draw(docwin *w, int i, int x0, int y1);
 static int sel_drag_tick(docwin *w);
@@ -236,6 +274,13 @@ static void take_result(render_job *r)
 {
 	docwin *w = r->owner;
 	cache_entry *c;
+	if (r->kind == JOB_THUMB) {
+		if (is_window(w) && r->mode == w->mode && !r->aborted)
+			thumbs_take(w->thumbs, r->page, r->gen, r->area, r->ok);
+		else
+			free(r->area);
+		return;
+	}
 	if (!is_window(w) || r->gen != w->gen || r->mode != w->mode || !r->ok) {
 		if (is_window(w) && !r->ok && !r->aborted) {
 			app_log("page %d: %s", r->page, r->err);
@@ -278,7 +323,8 @@ static void set_extent(docwin *w)
 	w->pages = folio_page_count(w->doc, &exact);
 	if (w->pages < 1)
 		w->pages = 1;
-	w->ext_h = GAP + w->pages * (w->slot_h + GAP);
+	w->ext_h = w->top + GAP + w->pages * (w->slot_h + GAP);
+	thumbs_layout(w->thumbs, w->page.x1, w->page.y1, w->pages, w->mode);
 	box[0] = 0;
 	box[1] = -w->ext_h;
 	box[2] = w->ext_w;
@@ -298,6 +344,7 @@ static void layout(docwin *w)
 	w->ext_w = w->slot_w + 2 * GAP;
 	if (w->ext_w < 640)
 		w->ext_w = 640;
+	w->ext_w += w->left;
 	set_extent(w);
 	w->gen++;
 }
@@ -332,7 +379,7 @@ static void go_to_page(docwin *w, int i)
 {
 	if (i < 0) i = 0;
 	if (i >= w->pages) i = w->pages - 1;
-	scroll_to(w, page_top(w, i) + GAP / 2);
+	scroll_to(w, page_top(w, i) + GAP / 2 + w->top);
 }
 
 static void redraw_all(docwin *w)
@@ -355,6 +402,7 @@ static void set_zoom(docwin *w, float z)
 	layout(w);
 	go_to_page(w, page);
 	redraw_all(w);
+	tb_update(w);
 }
 
 /* ---- Accelerator files ------------------------------------------------- */
@@ -580,6 +628,12 @@ docwin *docwin_open(const char *path)
 	window_get_wimp_handle(w->obj, &w->wimp);
 	tbx_set_handle(w->obj, w);
 	window_set_menu(w->obj, app.doc_menu);
+	w->toolbar = toolbar_create(w);
+	w->thumbs = thumbs_new(w);
+	w->show_toolbar = w->toolbar != 0;
+	if (w->show_toolbar)
+		toolbar_attach(w->obj, w->toolbar, 1);
+	w->top = w->show_toolbar ? toolbar_height() : 0;
 	layout(w);
 
 	/* Style Guide p105: the first window centred, at most a quarter of the
@@ -600,6 +654,7 @@ docwin *docwin_open(const char *path)
 	st[6] = 0;
 	st[7] = -1;
 	tbx_show(w->obj, 0, 1, st + 1, 0, -1);
+	tb_update(w);
 
 	w->next = windows;
 	windows = w;
@@ -625,7 +680,10 @@ void docwin_close(docwin *w)
 	core_unlock();
 	cache_forget(w);
 	/* Not recursively: the document menu is shared by every window. */
+	thumbs_free(w->thumbs);
 	tbx_delete(w->obj, 1);
+	if (w->toolbar)
+		tbx_delete(w->toolbar, 0);
 	free(w);
 }
 
@@ -687,8 +745,8 @@ void docwin_redraw(docwin *w, int *b)
 		int top_work = cy1 - oy, bottom_work = cy0 - oy;
 		int i0, i1, i;
 		fill_rect(gutter_colour(w), cx0, cy0, cx1, cy1);
-		i0 = (-top_work - GAP) / (w->slot_h + GAP);
-		i1 = (-bottom_work) / (w->slot_h + GAP);
+		i0 = (-top_work - w->top - GAP) / (w->slot_h + GAP);
+		i1 = (-bottom_work - w->top) / (w->slot_h + GAP);
 		if (i0 < 0) i0 = 0;
 		if (i1 >= w->pages) i1 = w->pages - 1;
 		for (i = i0; i <= i1; i++) {
@@ -764,8 +822,8 @@ static int wanted_page(docwin *w)
 	vis_h = st[4] - st[2];
 	top = st[6];
 	bottom = top - vis_h;
-	i0 = (-top - GAP) / (w->slot_h + GAP);
-	i1 = (-bottom) / (w->slot_h + GAP);
+	i0 = (-top - GAP) / (w->slot_h + GAP);     /* the toolbar covers w->top of it */
+	i1 = (-bottom - w->top) / (w->slot_h + GAP);
 	if (i0 < 0) i0 = 0;
 	if (i1 >= w->pages) i1 = w->pages - 1;
 	for (i = i0; i <= i1 && n < 60; i++)
@@ -807,6 +865,8 @@ int docwin_background(void)
 			w->dir = cur > w->last_page ? 1 : -1;
 			w->last_page = cur;
 			contents_page_changed(w);
+			thumbs_set_current(w->thumbs, cur, 0);
+			tb_update(w);
 		}
 		int counted = 0;
 		if ((w->counting || w->pending_mark) && core_trylock()) {
@@ -828,8 +888,10 @@ int docwin_background(void)
 			after_counting(w);
 			core_unlock();
 		}
-		if (counted)
+		if (counted) {
 			contents_page_changed(w);
+			tb_update(w);
+		}
 		busy |= w->counting || w->pending_mark;
 	}
 
@@ -842,6 +904,20 @@ int docwin_background(void)
 				continue;
 			}
 			if (submit_page(w, page))
+				break;
+		}
+	}
+	/* Then thumbnails for open drawers. */
+	if (worker_idle()) {
+		const render_job *cur = worker_current();
+		for (w = windows; w; w = w->next) {
+			int px_w, px_h, gen, page;
+			float ppp;
+			if (!thumbs_shown(w->thumbs))
+				continue;
+			page = thumbs_wanted(w->thumbs, cur && cur->owner == w && cur->kind == JOB_THUMB ? cur->page : -1,
+				&px_w, &px_h, &ppp, &gen);
+			if (page >= 0 && submit_thumb(w, page, px_w, px_h, ppp, gen))
 				break;
 		}
 	}
@@ -885,7 +961,7 @@ static int point_at(docwin *w, int sx, int sy, folio_point *pt, int clamp_page)
 	get_state(w, st);
 	wx = sx - (st[1] - st[5]);
 	wy = sy - (st[4] - st[6]);
-	i = clamp_page >= 0 ? clamp_page : (-wy - GAP / 2) / (w->slot_h + GAP);
+	i = clamp_page >= 0 ? clamp_page : (-wy - w->top - GAP / 2) / (w->slot_h + GAP);
 	if (i < 0 || i >= w->pages)
 		return -1;
 	pt->x = (wx - page_left(w)) / os_per_pt;
@@ -925,6 +1001,7 @@ static void sel_update(docwin *w, folio_select_mode mode)
 		w->sel_n = 0;
 	core_unlock();
 	redraw_page(w, w->sel_page);
+	tb_update(w);
 }
 
 static void sel_clear(docwin *w)
@@ -1130,6 +1207,60 @@ void docwin_edit_menu_shown(docwin *w)
 
 /* ---- Events ------------------------------------------------------------- */
 
+/* The toolbar's page, count, zoom and toggles. */
+static void tb_update(docwin *w)
+{
+	int exact = 1;
+	if (!w->toolbar || !w->show_toolbar)
+		return;
+	if (core_trylock()) {
+		folio_page_count(w->doc, &exact);
+		core_unlock();
+	} else {
+		exact = !w->counting;
+	}
+	toolbar_update(w->toolbar, current_page(w), w->pages, exact, w->zoom,
+		w->mode == FOLIO_PAGE_DARK, w->show_thumbs, w->sel && w->sel_n > 0);
+}
+
+/* The toolbar and the drawer take room at the top and left of the work
+ * area: lay the pages out again, keeping the page being read. */
+static void relayout_furniture(docwin *w)
+{
+	int page = current_page(w);
+	w->top = w->show_toolbar && w->toolbar ? toolbar_height() : 0;
+	w->left = w->show_thumbs && w->thumbs ? thumbs_width() : 0;
+	{
+		/* Same zoom, same page sprites: keep them (layout() moves to a new generation). */
+		int gen = w->gen;
+		layout(w);
+		w->gen = gen;
+	}
+	go_to_page(w, page);
+	redraw_all(w);
+}
+
+static void toggle_toolbar(docwin *w)
+{
+	w->show_toolbar = !w->show_toolbar;
+	toolbar_attach(w->obj, w->toolbar, w->show_toolbar);
+	relayout_furniture(w);
+	thumbs_reopen(w->thumbs, w->top);
+	tb_update(w);
+}
+
+static void toggle_thumbs(docwin *w)
+{
+	if (!w->thumbs)
+		return;
+	w->show_thumbs = !w->show_thumbs;
+	relayout_furniture(w);
+	thumbs_show(w->thumbs, w->show_thumbs, w->top);
+	thumbs_set_current(w->thumbs, current_page(w), 1);
+	w->want_render = 1;
+	tb_update(w);
+}
+
 static void set_mode(docwin *w, folio_page_mode m)
 {
 	w->mode = w->mode == m ? FOLIO_PAGE_NORMAL : m;
@@ -1137,7 +1268,9 @@ static void set_mode(docwin *w, folio_page_mode m)
 	app_log("%s: mode %d", w->title, w->mode);
 	cache_forget(w);
 	w->gen++;
+	thumbs_layout(w->thumbs, w->page.x1, w->page.y1, w->pages, w->mode);
 	redraw_all(w);
+	tb_update(w);
 }
 
 void docwin_event(docwin *w, int code)
@@ -1151,7 +1284,7 @@ void docwin_event(docwin *w, int code)
 	case EV_ZOOM_100: set_zoom(w, 1.0f); break;
 	case EV_FIT_WIDTH:
 		get_state(w, st);
-		set_zoom(w, (float)(st[3] - st[1] - 2 * GAP) / (w->page.x1 * 2.5f));
+		set_zoom(w, (float)(st[3] - st[1] - w->left - 2 * GAP) / (w->page.x1 * 2.5f));
 		break;
 	case EV_NEXT: go_to_page(w, current_page(w) + 1); break;
 	case EV_PREV: go_to_page(w, current_page(w) - 1); break;
@@ -1171,6 +1304,8 @@ void docwin_event(docwin *w, int code)
 	case EV_CLEAR_SEL: sel_clear(w); break;
 	case EV_DEFINE: define(w); break;
 	case EV_FIND: find_open(w); break;
+	case EV_TOOLBAR: toggle_toolbar(w); break;
+	case EV_THUMBS: toggle_thumbs(w); break;
 	case EV_CONTENTS: contents_open(w); break;
 	}
 }
@@ -1180,6 +1315,10 @@ void docwin_view_menu_shown(docwin *w)
 	menu_set_tick(app.view_menu, VIEW_DARK, w->mode == FOLIO_PAGE_DARK);
 	menu_set_tick(app.view_menu, VIEW_SEPIA, w->mode == FOLIO_PAGE_SEPIA);
 	menu_set_tick(app.view_menu, VIEW_ZOOM_100, w->zoom > 0.999f && w->zoom < 1.001f);
+	menu_set_tick(app.view_menu, VIEW_TOOLBAR, w->show_toolbar);
+	menu_set_tick(app.view_menu, VIEW_THUMBS, w->show_thumbs);
+	menu_set_fade(app.view_menu, VIEW_TOOLBAR, !w->toolbar);
+	menu_set_fade(app.view_menu, VIEW_THUMBS, !w->thumbs);
 	menu_set_fade(app.view_menu, VIEW_ZOOM_IN, w->zoom >= MAX_ZOOM);
 	menu_set_fade(app.view_menu, VIEW_ZOOM_OUT, w->zoom <= MIN_ZOOM);
 }
@@ -1240,4 +1379,48 @@ void docwin_show_hit(docwin *w, int page, const folio_quad *q, int n)
 		y = 0;
 	scroll_to(w, y);
 	redraw_page(w, page);
+}
+
+/* ---- Toolbar ------------------------------------------------------------ */
+
+docwin *docwin_from_toolbar(ObjectId id)
+{
+	docwin *w;
+	for (w = windows; w; w = w->next)
+		if (w->toolbar && w->toolbar == id)
+			return w;
+	return NULL;
+}
+
+void docwin_toolbar_click(docwin *w, int component, int *b)
+{
+	int ev = toolbar_event_for(component);
+	if (toolbar_is_page_field(component))
+		return;          /* the Toolbox gives it the caret */
+	if (ev)
+		docwin_event(w, ev);
+	/* Keys back to the document (no caret), unless the box just opened has it. */
+	if (ev != EV_FIND && ev != EV_DEFINE)
+		_swix(Wimp_SetCaretPosition, _INR(0, 5), w->wimp, -1, 0, 0, 1 << 25, -1);
+}
+
+/* A key in the toolbar's page field: Return goes to the page. */
+int docwin_toolbar_key(docwin *w, int key)
+{
+	if (key == 13) {
+		int n = toolbar_typed_page(w->toolbar);
+		if (n >= 1) {
+			docwin_go_to(w, n - 1 < w->pages ? n - 1 : w->pages - 1);
+			app_log("%s: go to page %d", w->title, n);
+		}
+		_swix(Wimp_SetCaretPosition, _INR(0, 5), w->wimp, -1, 0, 0, 1 << 25, -1);
+		tb_update(w);
+		return 1;
+	}
+	if (key == 27) {
+		_swix(Wimp_SetCaretPosition, _INR(0, 5), w->wimp, -1, 0, 0, 1 << 25, -1);
+		tb_update(w);
+		return 1;
+	}
+	return 0;
 }
