@@ -26,6 +26,16 @@ rules, Cortex-A8) as well as on RISC OS. See `core/folio.h`:
   dictionary), case-insensitive find.
 - **Links:** the link under the pointer and where it goes.
 
+## The application (first test build, 0.0.1-test1)
+`wimp/` is the RISC OS front end, a Toolbox application through our own
+thin layer (`wimp/tbx.h`: in-memory object templates, so the Res file only
+holds its header). It has an icon bar icon with Info, Help and Quit, and
+document windows showing pages for continuous scrolling, drawn from a cache
+of page sprites. Missing pages are drawn and ebook pages are counted in null
+polls. View menu: Dark page (^N), Sepia page, zooms, fit width. Navigate:
+page keys. `app/!Folio` holds the app's files; `make app` builds
+`build/Folio-<version>.zip`.
+
 ## Building
 Needs the riscos-crossdev 1.4 toolchain and a riscos-crossdev checkout, and
 for the tests `gcc-arm-linux-gnueabihf`, `g++-arm-linux-gnueabihf`, `gawk`,
@@ -35,6 +45,7 @@ for the tests `gcc-arm-linux-gnueabihf`, `g++-arm-linux-gnueabihf`, `gawk`,
     make RCD_DIR=...        # core for both, the test program for both
     make test               # 81 checks under qemu-arm-aligntrap
     make check              # riscos-crossdev checks on the RISC OS test program
+    make app                # !Folio, checked, zipped with RISC OS filetypes
 
 The RISC OS test program can also be run on the machine itself (CoreTest zip,
 `RunCoreTest` in a TaskWindow).

@@ -1,0 +1,31 @@
+| !Run for Folio, a reader for PDF and ebook files.
+| Built with riscos-crossdev 1.4 (GCC 10.2, UnixLib 5.0.3.3), statically
+| linked with MuPDF 1.28.5, and converted to an Absolute file.
+Set Folio$Dir <Obey$Dir>
+IconSprites <Folio$Dir>.!Sprites
+
+| --- Runtime support -------------------------------------------------
+RMEnsure SharedUnixLibrary 1.16 IfThere System:Modules.SharedULib Then RMLoad System:Modules.SharedULib
+RMEnsure SharedUnixLibrary 1.16 Error Folio needs SharedUnixLibrary 1.16 or later. Install it with PackMan.
+RMEnsure ARMEABISupport 0 IfThere System:Modules.ARMEABISupport Then RMLoad System:Modules.ARMEABISupport
+RMEnsure ARMEABISupport 0 Error Folio needs the ARMEABISupport module. Install it with PackMan.
+
+| --- Toolbox (in the RISC OS 5 ROM) -------------------------------------
+RMEnsure Toolbox 0 RMLoad System:Modules.Toolbox.Toolbox
+RMEnsure Toolbox 0 Error Folio needs the Toolbox module Toolbox (in the RISC OS 5 ROM).
+RMEnsure Window 0 RMLoad System:Modules.Toolbox.Window
+RMEnsure Window 0 Error Folio needs the Toolbox module Window (in the RISC OS 5 ROM).
+RMEnsure Menu 0 RMLoad System:Modules.Toolbox.Menu
+RMEnsure Menu 0 Error Folio needs the Toolbox module Menu (in the RISC OS 5 ROM).
+RMEnsure Iconbar 0 RMLoad System:Modules.Toolbox.Iconbar
+RMEnsure Iconbar 0 Error Folio needs the Toolbox module Iconbar (in the RISC OS 5 ROM).
+RMEnsure ProgInfo 0 RMLoad System:Modules.Toolbox.ProgInfo
+RMEnsure ProgInfo 0 Error Folio needs the Toolbox module ProgInfo (in the RISC OS 5 ROM).
+
+| --- Memory ---------------------------------------------------------
+| MuPDF's cache and the page pictures go in a dynamic area, "Folio Heap",
+| removed when Folio quits. The WimpSlot only holds the program itself.
+| Choices (layouts of books) go in <Choices$Write>.Folio.
+WimpSlot -min 20480K -max 20480K
+| A log of what Folio did goes in <Wimp$ScrapDir>.FolioLog.
+Run <Folio$Dir>.!RunImage %*0

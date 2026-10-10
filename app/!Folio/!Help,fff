@@ -1,0 +1,30 @@
+Folio (test build 0.0.1-test1)
+==============================
+
+A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
+MuPDF. This is an early test: it opens and shows documents. Markup,
+notebooks, the dictionary and the rest come later.
+
+Opening a document
+  Drag a file to Folio's icon on the icon bar, or double-click a PDF while
+  Folio is running. A document that is already open comes to the front.
+
+In a document window
+  Scroll as usual. Page Down / Page Up    next / previous page
+  Home / End     first / last page        Up / Down   scroll a little
+  Ctrl-N         dark page on and off     Ctrl-F2     close the window
+  Menu           View: Dark page, Sepia page, Zoom in, Zoom out,
+                 Actual size, Fit width. Navigate: the page moves above.
+  Close with Adjust also opens the document's directory.
+
+Ebooks are laid out to a 400 x 600 point page at 11 point text. Folio
+counts a book's pages in the background the first time, then remembers
+them in <Choices$Write>.Folio.Layouts, so it opens at once next time.
+
+Needs a 32 thousand or more colour screen mode in this test build.
+
+If anything goes wrong, the file <Wimp$ScrapDir>.FolioLog says what
+Folio did; please send it with your report.
+
+Licence: AGPL-3.0 (Folio includes MuPDF, which is AGPL). Source:
+https://github.com/adyoull/riscos-folio. MuPDF is Copyright Artifex Software.

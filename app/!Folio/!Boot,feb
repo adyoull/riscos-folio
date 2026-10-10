@@ -1,0 +1,5 @@
+| !Boot for Folio (test build): the icon only. This test build doesn't
+| claim any filetypes; drag files to its icon bar icon, or double-click a
+| PDF while Folio is running.
+Set Folio$Dir <Obey$Dir>
+IconSprites <Folio$Dir>.!Sprites

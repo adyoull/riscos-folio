@@ -29,7 +29,11 @@ INC := -Icore -I$(MUPDF)/include
 CORE_SRC := core/doc.c core/render.c core/text.c
 CORE_HDR := core/folio.h core/folio_int.h
 
-all: build/ro/libfolio.a build/al/libfolio.a build/al/core_test build/ro/core_test.elf
+WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c
+WIMP_HDR := wimp/app.h wimp/tbx.h core/folio.h
+VERSION ?= 0.0.1-test1
+
+all: build/ro/libfolio.a build/al/libfolio.a build/al/core_test build/ro/core_test.elf build/ro/folio.elf
 
 build/ro/%.o: core/%.c $(CORE_HDR)
 	@mkdir -p $(@D)
@@ -51,6 +55,27 @@ build/ro/core_test.elf: tests/core_test.c build/ro/libfolio.a
 	$(RO_CC) $(RO_CFLAGS) $(WARN) $(INC) -static $< build/ro/libfolio.a \
 		-L$(MU_RO) -lmupdf -lmupdf-third -lm -o $@
 
+build/ro/wimp/%.o: wimp/%.c $(WIMP_HDR)
+	@mkdir -p $(@D)
+	$(RO_CC) $(RO_CFLAGS) $(WARN) $(INC) -Iwimp -c $< -o $@
+
+# The application (RISC OS only).
+build/ro/folio.elf: $(WIMP_SRC:wimp/%.c=build/ro/wimp/%.o) build/ro/libfolio.a
+	$(RO_CC) $(RO_CFLAGS) -static $(WIMP_SRC:wimp/%.c=build/ro/wimp/%.o) build/ro/libfolio.a \
+		-L$(MU_RO) -lmupdf -lmupdf-third -lm -o $@
+
+# !Folio in build/app, and a zip with RISC OS filetypes.
+app: build/ro/folio.elf
+	RISCOS_TOOLCHAIN=$(RISCOS_TOOLCHAIN) $(RCD_DIR)/checks/check-all.sh build/ro/folio.elf
+	rm -rf build/app && mkdir -p build/app
+	cp -r app/!Folio build/app/
+	$(RISCOS_TOOLCHAIN)/bin/arm-riscos-gnueabihf-strip -o build/ro/folio.stripped build/ro/folio.elf
+	$(RISCOS_TOOLCHAIN)/bin/elf2aif -e build/ro/folio.stripped 'build/app/!Folio/!RunImage,ff8'
+	python3 -I tools/mksprites.py 'build/app/!Folio/!Sprites,ff9'
+	cp COPYING 'build/app/!Folio/COPYING,fff'
+	python3 $(RCD_DIR)/package/rozip.py build/Folio-$(VERSION).zip -C build/app '!Folio'
+	@ls -l build/Folio-$(VERSION).zip
+
 tests/data/stamp: tests/make-data.sh tests/make-epub.py
 	tests/make-data.sh $(MU_AL)/mutool $(RCD_DIR)/qemu/aligntrap.sh
 	touch $@
@@ -64,4 +89,4 @@ check: build/ro/core_test.elf
 clean:
 	rm -rf build tests/data/*.epub tests/data/*.pdf tests/data/stamp tests/out
 
-.PHONY: all test check clean
+.PHONY: all app test check clean
