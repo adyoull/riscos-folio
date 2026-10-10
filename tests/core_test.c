@@ -346,6 +346,12 @@ static void test_pdf(folio_ctx *fc, const char *dir)
 	CHECK(folio_page_bounds(d, (folio_loc){ 0, 0 }, &b) == 0 && (int)b.x1 == 595 && (int)b.y1 == 842,
 		"A4 bounds %gx%g", b.x1, b.y1);
 
+	/* Two hits of one quad each: each marked as a start. Then a max of 1. */
+	n = folio_find_on_page(d, (folio_loc){ 0, 0 }, "test", q, mark, 4);
+	CHECK(n == 2 && mark[0] == 1 && mark[1] == 1, "test: %d quads, marks %d %d", n, mark[0], mark[1]);
+	n = folio_find_on_page(d, (folio_loc){ 0, 0 }, "test", q, mark, 1);
+	CHECK(n == 1, "max 1 gave %d", n);
+
 	n = folio_find_on_page(d, (folio_loc){ 0, 0 }, "serendipity", q, mark, 4);
 	CHECK(n == 1, "serendipity found once (%d)", n);
 	if (n == 1) {

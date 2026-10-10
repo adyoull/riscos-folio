@@ -37,6 +37,14 @@ void core_lock(void) { pthread_mutex_lock(&core_mutex); }
 void core_unlock(void) { pthread_mutex_unlock(&core_mutex); }
 int core_trylock(void) { return pthread_mutex_trylock(&core_mutex) == 0; }
 
+/* The core for the main thread, now: the worker's page (if any) is stopped
+ * and will be drawn again later. */
+void core_now(void)
+{
+	worker_stop_for(NULL);
+	core_lock();
+}
+
 static unsigned now_cs(void)
 {
 	unsigned t;

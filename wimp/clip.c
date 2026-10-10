@@ -58,6 +58,20 @@ static char *to_latin1(const char *s, size_t *len)
 	return out;
 }
 
+char *app_desktop_text(const char *utf8)
+{
+	size_t len;
+	char *s;
+	if (alphabet_utf8()) {
+		len = strlen(utf8);
+		s = malloc(len + 1);
+		if (s)
+			memcpy(s, utf8, len + 1);
+		return s;
+	}
+	return to_latin1(utf8, &len);
+}
+
 void clip_set_text(const char *utf8)
 {
 	int b[6];

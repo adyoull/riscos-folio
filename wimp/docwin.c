@@ -467,6 +467,7 @@ static tbx_shortcut shortcuts[] = {
 	{ 0, 3, EV_COPY, 0 },           /* ^C */
 	{ 0, 1, EV_SELECT_ALL, 0 },     /* ^A */
 	{ 0, 27, EV_CLEAR_SEL, 0 },     /* Escape: clear the selection (DESIGN §3.8) */
+	{ 0, 0x184, EV_FIND, 0 },       /* F4: Find (as in Edit, SG p60) */
 };
 
 static ObjectId create_window(docwin *w)
@@ -615,6 +616,8 @@ void docwin_close(docwin *w)
 			*p = w->next;
 			break;
 		}
+	find_forget(w);
+	contents_forget(w);
 	worker_stop_for(w);
 	core_lock();
 	save_place(w);
@@ -803,7 +806,9 @@ int docwin_background(void)
 		if (cur != w->last_page) {
 			w->dir = cur > w->last_page ? 1 : -1;
 			w->last_page = cur;
+			contents_page_changed(w);
 		}
+		int counted = 0;
 		if ((w->counting || w->pending_mark) && core_trylock()) {
 			/* Up to 4 cs of counting per poll. */
 			while (w->counting) {
@@ -812,6 +817,7 @@ int docwin_background(void)
 					if (c < 0)
 						app_log("counting: %s", folio_error(app.fc));
 					w->counting = 0;
+					counted = 1;
 				}
 				_swix(OS_ReadMonotonicTime, _OUT(0), &t);
 				if (t - t0 >= 4)
@@ -822,6 +828,8 @@ int docwin_background(void)
 			after_counting(w);
 			core_unlock();
 		}
+		if (counted)
+			contents_page_changed(w);
 		busy |= w->counting || w->pending_mark;
 	}
 
@@ -899,14 +907,6 @@ static void redraw_page(docwin *w, int i)
 	int y1 = page_top(w, i);
 	_swix(Wimp_ForceRedraw, _INR(0, 4), w->wimp, page_left(w), y1 - w->slot_h,
 		page_left(w) + w->slot_w, y1);
-}
-
-/* The core, now, for the main thread: the worker's page (if any) is stopped
- * and will be drawn again later. */
-static void core_now(void)
-{
-	worker_stop_for(NULL);
-	core_lock();
 }
 
 /* Recompute the selection's quads (snapping to 'mode') and redraw. */
@@ -1170,6 +1170,8 @@ void docwin_event(docwin *w, int code)
 	case EV_SELECT_ALL: sel_all(w); break;
 	case EV_CLEAR_SEL: sel_clear(w); break;
 	case EV_DEFINE: define(w); break;
+	case EV_FIND: find_open(w); break;
+	case EV_CONTENTS: contents_open(w); break;
 	}
 }
 
@@ -1182,3 +1184,60 @@ void docwin_view_menu_shown(docwin *w)
 	menu_set_fade(app.view_menu, VIEW_ZOOM_OUT, w->zoom <= MIN_ZOOM);
 }
 
+
+/* ---- For the Contents and Find windows -------------------------------- */
+
+folio_doc *docwin_doc(docwin *w) { return w->doc; }
+const char *docwin_title(docwin *w) { return w->title; }
+int docwin_wimp(docwin *w) { return w->wimp; }
+int docwin_current_page(docwin *w) { return current_page(w); }
+int docwin_is_counting(docwin *w) { return w->counting; }
+
+/* Pages counted since the extent was last set. Not with the core lock held. */
+static void extend_to(docwin *w, int page)
+{
+	if (page < w->pages)
+		return;
+	core_lock();
+	set_extent(w);
+	core_unlock();
+}
+
+void docwin_go_to(docwin *w, int page)
+{
+	extend_to(w, page);
+	go_to_page(w, page);
+}
+
+void docwin_show_hit(docwin *w, int page, const folio_quad *q, int n)
+{
+	int st[9], vis_h, y, i;
+	float k = 2.5f * w->zoom, top;
+	if (n <= 0)
+		return;
+	if (n > SEL_QUADS)
+		n = SEL_QUADS;
+	extend_to(w, page);
+	sel_clear(w);
+	w->sel = 1;
+	w->sel_page = page;
+	w->sel_word[0] = 0;
+	/* The selection's ends, for Copy and Define: just inside the first and
+	 * last characters' outer edges. */
+	w->sel_a.x = (q[0].ul.x + q[0].ll.x) / 2 + 0.5f;
+	w->sel_a.y = (q[0].ul.y + q[0].ll.y) / 2;
+	w->sel_b.x = (q[n - 1].ur.x + q[n - 1].lr.x) / 2 - 0.5f;
+	w->sel_b.y = (q[n - 1].ur.y + q[n - 1].lr.y) / 2;
+	for (i = 0; i < n; i++)
+		w->sel_q[i] = q[i];
+	w->sel_n = n;
+	/* The hit a third of the way down the window. */
+	top = q[0].ul.y < q[0].ur.y ? q[0].ul.y : q[0].ur.y;
+	get_state(w, st);
+	vis_h = st[4] - st[2];
+	y = page_top(w, page) - (int)(top * k) + vis_h / 3;
+	if (y > 0)
+		y = 0;
+	scroll_to(w, y);
+	redraw_page(w, page);
+}

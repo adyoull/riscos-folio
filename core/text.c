@@ -220,6 +220,11 @@ int folio_find_on_page(folio_doc *doc, folio_loc loc, const char *needle,
 		folio_cpage *cp = folio_get_page(doc, loc);
 		q = fz_malloc_array(ctx, max, fz_quad);
 		n = fz_search_stext_page(ctx, folio_get_text(doc, cp), needle, mark, q, max);
+		if (n > max)
+			n = max;    /* it returns the total, even past max */
+		/* MuPDF 1.28 numbers the hits (0, 1, 2...); ours marks where each starts. */
+		for (i = n - 1; i >= 0; i--)
+			mark[i] = i == 0 || mark[i] != mark[i - 1];
 		for (i = 0; i < n; i++)
 			quads[i] = quad_from_page(cp, q[i]);
 	}

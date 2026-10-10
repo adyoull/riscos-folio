@@ -38,5 +38,7 @@ void worker_stop_for(void *owner);
 void core_lock(void);
 void core_unlock(void);
 int core_trylock(void);
+/* Stops the worker's page, then takes the lock (main thread). */
+void core_now(void);
 
 #endif

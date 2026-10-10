@@ -120,8 +120,9 @@ static void create_objects(void)
 	entry(&nm, 0, 1, "Next page    PageDown", 0, EV_NEXT, "Click to go to the next page.");
 	entry(&nm, 1, 2, "Previous page  PageUp", 0, EV_PREV, "Click to go to the previous page.");
 	entry(&nm, 2, 3, "First page       Home", 0, EV_FIRST, "Click to go to the first page.");
-	entry(&nm, 3, 4, "Last page         End", 0, EV_LAST, "Click to go to the last page.");
-	app.nav_menu = make_menu(&nm, "Navigate", 4, 0);
+	entry(&nm, 3, 4, "Last page         End", MENU_DOTTED, EV_LAST, "Click to go to the last page.");
+	entry(&nm, 4, NAV_CONTENTS, "Contents...", 0, EV_CONTENTS, "Click to see the document's contents list, and go to any part of it.");
+	app.nav_menu = make_menu(&nm, "Navigate", 5, 0);
 
 	entry(&em, 0, EDIT_COPY, "Copy            ^C", 0, EV_COPY, "Click to copy the selected text to the clipboard.");
 	entry(&em, 1, EDIT_SELECT_ALL, "Select all      ^A", 0, EV_SELECT_ALL, "Click to select all the text on this page.");
@@ -132,9 +133,10 @@ static void create_objects(void)
 	entry(&dm, 1, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
 	entry(&dm, 2, 2, "Navigate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right for moving through the document.");
 	/* The context item (DESIGN §3.4): its text names the word when it's shown. */
-	entry(&dm, 3, DOC_DEFINE, "Define", MENU_FADED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
-	dm.e[3].max_text = 80;
-	app.doc_menu = make_menu(&dm, "Folio", 4, EV_DOCMENU_SHOWN);
+	entry(&dm, 3, DOC_FIND, "Find...        F4", 0, EV_FIND, "Click to find text in the document.");
+	entry(&dm, 4, DOC_DEFINE, "Define", MENU_FADED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
+	dm.e[4].max_text = 80;
+	app.doc_menu = make_menu(&dm, "Folio", 5, EV_DOCMENU_SHOWN);
 	check(menu_set_submenu(app.doc_menu, 3, app.edit_menu));
 	check(menu_set_submenu(app.doc_menu, 1, app.view_menu));
 	check(menu_set_submenu(app.doc_menu, 2, app.nav_menu));
@@ -244,6 +246,11 @@ static int toolbox_event(int *b)
 	case EV_DICT_COPY:
 		dict_copy();
 		break;
+	case EV_FIND_NEXT:
+	case EV_FIND_PREV:
+	case EV_FIND_CANCEL:
+		find_event(code);
+		break;
 	case EV_EDIT_SHOWN:
 		if ((w = window_for_event()) != NULL)
 			docwin_edit_menu_shown(w);
@@ -329,6 +336,8 @@ int main(int argc, char **argv)
 				docwin_redraw(w, block);
 			else if (dict_owns(block[0]))
 				dict_redraw(block);
+			else if (contents_owns(block[0]))
+				contents_redraw(block);
 			break;
 		}
 		case Wimp_EOpenWindow:
@@ -348,6 +357,8 @@ int main(int argc, char **argv)
 				docwin_click(w, block);
 			else if (dict_owns(block[3]))
 				dict_click(block);
+			else if (contents_owns(block[3]))
+				contents_click(block);
 			break;
 		}
 		case Wimp_EKeyPressed:
@@ -364,6 +375,7 @@ int main(int argc, char **argv)
 		}
 		busy = docwin_background();
 		busy |= dict_background();
+		busy |= find_background();
 	}
 	dict_quit();
 	app_log("quit");

@@ -67,13 +67,6 @@ static unsigned now_cs(void)
 	return t;
 }
 
-/* The core for the main thread (see docwin.c). */
-static void core_now(void)
-{
-	worker_stop_for(NULL);
-	core_lock();
-}
-
 /* ---- The pop-up window ------------------------------------------------- */
 
 typedef struct {

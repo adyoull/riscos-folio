@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test6)
+Folio (test build 0.0.1-test7)
 ==============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -13,9 +13,21 @@ In a document window
   Scroll as usual. Page Down / Page Up    next / previous page
   Home / End     first / last page        Up / Down   scroll a little
   Ctrl-N         dark page on and off     Ctrl-F2     close the window
+  F4             Find
   Menu           View: Dark page, Sepia page, Zoom in, Zoom out,
-                 Actual size, Fit width. Navigate: the page moves above.
+                 Actual size, Fit width. Navigate: the page moves above,
+                 and Contents. Find... and Define "word".
   Close with Adjust also opens the document's directory.
+
+Contents and Find
+  Navigate > Contents... lists the document's chapters and sections, with
+  their page numbers; the part you're reading is highlighted. Click on one
+  to go there.
+  F4 (or Find... on the menu) opens the Find box. Type the text and press
+  Return (Next) to find it; Previous goes back. Capitals don't matter.
+  The search starts at the page you're reading and goes round the end of
+  the document once. What it finds is selected, so you can copy it or
+  look it up.
 
 Selecting text and looking words up
   Drag with Select to select text; double-click a word to select it;
