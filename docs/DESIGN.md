@@ -267,8 +267,7 @@ The page area itself is a Toolbox window that the app redraws (tiles, §7).
   | ^K | Delete the selection without touching the clipboard |
 - The F12 family is the OS's. ^D, ^T, ^U, ^B, ^I keep their standard meanings if ever
   used (e.g. in notebook text boxes).
-- **The dark page shortcut** must avoid all of the above: proposed **^N** (Night), owner to
-  confirm.
+- **The dark page shortcut is ^N** (Night; owner, 2026-10-10). It avoids every key above.
 
 ### 3.7 Colour, choices, help and speed
 - **Colour** (SG p83–85, p105–106):
@@ -325,7 +324,7 @@ and redo. This is a knowing exception to the Style Guide, recorded here so it is
 
 ## 4. Dark mode: black page, white text (phase 1)
 
-A per-window **View ▸ Dark page** option (ticked menu entry, proposed shortcut ^N), plus a
+A per-window **View ▸ Dark page** option (ticked menu entry, shortcut ^N), plus a
 default in Choices. It is **off by default**: the Style Guide notes that reversed-out text
 reads well but "is not a good match for the style of the RISC OS desktop" (SG p85). It stays
 an opt-in reading aid, applied only to the work area. Text selection in dark mode is still
@@ -377,7 +376,8 @@ Both methods below are tested in `muprobe` (`spike/dark-pdf.png`, `spike/dark-ep
      - Used as the fallback, since Wikimedia is retiring parts of its older REST API.
   - Both are Wiktionary data under **CC BY-SA**, so the pop-up shows "From Wiktionary
     (CC BY-SA)" with a link.
-  - Requests send a User-Agent naming the app with a contact address, as Wikimedia asks.
+  - Requests send the User-Agent `Folio/<version> (RISC OS; https://github.com/adyoull/riscos-folio)`,
+    as Wikimedia asks; the contact is the project page, not an email address (owner, 2026-10-10).
 - **Fetching without threads:** the **URL_Fetcher** module (AcornHTTP + AcornSSL for HTTPS):
   1. `URL_Register`;
   2. `URL_GetURL`, with R6 set to the User-Agent;
@@ -502,8 +502,6 @@ Both methods below are tested in `muprobe` (`spike/dark-pdf.png`, `spike/dark-ep
   - the name;
   - Toolbox (recommended, §3.1), and whether to ask riscos-crossdev for OSLib or write a thin
     `_swix` layer;
-  - the dark page shortcut (^N proposed);
   - whether EPUB annotations matter early;
   - filetypes for EPUB and notebooks;
-  - a contact address for the User-Agent;
   - registering the app name and filetypes with ROOL (SG p94).
