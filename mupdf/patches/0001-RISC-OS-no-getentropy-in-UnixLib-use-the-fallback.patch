@@ -1,0 +1,26 @@
+From 407a70886e6d82358809048ee6fe373cfa07cb9a Mon Sep 17 00:00:00 2001
+From: Andrew Youll <adyoull@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 08:36:10 +0100
+Subject: [PATCH] RISC OS: no getentropy() in UnixLib; use the fallback
+
+---
+ source/fitz/random.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/source/fitz/random.c b/source/fitz/random.c
+index ad92c63..5da0c68 100644
+--- a/source/fitz/random.c
++++ b/source/fitz/random.c
+@@ -88,7 +88,8 @@ void fz_memrnd(fz_context *ctx, unsigned char *data, int len)
+ #if defined(_WIN32)
+ 		if (getentropy_win32(entropy, sizeof entropy))
+ 			getentropy_fallback(entropy, sizeof entropy);
+-#elif defined(EMSCRIPTEN)
++#elif defined(EMSCRIPTEN) || defined(__riscos__)
++		// RISC OS: UnixLib has no getentropy(); use the time/random fallback.
+ 		// __wasi_random_get is not yet widely supported, so we can't call getentropy
+ 		getentropy_fallback(entropy, sizeof entropy);
+ #elif defined(__ANDROID__) && (__ANDROID_API__ < 28)
+-- 
+2.43.0
+

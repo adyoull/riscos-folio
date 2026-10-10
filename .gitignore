@@ -1,0 +1,11 @@
+build/
+mupdf/src
+tests/data/*.epub
+tests/data/*.pdf
+tests/data/*.png
+tests/data/*.accel
+tests/data/stamp
+tests/out/
+*START-HERE*.md
+handoffs/
+.DS_Store

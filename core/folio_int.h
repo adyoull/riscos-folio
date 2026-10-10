@@ -1,0 +1,70 @@
+/* Folio core internals: shared by doc.c, render.c and text.c. */
+#ifndef FOLIO_INT_H
+#define FOLIO_INT_H
+
+#include "folio.h"
+#include <mupdf/fitz.h>
+#include <mupdf/pdf.h>
+
+#define FOLIO_PAGE_CACHE 8
+
+struct folio_ctx {
+	fz_context *ctx;
+	char err[256];
+};
+
+typedef struct {
+	int used;
+	folio_loc loc;
+	int gen;                    /* layout generation the page belongs to */
+	unsigned age;
+	fz_page *page;
+	fz_rect bounds;
+	fz_display_list *contents;  /* page content only */
+	fz_display_list *annots;    /* annotations and widgets */
+	fz_stext_page *text;        /* lazily made; images preserved */
+	fz_link *links;             /* lazily loaded */
+	int links_loaded;
+} folio_cpage;
+
+struct folio_doc {
+	folio_ctx *fc;
+	fz_context *ctx;
+	fz_document *doc;
+	int reflow;
+	folio_layout lay;
+	int gen;                    /* bumped on every layout change */
+	char *css;
+
+	int nchap;
+	int *chap_pages;            /* -1 = not counted for this layout */
+	int next_count;             /* first chapter not yet counted */
+
+	char *format, *title, *author, *lang;
+
+	folio_outline_item *outline;
+	int outline_n;
+	char *outline_strings;
+
+	folio_cpage cache[FOLIO_PAGE_CACHE];
+	unsigned clock;
+};
+
+/* Record the caught error's message in fc->err. */
+void folio_set_error(folio_ctx *fc);
+/* The cached page for loc (loaded on demand), or throws. */
+folio_cpage *folio_get_page(folio_doc *doc, folio_loc loc);
+/* The structured text of a cached page (made on demand), or throws. */
+fz_stext_page *folio_get_text(folio_doc *doc, folio_cpage *cp);
+void folio_drop_cpage(folio_doc *doc, folio_cpage *cp);
+
+static inline fz_point to_fz_point(folio_point p) { fz_point q = { p.x, p.y }; return q; }
+static inline folio_point from_fz_point(fz_point p) { folio_point q = { p.x, p.y }; return q; }
+static inline folio_quad from_fz_quad(fz_quad q)
+{
+	folio_quad r = { from_fz_point(q.ul), from_fz_point(q.ur), from_fz_point(q.ll), from_fz_point(q.lr) };
+	return r;
+}
+static inline folio_rect from_fz_rect(fz_rect r) { folio_rect q = { r.x0, r.y0, r.x1, r.y1 }; return q; }
+
+#endif
