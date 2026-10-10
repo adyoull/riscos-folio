@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test5)
+Folio (test build 0.0.1-test6)
 ==============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -24,8 +24,9 @@ Selecting text and looking words up
   With one word selected, Menu shows Define "word": its meanings from
   Wiktionary (CC BY-SA) appear in a small box near the word. Copy copies
   them; clicking "Wiktionary" opens the whole entry in your browser.
-  Looking words up needs the network (URL_Fetcher, AcornHTTP and
-  AcornSSL); words already looked up are kept in
+  Looking words up needs the network; Folio loads the URL_Fetcher,
+  AcornHTTP and AcornSSL modules from !System the first time. Words
+  already looked up are kept in
   <Choices$Write>.Folio.Dict and work offline.
 
 Folio reopens each document at the page where you left it (kept in

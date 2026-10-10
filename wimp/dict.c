@@ -416,6 +416,23 @@ static void lookup_done(const char *msg)
 		set_message(msg);
 }
 
+/* RISC OS 5 keeps the fetchers on disk, in !System (HardDisc4), not in ROM:
+ * load them the first time a word is looked up, as Browse's !Run would.
+ * AcornHTTP needs URL_Fetcher; https needs AcornSSL. */
+static void load_fetchers(void)
+{
+	static const char *const cmds[] = {
+		"RMEnsure URL_Fetcher 0 IfThere System:Modules.Network.URL.URL Then RMLoad System:Modules.Network.URL.URL",
+		"RMEnsure AcornHTTP 0 IfThere System:Modules.Network.URL.AcornHTTP Then RMLoad System:Modules.Network.URL.AcornHTTP",
+		"RMEnsure AcornSSL 0 IfThere System:Modules.Network.URL.AcornSSL Then RMLoad System:Modules.Network.URL.AcornSSL",
+	};
+	size_t i;
+	for (i = 0; i < sizeof cmds / sizeof cmds[0]; i++) {
+		_kernel_oserror *e = _swix(OS_CLI, _IN(0), cmds[i]);
+		app_log("dict: %s%s%s", cmds[i] + 9, e ? ": " : "", e ? e->errmess : "");
+	}
+}
+
 /* Starts fetching pop.url. Returns 0, or -1 with pop.error set. */
 static int fetch_start(void)
 {
@@ -424,10 +441,20 @@ static int fetch_start(void)
 	pop.len = 0;
 	pop.t0 = now_cs();
 	app_log("dict: GET %s", pop.url);
+	{
+		/* Once per run: the modules may be there but AcornHTTP or AcornSSL not. */
+		static int loaded;
+		if (!loaded) {
+			load_fetchers();
+			loaded = 1;
+		}
+	}
 	e = _swix(URL_Register, _IN(0) | _OUT(1), 0, &session);
 	if (e) {
-		if ((e->errnum & 0xffffff) == 0x1e6)   /* SWI not known */
-			snprintf(pop.error, sizeof pop.error, "Folio can't look words up: the URL_Fetcher module isn't loaded.");
+		if ((e->errnum & 0xffffff) == 0x1e6)
+			snprintf(pop.error, sizeof pop.error, "Folio can't look words up: the URL_Fetcher module "
+				"isn't loaded, and it isn't in System:Modules.Network.URL. Updating !System from "
+				"RISC OS Open's HardDisc4 adds it.");
 		else
 			snprintf(pop.error, sizeof pop.error, "Folio can't look words up: %s", e->errmess);
 		return -1;

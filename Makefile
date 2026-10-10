@@ -32,7 +32,7 @@ CORE_OBJ = $(CORE_SRC:core/%.c=build/$(1)/%.o) build/$(1)/cJSON.o
 
 WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c wimp/clip.c wimp/dict.c
 WIMP_HDR := wimp/app.h wimp/tbx.h wimp/worker.h core/folio.h core/dict.h
-VERSION ?= 0.0.1-test5
+VERSION ?= 0.0.1-test6
 
 all: build/ro/libfolio.a build/al/libfolio.a build/al/core_test build/ro/core_test.elf build/ro/folio.elf
 
