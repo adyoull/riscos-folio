@@ -524,7 +524,9 @@ static ObjectId create_window(docwin *w)
 	ObjectId id = 0;
 	_kernel_oserror *e;
 	memset(&t, 0, sizeof t);
-	t.flags = (1 << 1);   /* auto-open; closing is ours (Adjust opens the directory) */
+	/* Opening and closing are ours: opening to keep the toolbar as wide as
+	 * the window, closing because Adjust also opens the directory. */
+	t.flags = 0;
 	t.help_message = "This window shows the document. Scroll to move through it; use Page Up and Page Down to move a page at a time.|MPress Menu for view and page options.";
 	t.max_help = 200;
 	t.num_shortcuts = sizeof shortcuts / sizeof shortcuts[0];
@@ -654,6 +656,8 @@ docwin *docwin_open(const char *path)
 	st[6] = 0;
 	st[7] = -1;
 	tbx_show(w->obj, 0, 1, st + 1, 0, -1);
+	if (w->show_toolbar)
+		toolbar_fit(w->toolbar, w->wimp);
 	tb_update(w);
 
 	w->next = windows;
@@ -1244,6 +1248,8 @@ static void toggle_toolbar(docwin *w)
 {
 	w->show_toolbar = !w->show_toolbar;
 	toolbar_attach(w->obj, w->toolbar, w->show_toolbar);
+	if (w->show_toolbar)
+		toolbar_fit(w->toolbar, w->wimp);
 	relayout_furniture(w);
 	thumbs_reopen(w->thumbs, w->top);
 	tb_update(w);
@@ -1423,4 +1429,14 @@ int docwin_toolbar_key(docwin *w, int key)
 		return 1;
 	}
 	return 0;
+}
+
+/* An Open_Window_Request (moved, resized, scrolled, brought to the front). */
+void docwin_open_request(docwin *w, int *b)
+{
+	/* Through the Toolbox, so it moves the toolbar with the window
+	 * (it's a pane the Toolbox places, not a Wimp child). */
+	tbx_show(w->obj, 0, 1, b + 1, 0, -1);
+	if (w->show_toolbar)
+		toolbar_fit(w->toolbar, w->wimp);
 }

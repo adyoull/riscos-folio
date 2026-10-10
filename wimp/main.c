@@ -347,8 +347,9 @@ int main(int argc, char **argv)
 			break;
 		}
 		case Wimp_EOpenWindow:
-			/* The pop-up (the Toolbox opens document windows itself). */
-			if (dict_owns(block[0]))
+			if (docwin_from_wimp(block[0]))
+				docwin_open_request(docwin_from_wimp(block[0]), block);
+			else if (dict_owns(block[0]))
 				_swix(Wimp_OpenWindow, _IN(1), block);
 			else if (thumbs_from_wimp(block[0]))
 				thumbs_open_request(thumbs_from_wimp(block[0]), block);

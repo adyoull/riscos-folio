@@ -174,9 +174,7 @@ ObjectId toolbar_create(docwin *w)
 	t.default_focus = -1;
 	t.show_event = -1;
 	t.hide_event = -1;
-	/* As wide as the screen: an internal toolbar is clipped to its window,
-	 * so this spans the window however wide it's made. */
-	t.window.vis_x1 = app.screen_w > TB_W ? app.screen_w : TB_W;
+	t.window.vis_x1 = TB_W;    /* toolbar_fit() makes it as wide as its window */
 	t.window.vis_y1 = TB_H;
 	t.window.behind = -1;
 	/* No furniture; auto-redraw; new format. */
@@ -189,7 +187,7 @@ ObjectId toolbar_create(docwin *w)
 	t.window.scroll_inner = 1;
 	t.window.title_focus = 12;
 	t.window.work_y0 = -TB_H;
-	t.window.work_x1 = t.window.vis_x1;
+	t.window.work_x1 = app.screen_w > TB_W ? app.screen_w : TB_W;
 	t.window.title_flags = 0;
 	t.window.work_flags = 0;
 	t.window.sprite_area = app.sprites;     /* the toolbar's icons: <Folio$Dir>.Sprites */
@@ -439,4 +437,40 @@ void toolbar_tip_redraw(int *b)
 		}
 		_swix(Wimp_GetRectangle, _IN(1) | _OUT(0), b, &more);
 	}
+}
+
+/* Makes the toolbar exactly as wide as its window's visible area. The
+ * Toolbox keeps a toolbar at its template's size and doesn't trim it to the
+ * window (test9: it ran past the right edge), so after each open it's
+ * reopened at the window's width. Read with the nested form of
+ * Wimp_GetWindowState: as a Wimp child it's reopened with the same parent
+ * and edge links; as a top-level pane, in place. */
+void toolbar_fit(ObjectId tb, int parent_wimp)
+{
+	int st[9], ps[9], wh = 0, parent = -1, want;
+	unsigned nest = 0;
+	if (!tb || window_get_wimp_handle(tb, &wh) || !wh)
+		return;
+	st[0] = wh;
+	if (_swix(Wimp_GetWindowState, _INR(1, 2) | _OUTR(3, 4), st, 0x4b534154, &parent, &nest)) {
+		parent = -1;
+		if (_swix(Wimp_GetWindowState, _IN(1), st))
+			return;
+	}
+	if (!(st[8] & (1 << 16)))
+		return;                   /* not showing */
+	ps[0] = parent_wimp;
+	if (_swix(Wimp_GetWindowState, _IN(1), ps))
+		return;
+	want = ps[3] - ps[1];
+	if (want < 64 || (st[1] == ps[1] && st[3] - st[1] == want))
+		return;
+	st[1] = ps[1];
+	st[3] = ps[1] + want;
+	st[5] = 0;
+	if (parent != -1)
+		_swix(Wimp_OpenWindow, _INR(1, 4), st, 0x4b534154, parent, nest & ~1u);
+	else
+		_swix(Wimp_OpenWindow, _IN(1), st);
+	app_log("toolbar: %d wide (%s)", want, parent != -1 ? "child" : "pane");
 }
