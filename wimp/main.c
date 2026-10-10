@@ -124,7 +124,7 @@ static void create_objects(void)
 
 	entry(&dm, 0, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
 	entry(&dm, 1, 2, "Navigate", MENU_SUBMENU, 0, "Move right for moving through the document.");
-	app.doc_menu = make_menu(&dm, "Folio", 2, 0);
+	app.doc_menu = make_menu(&dm, "Folio", 2, EV_DOCMENU_SHOWN);
 	check(menu_set_submenu(app.doc_menu, 1, app.view_menu));
 	check(menu_set_submenu(app.doc_menu, 2, app.nav_menu));
 
@@ -186,20 +186,23 @@ static int message(int *b)
 
 static docwin *window_for_event(void)
 {
-	/* An event from a menu belongs to the window it was opened from: the
-	 * ancestor (for submenus) or the parent (for the window's own menu). */
-	docwin *w = docwin_from_object(app.idb.self_id);
-	if (!w)
-		w = docwin_from_object(app.idb.ancestor_id);
-	if (!w)
-		w = docwin_from_object(app.idb.parent_id);
-	return w;
+	/* Keyboard shortcuts come from the window itself. Menu entries come from
+	 * the document menu or its submenus, which every window shares: they
+	 * belong to the window the menu was last opened from (recorded when the
+	 * document menu's show event arrives, whose parent is that window). */
+	ObjectId self = app.idb.self_id;
+	if (self == app.doc_menu || self == app.view_menu || self == app.nav_menu)
+		return docwin_from_object(app.menu_window);
+	return docwin_from_object(self);
 }
 
 static int toolbox_event(int *b)
 {
 	int code = b[2];
 	docwin *w;
+	app_log("event &%x: self &%x/%d parent &%x/%d ancestor &%x/%d", code,
+		app.idb.self_id, app.idb.self_component, app.idb.parent_id,
+		app.idb.parent_component, app.idb.ancestor_id, app.idb.ancestor_component);
 	switch (code) {
 	case Toolbox_Error:
 		tbx_report((const char *)(b + 5));
@@ -209,13 +212,29 @@ static int toolbox_event(int *b)
 	case EV_HELP:
 		_swix(OS_CLI, _IN(0), "Filer_Run <Folio$Dir>.!Help");
 		break;
+	case EV_DOCMENU_SHOWN:
+		app.menu_window = app.idb.parent_id;
+		if (!docwin_from_object(app.menu_window)) {
+			/* Not named as the parent: use the window under the pointer,
+			 * where Menu was just pressed. */
+			int ptr[5];
+			_swix(Wimp_GetPointerInfo, _IN(1), ptr);
+			w = docwin_from_wimp(ptr[3]);
+			app.menu_window = w ? docwin_object(w) : 0;
+			app_log("  menu window from the pointer: &%x", app.menu_window);
+		}
+		break;
 	case EV_VIEW_SHOWN:
 		if ((w = window_for_event()) != NULL)
 			docwin_view_menu_shown(w);
 		break;
 	default:
-		if (code >= EV_DARK && code <= EV_CLOSE && (w = window_for_event()) != NULL)
-			docwin_event(w, code);
+		if (code >= EV_DARK && code <= EV_CLOSE) {
+			if ((w = window_for_event()) != NULL)
+				docwin_event(w, code);
+			else
+				app_log("  no window for event &%x", code);
+		}
 		break;
 	}
 	return 0;

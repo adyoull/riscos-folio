@@ -8,7 +8,7 @@
 #include "folio.h"
 #include <stdio.h>
 
-#define FOLIO_VERSION "0.0.1-test1 (10-Oct-2026)"
+#define FOLIO_VERSION "0.0.1-test2 (10-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -16,7 +16,7 @@ enum {
 	EV_DARK = 0x110, EV_SEPIA, EV_ZOOM_IN, EV_ZOOM_OUT, EV_ZOOM_100, EV_FIT_WIDTH,
 	EV_NEXT = 0x120, EV_PREV, EV_FIRST, EV_LAST, EV_LINE_DOWN, EV_LINE_UP,
 	EV_CLOSE = 0x130,
-	EV_VIEW_SHOWN = 0x140
+	EV_VIEW_SHOWN = 0x140, EV_DOCMENU_SHOWN
 };
 
 /* View menu entries (component ids). */
@@ -27,6 +27,7 @@ typedef struct {
 	folio_ctx *fc;
 	ObjectId iconbar, iconbar_menu, proginfo;
 	ObjectId doc_menu, view_menu, nav_menu;
+	ObjectId menu_window;       /* the window the document menu was opened from */
 	int xeig, yeig, log2bpp;
 	int screen_w, screen_h;     /* OS units */
 	int epub_type;              /* RISC OS filetype for EPUB, or -1 */
@@ -44,6 +45,7 @@ docwin *docwin_open(const char *path);
 void docwin_close(docwin *w);
 docwin *docwin_from_object(ObjectId id);
 docwin *docwin_from_wimp(int handle);
+ObjectId docwin_object(docwin *w);
 void docwin_redraw(docwin *w, int *block);
 void docwin_event(docwin *w, int code);
 void docwin_view_menu_shown(docwin *w);

@@ -42,6 +42,7 @@ struct docwin {
 typedef struct {
 	docwin *w;
 	int page, gen;
+	folio_page_mode mode;
 	unsigned age;
 	int *area;                /* sprite area (malloc) */
 	int w_px, h_px;
@@ -121,7 +122,7 @@ static cache_entry *cache_find(docwin *w, int page)
 {
 	int i;
 	for (i = 0; i < CACHE_SLOTS; i++)
-		if (cache[i].w == w && cache[i].page == page && cache[i].gen == w->gen && cache[i].area) {
+		if (cache[i].w == w && cache[i].page == page && cache[i].gen == w->gen && cache[i].mode == w->mode && cache[i].area) {
 			cache[i].age = ++cache_clock;
 			return &cache[i];
 		}
@@ -162,6 +163,7 @@ static cache_entry *render_page(docwin *w, int page)
 	int *area, *spr;
 	int dpi = 180 >> app.xeig;
 	folio_irect tile;
+	unsigned t0, t1;
 
 	if (folio_loc_from_number(w->doc, page, &loc))
 		return NULL;      /* not counted yet */
@@ -191,15 +193,20 @@ static cache_entry *render_page(docwin *w, int page)
 	tile.y0 = 0;
 	tile.x1 = w->px_w;
 	tile.y1 = w->px_h;
+	_swix(OS_ReadMonotonicTime, _OUT(0), &t0);
 	if (folio_render_tile(w->doc, loc, px_per_pt(w), tile, w->mode, 1,
 			(uint32_t *)(spr + 11), w->px_w * 4)) {
 		app_log("render page %d: %s", page, folio_error(app.fc));
 		free(area);
 		return NULL;
 	}
+	_swix(OS_ReadMonotonicTime, _OUT(0), &t1);
+	app_log("page %d (%d/%d) mode %d zoom %.2f: %dx%d px in %d cs", page, loc.chapter, loc.page,
+		w->mode, w->zoom, w->px_w, w->px_h, (int)(t1 - t0));
 	c->w = w;
 	c->page = page;
 	c->gen = w->gen;
+	c->mode = w->mode;
 	c->age = ++cache_clock;
 	c->area = area;
 	c->w_px = w->px_w;
@@ -505,6 +512,11 @@ docwin *docwin_from_object(ObjectId id)
 	return NULL;
 }
 
+ObjectId docwin_object(docwin *w)
+{
+	return w->obj;
+}
+
 docwin *docwin_from_wimp(int handle)
 {
 	docwin *w;
@@ -641,6 +653,7 @@ void docwin_mode_changed(void)
 static void set_mode(docwin *w, folio_page_mode m)
 {
 	w->mode = w->mode == m ? FOLIO_PAGE_NORMAL : m;
+	app_log("%s: mode %d", w->title, w->mode);
 	cache_forget(w);
 	w->gen++;
 	redraw_all(w);
