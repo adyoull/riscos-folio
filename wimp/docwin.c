@@ -19,6 +19,7 @@
 #define CACHE_SLOTS 32
 #define MIN_ZOOM 0.25f
 #define MAX_ZOOM 4.0f
+#define SEL_QUADS 256
 
 struct docwin {
 	docwin *next;
@@ -45,6 +46,11 @@ struct docwin {
 	int pending_mark;         /* mark to go to once its chapter is counted */
 	folio_mark mark;
 	char place[256];          /* where the reading position is kept */
+	/* Selection (one page). */
+	int sel, sel_page, sel_n, dragging;
+	folio_point sel_a, sel_b;
+	folio_quad sel_q[SEL_QUADS];
+	char sel_word[64];        /* set by a double-click on a word */
 };
 
 typedef struct {
@@ -219,6 +225,8 @@ static int submit_page(docwin *w, int page)
 
 static int is_window(docwin *w);
 static void abort_for(docwin *w);
+static void sel_draw(docwin *w, int i, int x0, int y1);
+static int sel_drag_tick(docwin *w);
 static int current_page(docwin *w);
 static void go_to_page(docwin *w, int i);
 
@@ -455,6 +463,9 @@ static tbx_shortcut shortcuts[] = {
 	{ 0, 0x18e, EV_LINE_DOWN, 0 },  /* Down */
 	{ 0, 0x18f, EV_LINE_UP, 0 },    /* Up */
 	{ 0, 0x1a2, EV_CLOSE, 0 },      /* ^F2 */
+	{ 0, 3, EV_COPY, 0 },           /* ^C */
+	{ 0, 1, EV_SELECT_ALL, 0 },     /* ^A */
+	{ 0, 27, EV_CLEAR_SEL, 0 },     /* Escape: clear the selection (DESIGN §3.8) */
 };
 
 static ObjectId create_window(docwin *w)
@@ -686,6 +697,7 @@ void docwin_redraw(docwin *w, int *b)
 			if (c) {
 				/* OS_SpriteOp 52 (PutSpriteScaled), user area, sprite by pointer. */
 				_swix(OS_SpriteOp, _INR(0, 7), 52 + 512, c->area, c->area + 4, x0, y0, 0, 0, 0);
+				sel_draw(w, i, x0, y1);
 			} else {
 				fill_rect(page_colour(w), x0, y0, x1, y1);
 				w->want_render = 1;
@@ -830,8 +842,10 @@ int docwin_background(void)
 			take_result(&r);
 		busy = 1;
 	}
-	for (w = windows; w; w = w->next)
+	for (w = windows; w; w = w->next) {
+		busy |= sel_drag_tick(w);
 		busy |= w->want_render;
+	}
 	return busy;
 }
 
@@ -846,6 +860,212 @@ void docwin_mode_changed(void)
 		go_to_page(w, page);
 		redraw_all(w);
 	}
+}
+
+/* ---- Text selection (Style Guide p77-82) ------------------------------- */
+/* One page at a time for now. Select drag selects, double-click selects a
+ * word, Adjust click or drag extends, Select click clears. The selection is
+ * shown reversed out (SG p85) by EORing its quads after the page sprite. */
+
+/* Screen point to a page and a point on it (points from the page's top
+ * left). Returns -1 if it isn't over a page. */
+static int point_at(docwin *w, int sx, int sy, folio_point *pt, int clamp_page)
+{
+	int st[9], wx, wy, i;
+	float os_per_pt = 2.5f * w->zoom;
+	get_state(w, st);
+	wx = sx - (st[1] - st[5]);
+	wy = sy - (st[4] - st[6]);
+	i = clamp_page >= 0 ? clamp_page : (-wy - GAP / 2) / (w->slot_h + GAP);
+	if (i < 0 || i >= w->pages)
+		return -1;
+	pt->x = (wx - page_left(w)) / os_per_pt;
+	pt->y = (page_top(w, i) - wy) / os_per_pt;
+	if (clamp_page >= 0) {
+		/* Dragging off the page: hold to its edges. */
+		if (pt->x < 0) pt->x = 0;
+		if (pt->y < 0) pt->y = 0;
+		if (pt->x > w->page.x1) pt->x = w->page.x1;
+		if (pt->y > w->page.y1) pt->y = w->page.y1;
+	} else if (pt->x < 0 || pt->y < 0 || pt->x > w->page.x1 || pt->y > w->page.y1) {
+		return -1;
+	}
+	return i;
+}
+
+static void redraw_page(docwin *w, int i)
+{
+	int y1 = page_top(w, i);
+	_swix(Wimp_ForceRedraw, _INR(0, 4), w->wimp, page_left(w), y1 - w->slot_h,
+		page_left(w) + w->slot_w, y1);
+}
+
+/* The core, now, for the main thread: the worker's page (if any) is stopped
+ * and will be drawn again later. */
+static void core_now(void)
+{
+	worker_stop_for(NULL);
+	core_lock();
+}
+
+/* Recompute the selection's quads (snapping to 'mode') and redraw. */
+static void sel_update(docwin *w, folio_select_mode mode)
+{
+	folio_loc loc;
+	if (!w->sel || folio_loc_from_number(w->doc, w->sel_page, &loc)) {
+		w->sel_n = 0;
+		return;
+	}
+	core_now();
+	if (mode != FOLIO_SELECT_CHARS)
+		folio_snap(w->doc, loc, &w->sel_a, &w->sel_b, mode);
+	w->sel_n = folio_selection_quads(w->doc, loc, w->sel_a, w->sel_b, w->sel_q, SEL_QUADS);
+	if (w->sel_n < 0)
+		w->sel_n = 0;
+	core_unlock();
+	redraw_page(w, w->sel_page);
+}
+
+static void sel_clear(docwin *w)
+{
+	if (!w->sel)
+		return;
+	w->sel = 0;
+	w->sel_n = 0;
+	w->sel_word[0] = 0;
+	w->dragging = 0;
+	redraw_page(w, w->sel_page);
+}
+
+/* EOR the selection over page i (screen origin of the page at x0, y1). */
+static void sel_draw(docwin *w, int i, int x0, int y1)
+{
+	float k = 2.5f * w->zoom;
+	int n;
+	if (!w->sel || i != w->sel_page)
+		return;
+	_swix(ColourTrans_SetGCOL, _IN(0) | _INR(3, 4), 0xffffff00u, 0, 3);
+	for (n = 0; n < w->sel_n; n++) {
+		folio_quad *q = &w->sel_q[n];
+		float qx0 = q->ul.x < q->ll.x ? q->ul.x : q->ll.x;
+		float qx1 = q->ur.x > q->lr.x ? q->ur.x : q->lr.x;
+		float qy0 = q->ul.y < q->ur.y ? q->ul.y : q->ur.y;
+		float qy1 = q->ll.y > q->lr.y ? q->ll.y : q->lr.y;
+		int rx0 = x0 + (int)(qx0 * k), rx1 = x0 + (int)(qx1 * k + 0.999f);
+		int ry1 = y1 - (int)(qy0 * k), ry0 = y1 - (int)(qy1 * k + 0.999f);
+		_swix(OS_Plot, _INR(0, 2), 4, rx0, ry0);
+		_swix(OS_Plot, _INR(0, 2), 96 + 5, rx1 - 1, ry1 - 1);
+	}
+}
+
+void docwin_click(docwin *w, int *b)
+{
+	folio_point pt;
+	int page, buttons = b[2];
+	/* Any click in the window takes the input focus (no caret), so the keys
+	 * work (Style Guide p69). Button type 10: click = x256, drag = x16,
+	 * double-click = x1; Select = 4, Adjust = 1. */
+	_swix(Wimp_SetCaretPosition, _INR(0, 5), w->wimp, -1, 0, 0, 1 << 25, -1);
+	if (buttons == 0x400) {                  /* Select click: deselect */
+		sel_clear(w);
+	} else if (buttons == 0x40) {            /* Select drag: start a selection */
+		page = point_at(w, b[0], b[1], &pt, -1);
+		if (page < 0)
+			return;
+		sel_clear(w);
+		w->sel = 1;
+		w->sel_page = page;
+		w->sel_a = w->sel_b = pt;
+		w->dragging = 1;
+		sel_update(w, FOLIO_SELECT_CHARS);
+	} else if (buttons == 0x100 || buttons == 0x10) { /* Adjust: extend */
+		if (!w->sel)
+			return;
+		if (point_at(w, b[0], b[1], &pt, w->sel_page) < 0)
+			return;
+		w->sel_b = pt;
+		w->sel_word[0] = 0;
+		w->dragging = buttons == 0x10;
+		sel_update(w, FOLIO_SELECT_CHARS);
+	} else if (buttons == 4) {               /* Select double-click: a word */
+		folio_loc loc;
+		char *word;
+		page = point_at(w, b[0], b[1], &pt, -1);
+		if (page < 0 || folio_loc_from_number(w->doc, page, &loc))
+			return;
+		core_now();
+		word = folio_word_at(w->doc, loc, pt, &w->sel_a, &w->sel_b);
+		core_unlock();
+		sel_clear(w);
+		if (!word)
+			return;
+		snprintf(w->sel_word, sizeof w->sel_word, "%s", word);
+		folio_free(w->doc, word);
+		w->sel = 1;
+		w->sel_page = page;
+		sel_update(w, FOLIO_SELECT_CHARS);
+		app_log("word: %s", w->sel_word);
+	}
+}
+
+/* While dragging (null polls): follow the pointer, scrolling near the
+ * window's edges. Returns 1 while a drag goes on. */
+static int sel_drag_tick(docwin *w)
+{
+	int ptr[5], st[9];
+	folio_point pt;
+	if (!w->dragging)
+		return 0;
+	_swix(Wimp_GetPointerInfo, _IN(1), ptr);
+	if (!(ptr[2] & 5)) {
+		w->dragging = 0;
+		return 0;
+	}
+	get_state(w, st);
+	if (ptr[1] < st[2] + 48)
+		scroll_to(w, st[6] - 48);
+	else if (ptr[1] > st[4] - 48)
+		scroll_to(w, st[6] + 48);
+	if (point_at(w, ptr[0], ptr[1], &pt, w->sel_page) >= 0 &&
+			(pt.x != w->sel_b.x || pt.y != w->sel_b.y)) {
+		w->sel_b = pt;
+		sel_update(w, FOLIO_SELECT_CHARS);
+	}
+	return 1;
+}
+
+static void sel_copy(docwin *w)
+{
+	folio_loc loc;
+	char *text;
+	if (!w->sel || folio_loc_from_number(w->doc, w->sel_page, &loc))
+		return;
+	core_now();
+	text = folio_selection_text(w->doc, loc, w->sel_a, w->sel_b);
+	core_unlock();
+	if (text) {
+		clip_set_text(text);
+		folio_free(w->doc, text);
+	}
+}
+
+static void sel_all(docwin *w)
+{
+	int page = current_page(w);
+	sel_clear(w);
+	w->sel = 1;
+	w->sel_page = page;
+	w->sel_a.x = 0;
+	w->sel_a.y = 0;
+	w->sel_b.x = w->page.x1;
+	w->sel_b.y = w->page.y1;
+	sel_update(w, FOLIO_SELECT_CHARS);
+}
+
+void docwin_edit_menu_shown(docwin *w)
+{
+	menu_set_fade(app.edit_menu, EDIT_COPY, !w->sel || w->sel_n == 0);
+	menu_set_fade(app.edit_menu, EDIT_CLEAR, !w->sel);
 }
 
 /* ---- Events ------------------------------------------------------------- */
@@ -886,6 +1106,9 @@ void docwin_event(docwin *w, int code)
 		scroll_to(w, st[6] + 40);
 		break;
 	case EV_CLOSE: docwin_close(w); break;
+	case EV_COPY: sel_copy(w); break;
+	case EV_SELECT_ALL: sel_all(w); break;
+	case EV_CLEAR_SEL: sel_clear(w); break;
 	}
 }
 
@@ -898,10 +1121,3 @@ void docwin_view_menu_shown(docwin *w)
 	menu_set_fade(app.view_menu, VIEW_ZOOM_OUT, w->zoom <= MIN_ZOOM);
 }
 
-void docwin_click(docwin *w, int *block)
-{
-	/* Select or Adjust in the window: take the input focus (no caret) so
-	 * the keys work (Style Guide p69). */
-	if (block[2] & 5)
-		_swix(Wimp_SetCaretPosition, _INR(0, 5), w->wimp, -1, 0, 0, 1 << 25, -1);
-}

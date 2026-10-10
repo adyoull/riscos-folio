@@ -29,9 +29,9 @@ INC := -Icore -I$(MUPDF)/include
 CORE_SRC := core/doc.c core/render.c core/text.c
 CORE_HDR := core/folio.h core/folio_int.h
 
-WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c
+WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c wimp/clip.c
 WIMP_HDR := wimp/app.h wimp/tbx.h wimp/worker.h core/folio.h
-VERSION ?= 0.0.1-test3
+VERSION ?= 0.0.1-test4
 
 all: build/ro/libfolio.a build/al/libfolio.a build/al/core_test build/ro/core_test.elf build/ro/folio.elf
 

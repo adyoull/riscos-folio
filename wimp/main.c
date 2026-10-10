@@ -89,7 +89,7 @@ static void entry(menu_block *b, int i, int comp, const char *text, int flags,
 
 static void create_objects(void)
 {
-	static menu_block ib, dm, vm, nm;
+	static menu_block ib, dm, em, vm, nm;
 	static tbx_proginfo pi;
 	static tbx_iconbar icon;
 
@@ -123,9 +123,16 @@ static void create_objects(void)
 	entry(&nm, 3, 4, "Last page         End", 0, EV_LAST, "Click to go to the last page.");
 	app.nav_menu = make_menu(&nm, "Navigate", 4, 0);
 
-	entry(&dm, 0, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
-	entry(&dm, 1, 2, "Navigate", MENU_SUBMENU, 0, "Move right for moving through the document.");
-	app.doc_menu = make_menu(&dm, "Folio", 2, EV_DOCMENU_SHOWN);
+	entry(&em, 0, EDIT_COPY, "Copy            ^C", 0, EV_COPY, "Click to copy the selected text to the clipboard.");
+	entry(&em, 1, EDIT_SELECT_ALL, "Select all      ^A", 0, EV_SELECT_ALL, "Click to select all the text on this page.");
+	entry(&em, 2, EDIT_CLEAR, "Clear selection Esc", 0, EV_CLEAR_SEL, "Click to clear the selection.");
+	app.edit_menu = make_menu(&em, "Edit", 3, EV_EDIT_SHOWN);
+
+	entry(&dm, 0, 3, "Edit", MENU_SUBMENU, 0, "Move right for copying text.");
+	entry(&dm, 1, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
+	entry(&dm, 2, 2, "Navigate", MENU_SUBMENU, 0, "Move right for moving through the document.");
+	app.doc_menu = make_menu(&dm, "Folio", 3, EV_DOCMENU_SHOWN);
+	check(menu_set_submenu(app.doc_menu, 3, app.edit_menu));
 	check(menu_set_submenu(app.doc_menu, 1, app.view_menu));
 	check(menu_set_submenu(app.doc_menu, 2, app.nav_menu));
 
@@ -157,6 +164,8 @@ static void ack_load(int *b)
 
 static int message(int *b)
 {
+	if (clip_message(b))
+		return 0;
 	switch (b[4]) {
 	case Message_Quit:
 		docwin_close_all();
@@ -193,7 +202,7 @@ static docwin *window_for_event(void)
 	 * belong to the window the menu was last opened from (recorded when the
 	 * document menu's show event arrives, whose parent is that window). */
 	ObjectId self = app.idb.self_id;
-	if (self == app.doc_menu || self == app.view_menu || self == app.nav_menu)
+	if (self == app.doc_menu || self == app.view_menu || self == app.nav_menu || self == app.edit_menu)
 		return docwin_from_object(app.menu_window);
 	return docwin_from_object(self);
 }
@@ -227,12 +236,16 @@ static int toolbox_event(int *b)
 			app_log("  menu window from the pointer: &%x", app.menu_window);
 		}
 		break;
+	case EV_EDIT_SHOWN:
+		if ((w = window_for_event()) != NULL)
+			docwin_edit_menu_shown(w);
+		break;
 	case EV_VIEW_SHOWN:
 		if ((w = window_for_event()) != NULL)
 			docwin_view_menu_shown(w);
 		break;
 	default:
-		if (code >= EV_DARK && code <= EV_CLOSE) {
+		if (code >= EV_DARK && code < 0x200) {
 			if ((w = window_for_event()) != NULL)
 				docwin_event(w, code);
 			else
@@ -248,7 +261,8 @@ static int toolbox_event(int *b)
 int main(int argc, char **argv)
 {
 	static const int messages[] = {
-		Message_DataLoad, Message_DataOpen, Message_PreQuit, Message_ModeChange, 0
+		Message_DataLoad, Message_DataOpen, Message_PreQuit, Message_ModeChange,
+		Message_DataSaveAck, Message_DataLoadAck, 0xf /* ClaimEntity */, 0x10 /* DataRequest */, 0
 	};
 	int block[64];
 	int quit = 0, busy = 0;
@@ -262,7 +276,7 @@ int main(int argc, char **argv)
 	}
 	app_log("Folio %s", FOLIO_VERSION);
 
-	e = tbx_init("<Folio$Dir>", messages, &app.idb, NULL, NULL);
+	e = tbx_init("<Folio$Dir>", messages, &app.idb, &app.task, NULL);
 	if (e) {
 		app_log("Toolbox_Initialise: %s", e->errmess);
 		tbx_report_error(e);

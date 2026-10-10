@@ -8,7 +8,7 @@
 #include "folio.h"
 #include <stdio.h>
 
-#define FOLIO_VERSION "0.0.1-test3 (10-Oct-2026)"
+#define FOLIO_VERSION "0.0.1-test4 (10-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -16,17 +16,20 @@ enum {
 	EV_DARK = 0x110, EV_SEPIA, EV_ZOOM_IN, EV_ZOOM_OUT, EV_ZOOM_100, EV_FIT_WIDTH,
 	EV_NEXT = 0x120, EV_PREV, EV_FIRST, EV_LAST, EV_LINE_DOWN, EV_LINE_UP,
 	EV_CLOSE = 0x130,
-	EV_VIEW_SHOWN = 0x140, EV_DOCMENU_SHOWN
+	EV_VIEW_SHOWN = 0x140, EV_DOCMENU_SHOWN, EV_EDIT_SHOWN,
+	EV_COPY = 0x150, EV_SELECT_ALL, EV_CLEAR_SEL
 };
 
 /* View menu entries (component ids). */
+enum { EDIT_COPY = 1, EDIT_SELECT_ALL, EDIT_CLEAR };
 enum { VIEW_DARK = 1, VIEW_SEPIA, VIEW_ZOOM_IN, VIEW_ZOOM_OUT, VIEW_ZOOM_100, VIEW_FIT_WIDTH };
 
 typedef struct {
 	tbx_idblock idb;
 	folio_ctx *fc;
 	ObjectId iconbar, iconbar_menu, proginfo;
-	ObjectId doc_menu, view_menu, nav_menu;
+	ObjectId doc_menu, edit_menu, view_menu, nav_menu;
+	int task;                   /* our Wimp task handle */
 	ObjectId menu_window;       /* the window the document menu was opened from */
 	int xeig, yeig, log2bpp;
 	int screen_w, screen_h;     /* OS units */
@@ -50,10 +53,15 @@ ObjectId docwin_object(docwin *w);
 void docwin_redraw(docwin *w, int *block);
 void docwin_event(docwin *w, int code);
 void docwin_view_menu_shown(docwin *w);
+void docwin_edit_menu_shown(docwin *w);
 /* Background work for every window; returns 1 if more remains. */
 int docwin_background(void);
 void docwin_mode_changed(void);
 void docwin_close_request(docwin *w);
 void docwin_click(docwin *w, int *block);
+
+/* clip.c */
+void clip_set_text(const char *utf8);
+int clip_message(int *block);
 
 #endif
