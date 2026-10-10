@@ -147,6 +147,13 @@ int folio_render_tile(folio_doc *doc, folio_loc loc, float zoom,
 		folio_irect tile, folio_page_mode mode, int annots,
 		uint32_t *pixels, int stride);
 
+/* Stops a page load or folio_render_tile running in another thread as soon
+ * as MuPDF next checks (it then fails with folio_aborted() true). The only
+ * call that may be made while another thread is inside the core. */
+void folio_abort(folio_doc *doc);
+/* Was the last failure an abort? */
+int folio_aborted(folio_doc *doc);
+
 /* Throws away cached pages (display lists, text); call after an edit or to
  * free memory. */
 void folio_forget_pages(folio_doc *doc);

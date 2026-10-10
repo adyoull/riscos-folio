@@ -9,6 +9,10 @@ RMEnsure SharedUnixLibrary 1.16 IfThere System:Modules.SharedULib Then RMLoad Sy
 RMEnsure SharedUnixLibrary 1.16 Error Folio needs SharedUnixLibrary 1.16 or later. Install it with PackMan.
 RMEnsure ARMEABISupport 0 IfThere System:Modules.ARMEABISupport Then RMLoad System:Modules.ARMEABISupport
 RMEnsure ARMEABISupport 0 Error Folio needs the ARMEABISupport module. Install it with PackMan.
+| PThreadTicker (from riscos-unixlib) runs UnixLib's thread switcher, which
+| gives Folio's page-drawing thread its time. A newer copy in !System wins.
+RMEnsure PThreadTicker 0.01 IfThere System:Modules.PThrTicker Then RMLoad System:Modules.PThrTicker
+RMEnsure PThreadTicker 0.01 RMLoad <Folio$Dir>.PThrTicker
 
 | --- Toolbox (in the RISC OS 5 ROM) -------------------------------------
 RMEnsure Toolbox 0 RMLoad System:Modules.Toolbox.Toolbox

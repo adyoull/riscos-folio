@@ -1,13 +1,15 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later
  * Copyright (C) 2026 Andrew Youll */
 /* Folio document windows: pages stacked for continuous scrolling, drawn
- * from a cache of page sprites. Missing pages are drawn in null polls (one
- * page per poll), and re-flowed books are counted a chapter per poll, so the
- * desktop never waits (Style Guide p103; DESIGN.md §7).
+ * from a cache of page sprites. Missing pages are loaded and drawn by the
+ * worker thread (worker.c), given time after each poll; re-flowed books are
+ * counted a chapter at a time; so the desktop never waits (Style Guide p103;
+ * DESIGN.md §7). Pages ahead in the direction of reading are drawn early.
  *
  * Work area: x from 0 to ext_w, y from 0 down to -ext_h (OS units). Page i
  * occupies [left, left + slot_w] x [top(i) - slot_h, top(i)]. */
 #include "app.h"
+#include "worker.h"
 #include <stdlib.h>
 #include <string.h>
 #include <swis.h>
@@ -37,6 +39,12 @@ struct docwin {
 	int pages;                /* pages in the extent */
 	int counting;             /* 1 until every chapter is counted */
 	int want_render;          /* a visible page was drawn as a placeholder */
+	int dir;                  /* +1 reading forwards, -1 backwards */
+	int last_page;
+	int fail_page, fail_gen;  /* a page that failed, not to be retried */
+	int pending_mark;         /* mark to go to once its chapter is counted */
+	folio_mark mark;
+	char place[256];          /* where the reading position is kept */
 };
 
 typedef struct {
@@ -153,24 +161,14 @@ static cache_entry *cache_slot(size_t bytes)
 	}
 }
 
-/* Renders page 'page' of w into a new 32bpp sprite (PRM p1177-1178). */
-static cache_entry *render_page(docwin *w, int page)
+/* A sprite area for one page at w's size (PRM p1177-1178): the worker
+ * draws into its pixels. */
+static int *new_page_area(docwin *w, size_t *bytes_out)
 {
-	folio_loc loc;
 	size_t img = (size_t)w->px_w * 4 * w->px_h;
 	size_t bytes = 16 + 44 + img;
-	cache_entry *c;
-	int *area, *spr;
 	int dpi = 180 >> app.xeig;
-	folio_irect tile;
-	unsigned t0, t1;
-
-	if (folio_loc_from_number(w->doc, page, &loc))
-		return NULL;      /* not counted yet */
-	c = cache_slot(bytes);
-	if (!c)
-		return NULL;
-	area = malloc(bytes);
+	int *area = malloc(bytes), *spr;
 	if (!area)
 		return NULL;
 	area[0] = (int)bytes;
@@ -189,31 +187,77 @@ static cache_entry *render_page(docwin *w, int page)
 	spr[9] = 44;
 	/* RISC OS 3.5 mode word: type 6 (32bpp), dpi matching the screen. */
 	spr[10] = (6 << 27) | (dpi << 14) | (dpi << 1) | 1;
-	tile.x0 = 0;
-	tile.y0 = 0;
-	tile.x1 = w->px_w;
-	tile.y1 = w->px_h;
-	_swix(OS_ReadMonotonicTime, _OUT(0), &t0);
-	if (folio_render_tile(w->doc, loc, px_per_pt(w), tile, w->mode, 1,
-			(uint32_t *)(spr + 11), w->px_w * 4)) {
-		app_log("render page %d: %s", page, folio_error(app.fc));
-		free(area);
-		return NULL;
+	*bytes_out = bytes;
+	return area;
+}
+
+/* Hands page 'page' of w to the worker. */
+static int submit_page(docwin *w, int page)
+{
+	render_job j;
+	memset(&j, 0, sizeof j);
+	if (folio_loc_from_number(w->doc, page, &j.loc))
+		return 0;      /* not counted yet */
+	j.area = new_page_area(w, &j.bytes);
+	if (!j.area)
+		return 0;
+	j.owner = w;
+	j.fc = app.fc;
+	j.doc = w->doc;
+	j.page = page;
+	j.gen = w->gen;
+	j.mode = w->mode;
+	j.ppp = px_per_pt(w);
+	j.px_w = w->px_w;
+	j.px_h = w->px_h;
+	if (worker_submit(&j)) {
+		free(j.area);
+		return 0;
 	}
-	_swix(OS_ReadMonotonicTime, _OUT(0), &t1);
-	app_log("page %d (%d/%d) mode %d zoom %.2f: %dx%d px in %d cs", page, loc.chapter, loc.page,
-		w->mode, w->zoom, w->px_w, w->px_h, (int)(t1 - t0));
+	return 1;
+}
+
+static int is_window(docwin *w);
+static void abort_for(docwin *w);
+static int current_page(docwin *w);
+static void go_to_page(docwin *w, int i);
+
+/* A finished page from the worker: into the cache, and onto the screen. */
+static void take_result(render_job *r)
+{
+	docwin *w = r->owner;
+	cache_entry *c;
+	if (!is_window(w) || r->gen != w->gen || r->mode != w->mode || !r->ok) {
+		if (is_window(w) && !r->ok && !r->aborted) {
+			app_log("page %d: %s", r->page, r->err);
+			w->fail_page = r->page;
+			w->fail_gen = r->gen;
+		}
+		free(r->area);
+		return;
+	}
+	app_log("page %d (%d/%d) mode %d zoom %.2f: %dx%d px in %d cs", r->page, r->loc.chapter,
+		r->loc.page, r->mode, w->zoom, r->px_w, r->px_h, r->cs);
+	c = cache_slot(r->bytes);
+	if (!c) {
+		free(r->area);
+		return;
+	}
 	c->w = w;
-	c->page = page;
-	c->gen = w->gen;
-	c->mode = w->mode;
+	c->page = r->page;
+	c->gen = r->gen;
+	c->mode = r->mode;
 	c->age = ++cache_clock;
-	c->area = area;
-	c->w_px = w->px_w;
-	c->h_px = w->px_h;
-	c->bytes = bytes;
-	cache_bytes += bytes;
-	return c;
+	c->area = r->area;
+	c->w_px = r->px_w;
+	c->h_px = r->px_h;
+	c->bytes = r->bytes;
+	cache_bytes += r->bytes;
+	{
+		int y1 = page_top(w, r->page);
+		_swix(Wimp_ForceRedraw, _INR(0, 4), w->wimp, page_left(w), y1 - w->slot_h,
+			page_left(w) + w->slot_w, y1);
+	}
 }
 
 /* ---- Layout ------------------------------------------------------------ */
@@ -297,6 +341,7 @@ static void set_zoom(docwin *w, float z)
 		return;
 	page = current_page(w);
 	w->zoom = z;
+	abort_for(w);
 	cache_forget(w);
 	layout(w);
 	go_to_page(w, page);
@@ -328,6 +373,75 @@ static void make_accel_path(docwin *w)
 	folio_default_layout(&lay);
 	snprintf(w->accel, sizeof w->accel, "%s.L%08x%08x", dir, hash_string(w->path),
 		folio_layout_key(&lay));
+}
+
+/* ---- Reading positions ------------------------------------------------- */
+/* <Choices$Write>.Folio.Places.P<hash of the path>: a small text file,
+ * "folio-place 1", then chapter and fraction, then the page's first words.
+ * Read back through Choices: (Style Guide p92). */
+
+static void make_place_path(docwin *w, char *out, size_t size, int for_writing)
+{
+	if (for_writing) {
+		const char *cw = getenv("Choices$Write");
+		char dir[200];
+		out[0] = 0;
+		if (!cw || !*cw)
+			return;
+		snprintf(dir, sizeof dir, "%s.Folio", cw);
+		_swix(OS_File, _INR(0, 1) | _IN(4), 8, dir, 0);
+		snprintf(dir, sizeof dir, "%s.Folio.Places", cw);
+		_swix(OS_File, _INR(0, 1) | _IN(4), 8, dir, 0);
+		snprintf(out, size, "%s.P%08x", dir, hash_string(w->path));
+	} else {
+		snprintf(out, size, "Choices:Folio.Places.P%08x", hash_string(w->path));
+	}
+}
+
+static void load_place(docwin *w)
+{
+	char path[256], line[128];
+	FILE *f;
+	make_place_path(w, path, sizeof path, 0);
+	f = fopen(path, "r");
+	if (!f)
+		return;
+	if (fgets(line, sizeof line, f) && !strncmp(line, "folio-place 1", 13) &&
+			fscanf(f, "%d %f\n", &w->mark.chapter, &w->mark.fraction) == 2) {
+		if (!fgets(w->mark.text, sizeof w->mark.text, f))
+			w->mark.text[0] = 0;
+		w->mark.text[strcspn(w->mark.text, "\n")] = 0;
+		w->pending_mark = 1;
+	}
+	fclose(f);
+}
+
+/* Called with the core lock held. */
+static void save_place(docwin *w)
+{
+	char path[256];
+	folio_loc loc;
+	folio_mark m;
+	FILE *f;
+	int page = current_page(w);
+	if (w->pending_mark)
+		return;          /* never got there: keep the old position */
+	if (folio_loc_from_number(w->doc, page, &loc) || folio_make_mark(w->doc, loc, &m))
+		return;
+	make_place_path(w, path, sizeof path, 1);
+	if (!path[0] || !(f = fopen(path, "w")))
+		return;
+	fprintf(f, "folio-place 1\n%d %.5f\n%s\n", m.chapter, m.fraction, m.text);
+	fclose(f);
+	_swix(OS_File, _INR(0, 2), 18, path, 0xfff);
+}
+
+/* If the worker is on a page of w, stop it: it's out of date. */
+static void abort_for(docwin *w)
+{
+	const render_job *cur = worker_current();
+	if (cur && cur->owner == w)
+		folio_abort(w->doc);
 }
 
 /* ---- Window template --------------------------------------------------- */
@@ -415,9 +529,13 @@ docwin *docwin_open(const char *path)
 
 	_swix(Hourglass_On, 0);
 	make_accel_path(w);
+	/* The core is the worker's while it draws: stop it, then take the lock. */
+	worker_stop_for(NULL);
+	core_lock();
 	w->doc = folio_open(app.fc, path, w->accel[0] ? w->accel : NULL);
 	if (!w->doc) {
 		char msg[300];
+		core_unlock();
 		_swix(Hourglass_Off, 0);
 		snprintf(msg, sizeof msg, "Folio can't open %s: %s", leafname(path), folio_error(app.fc));
 		tbx_report(msg);
@@ -433,11 +551,16 @@ docwin *docwin_open(const char *path)
 		w->page.x1 = 595;
 		w->page.y1 = 842;
 	}
+	core_unlock();
 	_swix(Hourglass_Off, 0);
+	w->fail_page = -1;
+	load_place(w);
 
 	w->obj = create_window(w);
 	if (!w->obj) {
+		core_lock();
 		folio_close(w->doc);
+		core_unlock();
 		free(w);
 		return NULL;
 	}
@@ -480,11 +603,21 @@ void docwin_close(docwin *w)
 			*p = w->next;
 			break;
 		}
+	worker_stop_for(w);
+	core_lock();
+	save_place(w);
+	folio_close(w->doc);
+	core_unlock();
 	cache_forget(w);
 	/* Not recursively: the document menu is shared by every window. */
 	tbx_delete(w->obj, 1);
-	folio_close(w->doc);
 	free(w);
+}
+
+void docwin_close_all(void)
+{
+	while (windows)
+		docwin_close(windows);
 }
 
 void docwin_close_request(docwin *w)
@@ -562,7 +695,16 @@ void docwin_redraw(docwin *w, int *b)
 	}
 }
 
-/* ---- Background work: counting, rendering --------------------------- */
+/* ---- Background work: counting, positions, pages --------------------- */
+
+static int is_window(docwin *w)
+{
+	docwin *x;
+	for (x = windows; x; x = x->next)
+		if (x == w)
+			return 1;
+	return 0;
+}
 
 static void after_counting(docwin *w)
 {
@@ -574,10 +716,34 @@ static void after_counting(docwin *w)
 		folio_save_accel(w->doc, w->accel);
 }
 
-/* Renders one visible (or next) page that isn't cached. Returns 1 if it did. */
-static int render_one(docwin *w)
+/* Go to the saved reading position once the chapters before it are counted
+ * (not if the reader has already moved). Called with the core lock held. */
+static void resolve_mark(docwin *w)
 {
-	int st[9], vis_h, top, bottom, i0, i1, i;
+	folio_loc loc;
+	int ch, n;
+	for (ch = 0; ch < w->mark.chapter; ch++)
+		if (folio_chapter_pages(w->doc, ch) < 0)
+			return;
+	w->pending_mark = 0;
+	if (current_page(w) != 0)
+		return;
+	if (folio_find_mark(w->doc, &w->mark, &loc) == 0 &&
+			(n = folio_page_number(w->doc, loc)) >= 0) {
+		app_log("%s: back at page %d", w->title, n + 1);
+		set_extent(w);
+		go_to_page(w, n);
+		w->last_page = n;
+	}
+}
+
+/* The next page this window wants drawn: visible ones first (from the
+ * top), then two ahead in the direction of reading. -1 if none. */
+static int wanted_page(docwin *w)
+{
+	int st[9], vis_h, top, bottom, i0, i1, i, k;
+	int order[64], n = 0;
+	const render_job *cur = worker_current();
 	get_state(w, st);
 	vis_h = st[4] - st[2];
 	top = st[6];
@@ -586,53 +752,86 @@ static int render_one(docwin *w)
 	i1 = (-bottom) / (w->slot_h + GAP);
 	if (i0 < 0) i0 = 0;
 	if (i1 >= w->pages) i1 = w->pages - 1;
-	/* Visible pages first, then the next one, to have it ready. */
-	for (i = i0; i <= i1 + 1 && i < w->pages; i++) {
+	for (i = i0; i <= i1 && n < 60; i++)
+		order[n++] = i;
+	for (k = 1; k <= 2; k++)
+		order[n++] = w->dir >= 0 ? i1 + k : i0 - k;
+	for (k = 0; k < n; k++) {
 		folio_loc loc;
+		i = order[k];
+		if (i < 0 || i >= w->pages)
+			continue;
 		if (cache_find(w, i))
+			continue;
+		if (w->fail_page == i && w->fail_gen == w->gen)
+			continue;
+		if (cur && cur->owner == w && cur->page == i && cur->gen == w->gen)
 			continue;
 		if (folio_loc_from_number(w->doc, i, &loc))
 			continue;
-		if (render_page(w, i)) {
-			int y1 = page_top(w, i);
-			_swix(Wimp_ForceRedraw, _INR(0, 4), w->wimp, page_left(w), y1 - w->slot_h,
-				page_left(w) + w->slot_w, y1);
-			return 1;
-		}
-		return 0;
+		return i;
 	}
-	return 0;
+	return -1;
 }
 
 int docwin_background(void)
 {
 	docwin *w;
+	render_job r;
 	int busy = 0;
 	unsigned t0, t;
+
+	if (worker_take(&r))
+		take_result(&r);
+
 	_swix(OS_ReadMonotonicTime, _OUT(0), &t0);
 	for (w = windows; w; w = w->next) {
-		if (w->counting) {
+		int cur = current_page(w);
+		if (cur != w->last_page) {
+			w->dir = cur > w->last_page ? 1 : -1;
+			w->last_page = cur;
+		}
+		if ((w->counting || w->pending_mark) && core_trylock()) {
 			/* Up to 4 cs of counting per poll. */
-			do {
-				int r = folio_count_step(w->doc, 1);
-				if (r != 0) {
-					if (r < 0)
+			while (w->counting) {
+				int c = folio_count_step(w->doc, 1);
+				if (c != 0) {
+					if (c < 0)
 						app_log("counting: %s", folio_error(app.fc));
 					w->counting = 0;
 				}
 				_swix(OS_ReadMonotonicTime, _OUT(0), &t);
-			} while (w->counting && t - t0 < 4);
+				if (t - t0 >= 4)
+					break;
+			}
+			if (w->pending_mark)
+				resolve_mark(w);
 			after_counting(w);
-			busy |= w->counting;
+			core_unlock();
 		}
-		if (w->want_render) {
-			if (render_one(w))
-				busy = 1;
-			else
-				w->want_render = 0;
-		}
-		busy |= w->want_render;
+		busy |= w->counting || w->pending_mark;
 	}
+
+	/* Give the worker a page if it has none. */
+	if (worker_idle()) {
+		for (w = windows; w; w = w->next) {
+			int page = w->want_render ? wanted_page(w) : -1;
+			if (page < 0) {
+				w->want_render = 0;
+				continue;
+			}
+			if (submit_page(w, page))
+				break;
+		}
+	}
+	/* And some time to work on it. */
+	if (!worker_idle()) {
+		if (worker_slice(5) && worker_take(&r))
+			take_result(&r);
+		busy = 1;
+	}
+	for (w = windows; w; w = w->next)
+		busy |= w->want_render;
 	return busy;
 }
 
@@ -641,6 +840,7 @@ void docwin_mode_changed(void)
 	docwin *w;
 	for (w = windows; w; w = w->next) {
 		int page = current_page(w);
+		abort_for(w);
 		cache_forget(w);
 		layout(w);
 		go_to_page(w, page);
@@ -653,6 +853,7 @@ void docwin_mode_changed(void)
 static void set_mode(docwin *w, folio_page_mode m)
 {
 	w->mode = w->mode == m ? FOLIO_PAGE_NORMAL : m;
+	abort_for(w);
 	app_log("%s: mode %d", w->title, w->mode);
 	cache_forget(w);
 	w->gen++;

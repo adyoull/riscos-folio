@@ -49,6 +49,7 @@ int folio_snap(folio_doc *doc, folio_loc loc, folio_point *a, folio_point *b,
 		folio_select_mode mode)
 {
 	fz_context *ctx = doc->ctx;
+	folio_begin(doc);
 	fz_try(ctx) {
 		folio_cpage *cp = folio_get_page(doc, loc);
 		fz_point pa = to_page(cp, *a), pb = to_page(cp, *b);
@@ -67,6 +68,7 @@ int folio_selection_quads(folio_doc *doc, folio_loc loc, folio_point a, folio_po
 		folio_quad *quads, int max)
 {
 	fz_context *ctx = doc->ctx;
+	folio_begin(doc);
 	fz_quad *q = NULL;
 	int n = 0, i;
 	if (max <= 0)
@@ -92,6 +94,7 @@ int folio_selection_quads(folio_doc *doc, folio_loc loc, folio_point a, folio_po
 char *folio_selection_text(folio_doc *doc, folio_loc loc, folio_point a, folio_point b)
 {
 	fz_context *ctx = doc->ctx;
+	folio_begin(doc);
 	char *s = NULL;
 	fz_var(s);
 	fz_try(ctx) {
@@ -168,6 +171,7 @@ char *folio_word_at(folio_doc *doc, folio_loc loc, folio_point p,
 		folio_point *a, folio_point *b)
 {
 	fz_context *ctx = doc->ctx;
+	folio_begin(doc);
 	char *s = NULL;
 	fz_var(s);
 	fz_try(ctx) {
@@ -205,6 +209,7 @@ int folio_find_on_page(folio_doc *doc, folio_loc loc, const char *needle,
 		folio_quad *quads, int *mark, int max)
 {
 	fz_context *ctx = doc->ctx;
+	folio_begin(doc);
 	fz_quad *q = NULL;
 	int n = 0, i;
 	if (max <= 0 || !needle || !*needle)
@@ -230,6 +235,7 @@ int folio_find_on_page(folio_doc *doc, folio_loc loc, const char *needle,
 int folio_link_at(folio_doc *doc, folio_loc loc, folio_point p, folio_link *link)
 {
 	fz_context *ctx = doc->ctx;
+	folio_begin(doc);
 	int found = 0;
 	fz_var(found);
 	fz_try(ctx) {

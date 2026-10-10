@@ -8,7 +8,7 @@
 #include <mupdf/fitz.h>
 #include <mupdf/pdf.h>
 
-#define FOLIO_PAGE_CACHE 8
+#define FOLIO_PAGE_CACHE 16
 
 struct folio_ctx {
 	fz_context *ctx;
@@ -48,6 +48,7 @@ struct folio_doc {
 	int outline_n;
 	char *outline_strings;
 
+	fz_cookie cookie;           /* folio_abort() sets cookie.abort */
 	folio_cpage cache[FOLIO_PAGE_CACHE];
 	unsigned clock;
 };
@@ -59,6 +60,10 @@ folio_cpage *folio_get_page(folio_doc *doc, folio_loc loc);
 /* The structured text of a cached page (made on demand), or throws. */
 fz_stext_page *folio_get_text(folio_doc *doc, folio_cpage *cp);
 void folio_drop_cpage(folio_doc *doc, folio_cpage *cp);
+/* Throws if folio_abort() was called during the work just done. */
+void folio_check_abort(folio_doc *doc);
+/* Start of a call that may load or draw pages: an earlier abort no longer applies. */
+static inline void folio_begin(folio_doc *doc) { doc->cookie.abort = 0; }
 
 static inline fz_point to_fz_point(folio_point p) { fz_point q = { p.x, p.y }; return q; }
 static inline folio_point from_fz_point(fz_point p) { folio_point q = { p.x, p.y }; return q; }

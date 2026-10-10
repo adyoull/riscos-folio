@@ -29,9 +29,9 @@ INC := -Icore -I$(MUPDF)/include
 CORE_SRC := core/doc.c core/render.c core/text.c
 CORE_HDR := core/folio.h core/folio_int.h
 
-WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c
-WIMP_HDR := wimp/app.h wimp/tbx.h core/folio.h
-VERSION ?= 0.0.1-test2
+WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c
+WIMP_HDR := wimp/app.h wimp/tbx.h wimp/worker.h core/folio.h
+VERSION ?= 0.0.1-test3
 
 all: build/ro/libfolio.a build/al/libfolio.a build/al/core_test build/ro/core_test.elf build/ro/folio.elf
 
@@ -49,11 +49,11 @@ build/al/libfolio.a: $(CORE_SRC:core/%.c=build/al/%.o)
 
 build/al/core_test: tests/core_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
-		-L$(MU_AL) -lmupdf -lmupdf-third -lm -o $@
+		-L$(MU_AL) -lmupdf -lmupdf-third -lm -lpthread -o $@
 # Built for RISC OS too, so the checks see the core and MuPDF linked together.
 build/ro/core_test.elf: tests/core_test.c build/ro/libfolio.a
 	$(RO_CC) $(RO_CFLAGS) $(WARN) $(INC) -static $< build/ro/libfolio.a \
-		-L$(MU_RO) -lmupdf -lmupdf-third -lm -o $@
+		-L$(MU_RO) -lmupdf -lmupdf-third -lm -lpthread -o $@
 
 build/ro/wimp/%.o: wimp/%.c $(WIMP_HDR)
 	@mkdir -p $(@D)
@@ -62,7 +62,7 @@ build/ro/wimp/%.o: wimp/%.c $(WIMP_HDR)
 # The application (RISC OS only).
 build/ro/folio.elf: $(WIMP_SRC:wimp/%.c=build/ro/wimp/%.o) build/ro/libfolio.a
 	$(RO_CC) $(RO_CFLAGS) -static $(WIMP_SRC:wimp/%.c=build/ro/wimp/%.o) build/ro/libfolio.a \
-		-L$(MU_RO) -lmupdf -lmupdf-third -lm -o $@
+		-L$(MU_RO) -lmupdf -lmupdf-third -lm -lpthread -o $@
 
 # !Folio in build/app, and a zip with RISC OS filetypes.
 app: build/ro/folio.elf
@@ -73,6 +73,8 @@ app: build/ro/folio.elf
 	$(RISCOS_TOOLCHAIN)/bin/elf2aif -e build/ro/folio.stripped 'build/app/!Folio/!RunImage,ff8'
 	python3 -I tools/mksprites.py 'build/app/!Folio/!Sprites,ff9'
 	cp COPYING 'build/app/!Folio/COPYING,fff'
+	cp $(RISCOS_TOOLCHAIN)/riscos/PThrTicker,ffa 'build/app/!Folio/PThrTicker,ffa'
+	cp $(RISCOS_TOOLCHAIN)/riscos/PThreadTicker-Licence,fff 'build/app/!Folio/PThreadTickerLicence,fff'
 	python3 $(RCD_DIR)/package/rozip.py build/Folio-$(VERSION).zip -C build/app '!Folio'
 	@ls -l build/Folio-$(VERSION).zip
 
@@ -80,8 +82,14 @@ tests/data/stamp: tests/make-data.sh tests/make-epub.py
 	tests/make-data.sh $(MU_AL)/mutool $(RCD_DIR)/qemu/aligntrap.sh
 	touch $@
 
-test: build/al/core_test tests/data/stamp
+# The page worker, with a stand-in for the one RISC OS call it makes.
+build/al/worker_test: tests/worker_test.c wimp/worker.c wimp/worker.h build/al/libfolio.a
+	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -Iwimp -Itests/stub -no-pie tests/worker_test.c wimp/worker.c \
+		build/al/libfolio.a -L$(MU_AL) -lmupdf -lmupdf-third -lm -lpthread -o $@
+
+test: build/al/core_test build/al/worker_test tests/data/stamp
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/core_test tests/data
+	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/worker_test tests/data/doc.pdf
 
 check: build/ro/core_test.elf
 	RISCOS_TOOLCHAIN=$(RISCOS_TOOLCHAIN) $(RCD_DIR)/checks/check-all.sh build/ro/core_test.elf

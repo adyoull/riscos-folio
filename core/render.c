@@ -19,11 +19,11 @@
 #define DARK_FLOOR  10   /* after inversion, channels at or below this become 0 */
 
 static void draw_list(fz_context *ctx, fz_display_list *list, fz_pixmap *pix,
-		fz_matrix ctm, fz_rect scissor)
+		fz_matrix ctm, fz_rect scissor, fz_cookie *cookie)
 {
 	fz_device *dev = fz_new_draw_device(ctx, fz_identity, pix);
 	fz_try(ctx) {
-		fz_run_display_list(ctx, list, dev, ctm, scissor, NULL);
+		fz_run_display_list(ctx, list, dev, ctm, scissor, cookie);
 		fz_close_device(ctx, dev);
 	}
 	fz_always(ctx)
@@ -86,7 +86,7 @@ static void restore_pictures(folio_doc *doc, folio_cpage *cp, fz_pixmap *pix,
 			if (!normal) {
 				normal = fz_new_pixmap_with_bbox(ctx, fz_device_rgb(ctx), tile, NULL, 1);
 				fz_clear_pixmap_with_value(ctx, normal, 0xff);
-				draw_list(ctx, cp->contents, normal, ctm, fz_rect_from_irect(tile));
+				draw_list(ctx, cp->contents, normal, ctm, fz_rect_from_irect(tile), &doc->cookie);
 			}
 			copy_rect(pix, normal, r);
 		}
@@ -110,6 +110,7 @@ int folio_render_tile(folio_doc *doc, folio_loc loc, float zoom,
 		return -1;
 	}
 	fz_var(pix);
+	folio_begin(doc);
 	fz_try(ctx) {
 		folio_cpage *cp = folio_get_page(doc, loc);
 		fz_irect itile = fz_make_irect(tile.x0, tile.y0, tile.x1, tile.y1);
@@ -121,7 +122,8 @@ int folio_render_tile(folio_doc *doc, folio_loc loc, float zoom,
 		pix->x = tile.x0;
 		pix->y = tile.y0;
 		fz_clear_pixmap_with_value(ctx, pix, 0xff);
-		draw_list(ctx, cp->contents, pix, ctm, scissor);
+		draw_list(ctx, cp->contents, pix, ctm, scissor, &doc->cookie);
+		folio_check_abort(doc);
 		if (mode == FOLIO_PAGE_DARK) {
 			fz_invert_pixmap_luminance(ctx, pix);
 			dark_floor(pix);
@@ -131,7 +133,8 @@ int folio_render_tile(folio_doc *doc, folio_loc loc, float zoom,
 			restore_pictures(doc, cp, pix, ctm, itile);
 		}
 		if (annots)
-			draw_list(ctx, cp->annots, pix, ctm, scissor);
+			draw_list(ctx, cp->annots, pix, ctm, scissor, &doc->cookie);
+		folio_check_abort(doc);
 		clear_alpha(pix);
 	}
 	fz_always(ctx)

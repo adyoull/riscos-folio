@@ -5,6 +5,7 @@
  * Files arrive by dragging to the icon bar (Message_DataLoad), double-click
  * on a PDF or EPUB (Message_DataOpen) or on the command line. */
 #include "app.h"
+#include "worker.h"
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
@@ -158,6 +159,7 @@ static int message(int *b)
 {
 	switch (b[4]) {
 	case Message_Quit:
+		docwin_close_all();
 		return 1;
 	case Message_DataLoad:
 		/* Dropped on the icon bar or a document window: open it. */
@@ -208,6 +210,7 @@ static int toolbox_event(int *b)
 		tbx_report((const char *)(b + 5));
 		break;
 	case EV_QUIT:
+		docwin_close_all();
 		return 1;
 	case EV_HELP:
 		_swix(OS_CLI, _IN(0), "Filer_Run <Folio$Dir>.!Help");
@@ -276,11 +279,13 @@ int main(int argc, char **argv)
 	if (_swix(0x50b00 /* MimeMap_Translate */, _INR(0, 2) | _OUT(3), 3, "epub", 0, &app.epub_type))
 		app.epub_type = -1;
 
-	app.fc = folio_new(48 << 20);
+	app.fc = folio_new(128 << 20);
 	if (!app.fc) {
 		tbx_report("Folio couldn't start MuPDF (not enough memory?).");
 		return 1;
 	}
+	if (worker_init())
+		app_log("no worker thread: pages will be drawn in the poll loop");
 	create_objects();
 	if (argc > 1)
 		docwin_open(argv[1]);

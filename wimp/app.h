@@ -8,7 +8,7 @@
 #include "folio.h"
 #include <stdio.h>
 
-#define FOLIO_VERSION "0.0.1-test2 (10-Oct-2026)"
+#define FOLIO_VERSION "0.0.1-test3 (10-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -43,6 +43,7 @@ void app_read_mode(void);
 typedef struct docwin docwin;
 docwin *docwin_open(const char *path);
 void docwin_close(docwin *w);
+void docwin_close_all(void);   /* on quit: saves reading positions */
 docwin *docwin_from_object(ObjectId id);
 docwin *docwin_from_wimp(int handle);
 ObjectId docwin_object(docwin *w);

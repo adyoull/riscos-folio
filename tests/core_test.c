@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <pthread.h>
+#include <unistd.h>
 
 static int fails, checks;
 #define CHECK(c, ...) do { checks++; if (!(c)) { fails++; printf("FAIL %s:%d: ", __FILE__, __LINE__); \
@@ -406,6 +408,47 @@ static void test_pdf(folio_ctx *fc, const char *dir)
 	folio_close(d);
 }
 
+/* Abort: a slow render in a thread, stopped from here. */
+typedef struct { folio_doc *d; int rc; volatile int started; } abort_job;
+static void *abort_worker(void *arg)
+{
+	abort_job *j = arg;
+	folio_irect t = { 0, 0, 2400, 2400 };
+	uint32_t *px = malloc((size_t)2400 * 2400 * 4);
+	j->started = 1;
+	j->rc = folio_render_tile(j->d, (folio_loc){ 0, 0 }, 8.0f, t, FOLIO_PAGE_DARK, 1, px, 2400 * 4);
+	free(px);
+	return NULL;
+}
+
+static void test_abort(folio_ctx *fc, const char *dir)
+{
+	folio_doc *d = folio_open(fc, data(dir, "doc.pdf"), NULL);
+	abort_job j = { d, 99, 0 };
+	pthread_t th;
+	int w, h;
+	uint32_t *px;
+	if (!d)
+		return;
+	folio_count_step(d, 1);
+	pthread_create(&th, NULL, abort_worker, &j);
+	while (!j.started)
+		usleep(1000);
+	folio_abort(d);
+	pthread_join(th, NULL);
+	CHECK(j.rc == -1 && folio_aborted(d), "an aborted render fails (%d, aborted %d)", j.rc, folio_aborted(d));
+	/* The next render starts afresh and works: nothing half-made was kept. */
+	px = render_page(d, (folio_loc){ 0, 0 }, 1.0f, FOLIO_PAGE_NORMAL, 1, &w, &h);
+	CHECK(px != NULL && !folio_aborted(d), "render after an abort works");
+	if (px) {
+		int r, g, b;
+		rgb(px[362 * w + 192], &r, &g, &b);
+		CHECK(!(r == 255 && g == 255 && b == 255), "the photo is there after the abort (%d,%d,%d)", r, g, b);
+	}
+	free(px);
+	folio_close(d);
+}
+
 int main(int argc, char **argv)
 {
 	const char *dir = argc > 1 ? argv[1] : "tests/data";
@@ -420,6 +463,8 @@ int main(int argc, char **argv)
 	test_epub(fc, dir);
 	printf("PDF\n");
 	test_pdf(fc, dir);
+	printf("Abort\n");
+	test_abort(fc, dir);
 	folio_drop(fc);
 	printf("%d checks, %d failed\n", checks, fails);
 	return fails != 0;

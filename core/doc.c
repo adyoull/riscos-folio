@@ -106,12 +106,21 @@ folio_cpage *folio_get_page(folio_doc *doc, folio_loc loc)
 		cp->age = ++doc->clock;
 		cp->page = fz_load_chapter_page(ctx, doc->doc, loc.chapter, loc.page);
 		cp->bounds = fz_bound_page(ctx, cp->page);
-		cp->contents = fz_new_display_list_from_page_contents(ctx, cp->page);
+		/* Recorded with the cookie, so another thread can stop a slow page;
+		 * a stopped page is never cached (half a display list). */
+		cp->contents = fz_new_display_list(ctx, cp->bounds);
+		dev = fz_new_list_device(ctx, cp->contents);
+		fz_run_page_contents(ctx, cp->page, dev, fz_identity, &doc->cookie);
+		fz_close_device(ctx, dev);
+		fz_drop_device(ctx, dev);
+		dev = NULL;
+		folio_check_abort(doc);
 		cp->annots = fz_new_display_list(ctx, cp->bounds);
 		dev = fz_new_list_device(ctx, cp->annots);
-		fz_run_page_annots(ctx, cp->page, dev, fz_identity, NULL);
-		fz_run_page_widgets(ctx, cp->page, dev, fz_identity, NULL);
+		fz_run_page_annots(ctx, cp->page, dev, fz_identity, &doc->cookie);
+		fz_run_page_widgets(ctx, cp->page, dev, fz_identity, &doc->cookie);
 		fz_close_device(ctx, dev);
+		folio_check_abort(doc);
 	}
 	fz_always(ctx)
 		fz_drop_device(ctx, dev);
@@ -120,6 +129,22 @@ folio_cpage *folio_get_page(folio_doc *doc, folio_loc loc)
 		fz_rethrow(ctx);
 	}
 	return cp;
+}
+
+void folio_check_abort(folio_doc *doc)
+{
+	if (doc->cookie.abort)
+		fz_throw(doc->ctx, FZ_ERROR_ABORT, "stopped");
+}
+
+void folio_abort(folio_doc *doc)
+{
+	doc->cookie.abort = 1;
+}
+
+int folio_aborted(folio_doc *doc)
+{
+	return doc->cookie.abort != 0;
 }
 
 /* ---- Metadata --------------------------------------------------------- */
@@ -554,6 +579,7 @@ static void page_start_text(fz_context *ctx, fz_stext_page *st, char *out, size_
 int folio_make_mark(folio_doc *doc, folio_loc loc, folio_mark *mark)
 {
 	fz_context *ctx = doc->ctx;
+	folio_begin(doc);
 	fz_try(ctx) {
 		folio_cpage *cp = folio_get_page(doc, loc);
 		int pages = count_chapter(doc, loc.chapter);
@@ -581,6 +607,7 @@ static int page_has(folio_doc *doc, folio_loc loc, const char *needle)
 int folio_find_mark(folio_doc *doc, const folio_mark *mark, folio_loc *loc)
 {
 	fz_context *ctx = doc->ctx;
+	folio_begin(doc);
 	fz_try(ctx) {
 		int pages, est, d, len, found = -1;
 		char needle[64];
@@ -710,6 +737,7 @@ int folio_outline(folio_doc *doc, const folio_outline_item **items, int *count)
 int folio_page_bounds(folio_doc *doc, folio_loc loc, folio_rect *bounds)
 {
 	fz_context *ctx = doc->ctx;
+	folio_begin(doc);
 	fz_try(ctx) {
 		folio_cpage *cp = folio_get_page(doc, loc);
 		bounds->x0 = 0;

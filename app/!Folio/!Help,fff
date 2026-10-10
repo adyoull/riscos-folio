@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test2)
+Folio (test build 0.0.1-test3)
 ==============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -16,6 +16,10 @@ In a document window
   Menu           View: Dark page, Sepia page, Zoom in, Zoom out,
                  Actual size, Fit width. Navigate: the page moves above.
   Close with Adjust also opens the document's directory.
+
+Folio reopens each document at the page where you left it (kept in
+<Choices$Write>.Folio.Places). Pages are drawn by a background thread, so
+the desktop keeps going while a heavy page loads.
 
 Ebooks are laid out to a 400 x 600 point page at 11 point text. Folio
 counts a book's pages in the background the first time, then remembers
