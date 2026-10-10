@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test8)
+Folio (test build 0.0.1-test9)
 ==============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -25,7 +25,8 @@ The toolbar and thumbnails
   number and press Return to go there), next page, zoom out, the scale,
   zoom in, fit width, dark page, Find and Define. The highlighter,
   underline, strike-out and note tools are shaded: annotations come in a
-  later test build. View > Toolbar hides or shows it.
+  later test build. Rest the pointer on a button for a moment to see its
+  name. View > Toolbar hides or shows it.
   The thumbnails drawer (View > Thumbnails, or the first toolbar button)
   shows small pages down the left of the window; the page you're reading
   is framed in blue, and a click on a thumbnail goes to that page.

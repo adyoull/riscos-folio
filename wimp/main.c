@@ -342,6 +342,8 @@ int main(int argc, char **argv)
 				contents_redraw(block);
 			else if (thumbs_from_wimp(block[0]))
 				thumbs_redraw(thumbs_from_wimp(block[0]), block);
+			else if (toolbar_tip_owns(block[0]))
+				toolbar_tip_redraw(block);
 			break;
 		}
 		case Wimp_EOpenWindow:
@@ -357,7 +359,13 @@ int main(int argc, char **argv)
 				docwin_close_request(w);
 			break;
 		}
+		case Wimp_EPointerEntering:
+		case Wimp_EPointerLeaving:
+			if (docwin_from_toolbar(app.idb.self_id))
+				toolbar_pointer(block[0], event == Wimp_EPointerEntering);
+			break;
 		case Wimp_EMouseClick: {
+			toolbar_tip_hide();
 			docwin *w = docwin_from_wimp(block[3]);
 			if (w)
 				docwin_click(w, block);
@@ -390,6 +398,7 @@ int main(int argc, char **argv)
 		busy = docwin_background();
 		busy |= dict_background();
 		busy |= find_background();
+		busy |= toolbar_background();
 	}
 	dict_quit();
 	app_log("quit");

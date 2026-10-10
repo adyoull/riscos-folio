@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test8 (10-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test9 (10-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -94,6 +94,11 @@ void toolbar_update(ObjectId tb, int page, int pages, int exact, float zoom,
 int toolbar_event_for(int component);
 int toolbar_typed_page(ObjectId tb);
 int toolbar_is_page_field(int component);
+void toolbar_pointer(int wimp_handle, int entering);   /* Pointer_Entering/Leaving */
+int toolbar_background(void);                          /* 1 while tracking for a tooltip */
+int toolbar_tip_owns(int wimp_handle);
+void toolbar_tip_redraw(int *block);
+void toolbar_tip_hide(void);
 
 /* thumbs.c: the thumbnail drawer */
 typedef struct thumbs thumbs;
