@@ -24,14 +24,15 @@ AL_AR := arm-linux-gnueabihf-ar
 AL_CFLAGS := -O2 -g -marm -mcpu=cortex-a8 -mfpu=vfpv3 -mfloat-abi=hard \
 	-mno-unaligned-access -fstack-clash-protection
 WARN := -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -std=gnu99
-INC := -Icore -I$(MUPDF)/include
+INC := -Icore -Ithird/cjson -I$(MUPDF)/include
 
-CORE_SRC := core/doc.c core/render.c core/text.c
-CORE_HDR := core/folio.h core/folio_int.h
+CORE_SRC := core/doc.c core/render.c core/text.c core/dict.c
+CORE_HDR := core/folio.h core/folio_int.h core/dict.h
+CORE_OBJ = $(CORE_SRC:core/%.c=build/$(1)/%.o) build/$(1)/cJSON.o
 
-WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c wimp/clip.c
-WIMP_HDR := wimp/app.h wimp/tbx.h wimp/worker.h core/folio.h
-VERSION ?= 0.0.1-test4
+WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c wimp/clip.c wimp/dict.c
+WIMP_HDR := wimp/app.h wimp/tbx.h wimp/worker.h core/folio.h core/dict.h
+VERSION ?= 0.0.1-test5
 
 all: build/ro/libfolio.a build/al/libfolio.a build/al/core_test build/ro/core_test.elf build/ro/folio.elf
 
@@ -42,9 +43,17 @@ build/al/%.o: core/%.c $(CORE_HDR)
 	@mkdir -p $(@D)
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -c $< -o $@
 
-build/ro/libfolio.a: $(CORE_SRC:core/%.c=build/ro/%.o)
+# cJSON (MIT), for the dictionary's JSON.
+build/ro/cJSON.o: third/cjson/cJSON.c third/cjson/cJSON.h
+	@mkdir -p $(@D)
+	$(RO_CC) $(RO_CFLAGS) -c $< -o $@
+build/al/cJSON.o: third/cjson/cJSON.c third/cjson/cJSON.h
+	@mkdir -p $(@D)
+	$(AL_CC) $(AL_CFLAGS) -c $< -o $@
+
+build/ro/libfolio.a: $(call CORE_OBJ,ro)
 	rm -f $@; $(RO_AR) rcs $@ $^
-build/al/libfolio.a: $(CORE_SRC:core/%.c=build/al/%.o)
+build/al/libfolio.a: $(call CORE_OBJ,al)
 	rm -f $@; $(AL_AR) rcs $@ $^
 
 build/al/core_test: tests/core_test.c build/al/libfolio.a
@@ -73,6 +82,7 @@ app: build/ro/folio.elf
 	$(RISCOS_TOOLCHAIN)/bin/elf2aif -e build/ro/folio.stripped 'build/app/!Folio/!RunImage,ff8'
 	python3 -I tools/mksprites.py 'build/app/!Folio/!Sprites,ff9'
 	cp COPYING 'build/app/!Folio/COPYING,fff'
+	cp third/cjson/LICENSE 'build/app/!Folio/cJSONLicence,fff'
 	cp $(RISCOS_TOOLCHAIN)/riscos/PThrTicker,ffa 'build/app/!Folio/PThrTicker,ffa'
 	cp $(RISCOS_TOOLCHAIN)/riscos/PThreadTicker-Licence,fff 'build/app/!Folio/PThreadTickerLicence,fff'
 	python3 $(RCD_DIR)/package/rozip.py build/Folio-$(VERSION).zip -C build/app '!Folio'
@@ -87,9 +97,14 @@ build/al/worker_test: tests/worker_test.c wimp/worker.c wimp/worker.h build/al/l
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -Iwimp -Itests/stub -no-pie tests/worker_test.c wimp/worker.c \
 		build/al/libfolio.a -L$(MU_AL) -lmupdf -lmupdf-third -lm -lpthread -o $@
 
-test: build/al/core_test build/al/worker_test tests/data/stamp
+build/al/dict_test: tests/dict_test.c build/al/libfolio.a
+	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
+		-L$(MU_AL) -lmupdf -lmupdf-third -lm -lpthread -o $@
+
+test: build/al/core_test build/al/worker_test build/al/dict_test tests/data/stamp
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/core_test tests/data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/worker_test tests/data/doc.pdf
+	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/dict_test tests/dict
 
 check: build/ro/core_test.elf
 	RISCOS_TOOLCHAIN=$(RISCOS_TOOLCHAIN) $(RCD_DIR)/checks/check-all.sh build/ro/core_test.elf

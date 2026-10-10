@@ -130,8 +130,11 @@ static void create_objects(void)
 
 	entry(&dm, 0, 3, "Edit", MENU_SUBMENU, 0, "Move right for copying text.");
 	entry(&dm, 1, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
-	entry(&dm, 2, 2, "Navigate", MENU_SUBMENU, 0, "Move right for moving through the document.");
-	app.doc_menu = make_menu(&dm, "Folio", 3, EV_DOCMENU_SHOWN);
+	entry(&dm, 2, 2, "Navigate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right for moving through the document.");
+	/* The context item (DESIGN §3.4): its text names the word when it's shown. */
+	entry(&dm, 3, DOC_DEFINE, "Define", MENU_FADED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
+	dm.e[3].max_text = 80;
+	app.doc_menu = make_menu(&dm, "Folio", 4, EV_DOCMENU_SHOWN);
 	check(menu_set_submenu(app.doc_menu, 3, app.edit_menu));
 	check(menu_set_submenu(app.doc_menu, 1, app.view_menu));
 	check(menu_set_submenu(app.doc_menu, 2, app.nav_menu));
@@ -235,6 +238,11 @@ static int toolbox_event(int *b)
 			app.menu_window = w ? docwin_object(w) : 0;
 			app_log("  menu window from the pointer: &%x", app.menu_window);
 		}
+		if ((w = docwin_from_object(app.menu_window)) != NULL)
+			docwin_doc_menu_shown(w);
+		break;
+	case EV_DICT_COPY:
+		dict_copy();
 		break;
 	case EV_EDIT_SHOWN:
 		if ((w = window_for_event()) != NULL)
@@ -319,8 +327,15 @@ int main(int argc, char **argv)
 			docwin *w = docwin_from_wimp(block[0]);
 			if (w)
 				docwin_redraw(w, block);
+			else if (dict_owns(block[0]))
+				dict_redraw(block);
 			break;
 		}
+		case Wimp_EOpenWindow:
+			/* The pop-up (the Toolbox opens document windows itself). */
+			if (dict_owns(block[0]))
+				_swix(Wimp_OpenWindow, _IN(1), block);
+			break;
 		case Wimp_ECloseWindow: {
 			docwin *w = docwin_from_wimp(block[0]);
 			if (w)
@@ -331,6 +346,8 @@ int main(int argc, char **argv)
 			docwin *w = docwin_from_wimp(block[3]);
 			if (w)
 				docwin_click(w, block);
+			else if (dict_owns(block[3]))
+				dict_click(block);
 			break;
 		}
 		case Wimp_EKeyPressed:
@@ -346,7 +363,9 @@ int main(int argc, char **argv)
 			break;
 		}
 		busy = docwin_background();
+		busy |= dict_background();
 	}
+	dict_quit();
 	app_log("quit");
 	return 0;
 }

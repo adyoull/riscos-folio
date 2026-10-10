@@ -1,9 +1,9 @@
-Folio (test build 0.0.1-test4)
+Folio (test build 0.0.1-test5)
 ==============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
-MuPDF. This is an early test: it opens and shows documents. Markup,
-notebooks, the dictionary and the rest come later.
+MuPDF. This is an early test: it opens and shows documents, selects and
+copies text, and looks words up. Markup, notebooks and the rest come later.
 
 Opening a document
   Drag a file to Folio's icon on the icon bar, or double-click a PDF while
@@ -16,6 +16,17 @@ In a document window
   Menu           View: Dark page, Sepia page, Zoom in, Zoom out,
                  Actual size, Fit width. Navigate: the page moves above.
   Close with Adjust also opens the document's directory.
+
+Selecting text and looking words up
+  Drag with Select to select text; double-click a word to select it;
+  Adjust extends the selection. Ctrl-C copies it to the clipboard,
+  Ctrl-A selects the whole page, Escape clears the selection.
+  With one word selected, Menu shows Define "word": its meanings from
+  Wiktionary (CC BY-SA) appear in a small box near the word. Copy copies
+  them; clicking "Wiktionary" opens the whole entry in your browser.
+  Looking words up needs the network (URL_Fetcher, AcornHTTP and
+  AcornSSL); words already looked up are kept in
+  <Choices$Write>.Folio.Dict and work offline.
 
 Folio reopens each document at the page where you left it (kept in
 <Choices$Write>.Folio.Places). Pages are drawn by a background thread, so

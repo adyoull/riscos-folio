@@ -48,6 +48,11 @@ const char *folio_error(folio_ctx *fc);
  * ignored by MuPDF), and written by folio_save_accel(). */
 folio_doc *folio_open(folio_ctx *fc, const char *path, const char *accel_path);
 void folio_close(folio_doc *doc);
+/* Opens a small HTML document held in memory (the dictionary pop-up), laid
+ * out as one long page width_pt wide, with em the body font size. */
+folio_doc *folio_open_html(folio_ctx *fc, const char *html, float width_pt, float em);
+/* The height of what's drawn on the page (points from its top). */
+int folio_content_height(folio_doc *doc, folio_loc loc, float *height);
 
 int folio_is_reflowable(folio_doc *doc);
 /* "PDF 1.7", "EPUB", "CBZ"... */

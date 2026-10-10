@@ -10,6 +10,7 @@
  * occupies [left, left + slot_w] x [top(i) - slot_h, top(i)]. */
 #include "app.h"
 #include "worker.h"
+#include "dict.h"
 #include <stdlib.h>
 #include <string.h>
 #include <swis.h>
@@ -1062,6 +1063,65 @@ static void sel_all(docwin *w)
 	sel_update(w, FOLIO_SELECT_CHARS);
 }
 
+/* The word to define: the double-clicked word, or a selection of one word.
+ * Returns 0 and fills word, or -1. */
+static int define_word(docwin *w, char *word, size_t size)
+{
+	folio_loc loc;
+	char *text = NULL;
+	int rc = -1;
+	if (!w->sel || w->sel_n == 0)
+		return -1;
+	if (w->sel_word[0])
+		return folio_dict_clean_word(w->sel_word, word, size);
+	if (folio_loc_from_number(w->doc, w->sel_page, &loc))
+		return -1;
+	core_now();
+	text = folio_selection_text(w->doc, loc, w->sel_a, w->sel_b);
+	core_unlock();
+	if (text && strlen(text) < 64)
+		rc = folio_dict_clean_word(text, word, size);
+	if (text)
+		folio_free(w->doc, text);
+	return rc;
+}
+
+void docwin_doc_menu_shown(docwin *w)
+{
+	static char entry[100];
+	char word[64];
+	if (define_word(w, word, sizeof word) == 0) {
+		snprintf(entry, sizeof entry, "Define \"%.40s\"", word);
+		tbx_method(app.doc_menu, 4 /* Menu_SetEntryText */, DOC_DEFINE, (int)entry, 0);
+		menu_set_fade(app.doc_menu, DOC_DEFINE, 0);
+	} else {
+		tbx_method(app.doc_menu, 4 /* Menu_SetEntryText */, DOC_DEFINE, (int)"Define", 0);
+		menu_set_fade(app.doc_menu, DOC_DEFINE, 1);
+	}
+}
+
+/* Opens the dictionary pop-up just below the selected word. */
+static void define(docwin *w)
+{
+	char word[64];
+	int st[9], x, y;
+	if (define_word(w, word, sizeof word))
+		return;
+	get_state(w, st);
+	x = st[1] + 32;
+	y = st[4] - 32;
+	if (w->sel_n > 0) {
+		folio_quad *q = &w->sel_q[0];
+		float k = 2.5f * w->zoom;
+		float qx = q->ul.x < q->ll.x ? q->ul.x : q->ll.x;
+		float qy = q->ll.y > q->lr.y ? q->ll.y : q->lr.y;
+		x = (st[1] - st[5]) + page_left(w) + (int)(qx * k);
+		y = (st[4] - st[6]) + page_top(w, w->sel_page) - (int)(qy * k) - 8;
+	}
+	app_log("define '%s' (%s)", word, folio_language(w->doc));
+	dict_define(word, folio_language(w->doc), w->mode, x, y);
+}
+
 void docwin_edit_menu_shown(docwin *w)
 {
 	menu_set_fade(app.edit_menu, EDIT_COPY, !w->sel || w->sel_n == 0);
@@ -1109,6 +1169,7 @@ void docwin_event(docwin *w, int code)
 	case EV_COPY: sel_copy(w); break;
 	case EV_SELECT_ALL: sel_all(w); break;
 	case EV_CLEAR_SEL: sel_clear(w); break;
+	case EV_DEFINE: define(w); break;
 	}
 }
 

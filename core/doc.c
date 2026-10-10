@@ -278,6 +278,71 @@ folio_doc *folio_open(folio_ctx *fc, const char *path, const char *accel_path)
 	return doc;
 }
 
+folio_doc *folio_open_html(folio_ctx *fc, const char *html, float width_pt, float em)
+{
+	fz_context *ctx = fc->ctx;
+	folio_doc *doc = calloc(1, sizeof *doc);
+	fz_buffer *buf = NULL;
+	if (!doc) {
+		snprintf(fc->err, sizeof fc->err, "out of memory");
+		return NULL;
+	}
+	doc->fc = fc;
+	doc->ctx = ctx;
+	fz_var(doc);
+	fz_var(buf);
+	fz_try(ctx) {
+		buf = fz_new_buffer_from_copied_data(ctx, (const unsigned char *)html, strlen(html));
+		doc->doc = fz_open_document_with_buffer(ctx, "text/html", buf);
+		doc->reflow = 1;
+		doc->format = fz_strdup(ctx, "HTML");
+		doc->lang = fz_strdup(ctx, "");
+		folio_default_layout(&doc->lay);
+		doc->lay.page_w = width_pt;
+		doc->lay.page_h = 20000;     /* one page, however long */
+		doc->lay.em = em;
+		doc->lay.margin = 0;
+		if (folio_set_layout(doc, &doc->lay))
+			fz_throw(ctx, FZ_ERROR_FORMAT, "%s", fc->err);
+	}
+	fz_always(ctx)
+		fz_drop_buffer(ctx, buf);
+	fz_catch(ctx) {
+		folio_set_error(fc);
+		folio_close(doc);
+		return NULL;
+	}
+	if (folio_count_step(doc, 1 << 20) < 0) {
+		folio_close(doc);
+		return NULL;
+	}
+	return doc;
+}
+
+int folio_content_height(folio_doc *doc, folio_loc loc, float *height)
+{
+	fz_context *ctx = doc->ctx;
+	fz_device *dev = NULL;
+	fz_rect r = fz_empty_rect;
+	fz_var(dev);
+	folio_begin(doc);
+	fz_try(ctx) {
+		folio_cpage *cp = folio_get_page(doc, loc);
+		dev = fz_new_bbox_device(ctx, &r);
+		fz_run_display_list(ctx, cp->contents, dev,
+			fz_translate(-cp->bounds.x0, -cp->bounds.y0), fz_infinite_rect, NULL);
+		fz_close_device(ctx, dev);
+	}
+	fz_always(ctx)
+		fz_drop_device(ctx, dev);
+	fz_catch(ctx) {
+		folio_set_error(doc->fc);
+		return -1;
+	}
+	*height = fz_is_empty_rect(r) ? 0 : r.y1;
+	return 0;
+}
+
 static void drop_outline(folio_doc *doc)
 {
 	fz_free(doc->ctx, doc->outline);

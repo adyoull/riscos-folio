@@ -2,11 +2,12 @@
 
 | Part | Licence | Text |
 |---|---|---|
-| **The program**: `core/` and (later) the Wimp front end, and every Folio binary, which includes MuPDF | **AGPL-3.0-or-later** | `COPYING` |
+| **The program**: `core/` and the Wimp front end (`wimp/`), and every Folio binary, which includes MuPDF | **AGPL-3.0-or-later** | `COPYING` |
 | **Our build scripts, Makefiles, tests, tools and docs**: `Makefile`, `mupdf/build.sh`, `tests/`, `tools/`, `docs/`, `README.md`, this file | **MIT** | `LICENSE-MIT` |
 | Our patches to MuPDF (`mupdf/patches/`) | AGPL-3.0-or-later, as MuPDF | `COPYING` |
 | MuPDF 1.28.5 (Artifex Software), fetched by `mupdf/build.sh` | AGPL-3.0-or-later | MuPDF's `COPYING` |
 | MuPDF's bundled libraries (FreeType, HarfBuzz, zlib, libjpeg, OpenJPEG, jbig2dec, lcms2, gumbo, MuJS, brotli, extract) | Their own licences | in MuPDF's `thirdparty/` |
+| cJSON 1.7.18 (Dave Gamble and contributors), in `third/cjson/` | MIT | `third/cjson/LICENSE` |
 | fontconfig 2.14.1, expat 2.2.9 (when added) | MIT-style | their sources |
 
 **Why the program is AGPL:** MuPDF is AGPL-3.0. A program that includes it can be
