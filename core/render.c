@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later
+ * Copyright (C) 2026 Andrew Youll */
 /* Folio core: drawing pages into RISC OS 32bpp sprite pixels.
  *
  * A tile is drawn into a MuPDF RGBA pixmap laid over the caller's buffer

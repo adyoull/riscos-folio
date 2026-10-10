@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Andrew Youll
 """Writes tests/data/book.epub: an EPUB 3 test book with known content.
    - language en-GB, title "Folio Test Book", author "A. Tester"
    - 4 chapters; chapter 1 links to an anchor in chapter 3; chapter 2 has a

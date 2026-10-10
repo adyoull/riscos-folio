@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Andrew Youll
 # Fetches MuPDF 1.28.5, applies our patches and builds the static libraries
 # for RISC OS (riscos-crossdev 1.4) and for ARM Linux (the qemu test twin).
 #   mupdf/build.sh [riscos|linuxarm|all]      (default all)

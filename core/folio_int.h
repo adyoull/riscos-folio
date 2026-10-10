@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later
+ * Copyright (C) 2026 Andrew Youll */
 /* Folio core internals: shared by doc.c, render.c and text.c. */
 #ifndef FOLIO_INT_H
 #define FOLIO_INT_H

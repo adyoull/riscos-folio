@@ -1,7 +1,10 @@
-# A RISC OS reader on MuPDF, with Flexcil's best ideas — design (2026-10-10, rev 4)
+# A RISC OS reader on MuPDF, with Flexcil's best ideas — design (2026-10-10, rev 5)
 
 Working name **!Folio** (the owner chooses the real name). Engine: MuPDF 1.28.5, built with
 riscos-crossdev 1.4. The front end is a native Wimp program in C. No SDL, no GTK.
+
+Rev 5 (2026-10-10): fonts through fontconfig 2.14.1 (§6, owner's choice). Licence: the
+program is AGPL, our scripts, tests and tools are MIT.
 
 Rev 4 (2026-10-10): §3.8 addendum: ^Z undo and ^Y redo, as on other systems (owner's
 decision; departs from SG p73).
@@ -393,22 +396,47 @@ Both methods below are tested in `muprobe` (`spike/dark-pdf.png`, `spike/dark-ep
   work offline.
 - **Later:** WordNet (English, licence allows bundling, about 30 MB) as an offline pack.
 
-## 6. Fonts: lean program plus an optional font pack (phase 1)
+## 6. Fonts: lean program, other fonts through fontconfig (phase 1; owner, 2026-10-10)
 
-- Build with `tofu_cjk=yes`, and leave the Noto script fonts out too. Keep the URW base 14
-  and the fonts needed for Latin, Greek and Cyrillic. The program should end up around
-  6 MB (to measure).
-- `fz_install_load_system_font_funcs` installs three loaders: by name, CJK (by ordering
-  and serif), and fallback (by script and language). Each looks for known file names, in
-  order, in:
-  1. the optional **!FolioFonts** pack (Noto CJK and Noto script fonts);
-  2. `<Choices$Write>.Folio.Fonts`;
-  3. PackMan's `UnixFont:truetype`.
-- **No fontconfig.** Warzone 2100 showed its costs on RISC OS: config version mismatches
-  with UnixFC, its cache, the read() stack-page issue, and environment-variable clashes.
-  It would also clash with MuPDF's own copy of FreeType.
-- Without the pack, PDFs with embedded fonts still display normally. Only non-embedded
-  CJK and uncommon scripts show empty boxes; a one-time note points to the pack.
+- **The program stays lean:** MuPDF is built with `tofu_cjk=yes` (and later without the
+  Noto script fonts too). It keeps the URW base 14 and the Latin, Greek and Cyrillic
+  fonts it always needs.
+- **Every other font comes through fontconfig**, via MuPDF's
+  `fz_install_load_system_font_funcs` hooks:
+  - **CJK** (`ordering` → `lang` ja / zh-cn / zh-tw / ko, serif or sans) → `FcFontMatch`
+    → file and face index → `fz_new_font_from_file`;
+  - **fallback** (script and language from MuPDF) → the matching `lang`, or a charset with
+    the needed character;
+  - **by name**, for fonts a PDF names without embedding them (beyond the base 14).
+- **Which fontconfig:** **2.14.1**, the version PackMan ships, so it reads UnixFC's
+  `fonts.conf` and shares its cache (cache-8), as the Warzone 2100 port does
+  (`Warzone2100/riscos-warzone2100/build/build-deps.sh`; sources in
+  `Warzone2100/dl-cache`). It needs expat 2.2.9.
+  - The GCCSDK `fcint.p` change (`;` as the search path separator) and the **read()
+    stack-page patch** (`patches/fontconfig/fontconfig-2.14.1-riscos.diff`): memset the
+    buffer before `read()` in `fcxml.c` and `fccache.c`.
+- **Setup, process-local only** (the Warzone lesson: a global variable without `$` leaks
+  into every UnixLib program):
+  - with **UnixFC** installed (`UnixFC$Dir` set and `fonts/fonts.conf` readable):
+    `FONTCONFIG_FILE` and `FONTCONFIG_PATH` point at UnixFC's, so the reader uses the
+    system's fonts, mapping and cache like any other fontconfig program;
+  - without it: Folio's own `fonts.conf`, covering `<Folio$Dir>.Fonts` and
+    `UnixFont:truetype` if present, with its cache in `<Choices$Write>.Folio.FontCache`;
+  - set with `setenv()` in a priority constructor, before anything starts fontconfig;
+    `FONTCONFIG_SYSROOT` unset.
+- **One FreeType:** fontconfig is built against **MuPDF's bundled FreeType** (headers and
+  objects in `libmupdf-third`), so the program never has two FreeTypes. fontconfig needs a
+  few FreeType parts MuPDF leaves out (e.g. `ftbdf.c`, `ftfntfmt.c`, `ftmm.c`,
+  `ftsnames.c`); those are compiled from MuPDF's FreeType source with its flags. The link
+  shows exactly which.
+- **The fonts themselves:** CJK and other script fonts (Noto Sans/Serif CJK, Noto for other
+  scripts; SIL OFL) go into **`UnixFont:truetype`**, where UnixFC's fontconfig finds them
+  for every program. A PackMan package for them is still to decide.
+- **Without any such font:** PDFs with embedded fonts look normal. Only text in a font
+  that isn't installed shows empty boxes, and a one-time note says which fonts to install.
+- **First run:** fontconfig builds its cache for new fonts, which is slow on SD cards. The
+  hourglass shows during start-up if that happens, and the shared UnixFC cache usually
+  avoids it.
 
 ## 7. Architecture
 
@@ -458,7 +486,7 @@ Both methods below are tested in `muprobe` (`spike/dark-pdf.png`, `spike/dark-ep
    - EPUB font size, margins and spacing.
    - **Dark and sepia modes** (§4).
    - **Dictionary pop-up** (§5).
-   - **Lean build and font pack** (§6).
+   - **Lean build, other fonts through fontconfig** (§6).
    - Remember the position per book.
    - Toolbox objects (§3.1), interactive help, Messages, Choices (§3.7).
    - Tests: core/ under qemu with the alignment trap; the URL_Fetcher client against a
@@ -493,9 +521,14 @@ Both methods below are tested in `muprobe` (`spike/dark-pdf.png`, `spike/dark-ep
     chapter at once and "page N of ~M" until counting finishes;
   - heavy PDF pages are still to be measured. Dark mode renders pages with pictures twice;
     measure the cost.
-- **Licence:** MuPDF is AGPL 3, so the reader must be AGPL with its source published,
-  unless Artifex's commercial licence is bought. Dictionary data is CC BY-SA, which only
-  needs attribution in the pop-up.
+- **Licence (decided 2026-10-10):**
+  - **the program is AGPL-3.0-or-later.** MuPDF is AGPL, so a program that includes it must
+    be too, unless Artifex's commercial licence is bought;
+  - **our build scripts, Makefiles, tests, tools and docs are MIT** (owner), as in
+    riscos-crossdev;
+  - third-party code keeps its own licence: MuPDF AGPL; fontconfig and expat MIT-style;
+    FreeType FTL;
+  - dictionary data is CC BY-SA, which only needs attribution in the pop-up.
 - **Wiktionary's REST endpoint** may be retired; the fallback source and the cache soften
   that.
 - **Owner decisions:**

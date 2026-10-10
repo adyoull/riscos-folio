@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later
+ * Copyright (C) 2026 Andrew Youll */
 /* Folio core: MuPDF wrapped for the reader. No Wimp code here, so all of it
  * runs (and is tested) on ARM Linux under qemu-arm-aligntrap as well as on
  * RISC OS.
@@ -15,7 +17,6 @@
  *    page numbers change when the layout changes; a folio_mark survives
  *    re-layout.
  *
- * Copyright (C) 2026 Andrew Youll. AGPL-3.0-or-later (MuPDF is AGPL).
  */
 #ifndef FOLIO_H
 #define FOLIO_H

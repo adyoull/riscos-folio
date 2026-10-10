@@ -40,5 +40,7 @@ The RISC OS test program can also be run on the machine itself (CoreTest zip,
 `RunCoreTest` in a TaskWindow).
 
 ## Licence
-AGPL-3.0-or-later, because MuPDF is AGPL (owner to confirm). MuPDF is
-Copyright Artifex Software.
+The program is **AGPL-3.0-or-later**, because it includes MuPDF (AGPL).
+Our build scripts, Makefiles, tests, tools and docs are **MIT**. Details in
+`LICENCES.md`; texts in `COPYING` and `LICENSE-MIT`. MuPDF is Copyright
+Artifex Software.

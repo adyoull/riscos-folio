@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Andrew Youll
 # Makes the test documents in tests/data with the ARM Linux mutool.
 #   tests/make-data.sh MUTOOL ALIGNTRAP
 set -eu

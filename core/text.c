@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later
+ * Copyright (C) 2026 Andrew Youll */
 /* Folio core: text selection, words, copy, find and links. All points the
  * caller sees are relative to the page bounds' top left. */
 #include "folio_int.h"

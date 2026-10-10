@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Andrew Youll
 # Folio: build the core for RISC OS and for ARM Linux (the qemu test twin).
 #
 #   make            core libraries for both targets + the test program

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT
+ * Copyright (C) 2026 Andrew Youll */
 /* Folio core tests. Run under qemu-arm-aligntrap (RISC OS alignment rules,
  * Cortex-A8) by `make test`:  core_test DATA_DIR
  * Writes PPM pictures to tests/out for looking at by eye. */
