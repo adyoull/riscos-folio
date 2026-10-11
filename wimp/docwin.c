@@ -705,8 +705,10 @@ void docwin_close(docwin *w)
 	/* Not recursively: the document menu is shared by every window. */
 	thumbs_free(w->thumbs);
 	tbx_delete(w->obj, 1);
-	if (w->toolbar)
+	if (w->toolbar) {
+		toolbar_forget(w->toolbar);
 		tbx_delete(w->toolbar, 0);
+	}
 	free(w);
 }
 

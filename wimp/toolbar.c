@@ -219,43 +219,96 @@ static void set_selected(ObjectId tb, int comp, int on)
 	tbx_method(tb, 961, comp, 1 << 21, on ? 1 << 21 : 0);
 }
 
+/* What each toolbar shows now, so only what changes is set: every Toolbox
+ * method redraws its gadget, even with the same value, and while text is
+ * dragged over the toolbar is updated on every step (test12 flickered). */
+typedef struct {
+	ObjectId tb;
+	char page[24], of[24], zoom[24];
+	int dark, thumbs, define, markup, note;
+} shown_state;
+
+static shown_state shown[16];
+
+static shown_state *state_for(ObjectId tb)
+{
+	int i, free_i = -1;
+	for (i = 0; i < 16; i++) {
+		if (shown[i].tb == tb)
+			return &shown[i];
+		if (!shown[i].tb && free_i < 0)
+			free_i = i;
+	}
+	i = free_i >= 0 ? free_i : 0;    /* (more than 16 windows: share, and set more often) */
+	memset(&shown[i], 0, sizeof shown[i]);
+	shown[i].tb = tb;
+	shown[i].dark = shown[i].thumbs = shown[i].define = shown[i].markup = shown[i].note = -1;
+	return &shown[i];
+}
+
+void toolbar_forget(ObjectId tb)
+{
+	int i;
+	for (i = 0; i < 16; i++)
+		if (shown[i].tb == tb)
+			memset(&shown[i], 0, sizeof shown[i]);
+}
+
+static void set_if(ObjectId tb, int comp, int method, char *was, size_t size, const char *now)
+{
+	if (strcmp(was, now)) {
+		snprintf(was, size, "%s", now);
+		set_text(tb, comp, method, now);
+	}
+}
+
+static void flags_if(ObjectId tb, int comp, int *was, int shaded)
+{
+	if (*was != shaded) {
+		*was = shaded;
+		tbx_method(tb, 65 /* Gadget_SetFlags */, comp, shaded ? (int)(1u << 31) : 0, 0);
+	}
+}
+
 void toolbar_update(ObjectId tb, int page, int pages, int exact, float zoom,
 		int dark, int thumbs, int has_selection, int can_annotate)
 {
 	char s[24];
 	int caret[6], wh = 0;
+	shown_state *st;
 	if (!tb)
 		return;
+	st = state_for(tb);
 	/* Not while the reader is typing a page number there. */
 	_swix(Wimp_GetCaretPosition, _IN(1), caret);
 	window_get_wimp_handle(tb, &wh);
-	if (caret[0] != wh) {
-		snprintf(s, sizeof s, "%d", page + 1);
-		set_text(tb, T_PAGE, 512 /* WritableField_SetValue */, s);
-	}
+	snprintf(s, sizeof s, "%d", page + 1);
+	if (caret[0] != wh)
+		set_if(tb, T_PAGE, 512 /* WritableField_SetValue */, st->page, sizeof st->page, s);
+	else
+		st->page[0] = 0;     /* set again once the caret has gone */
 	snprintf(s, sizeof s, exact ? "of %d" : "of %d+", pages);
-	set_text(tb, T_OF, 448 /* DisplayField_SetValue */, s);
+	set_if(tb, T_OF, 448 /* DisplayField_SetValue */, st->of, sizeof st->of, s);
 	snprintf(s, sizeof s, "%d%%", (int)(zoom * 100 + 0.5f));
-	set_text(tb, T_ZOOM, 448, s);
-	set_selected(tb, T_DARK, dark);
-	set_selected(tb, T_THUMBS, thumbs);
-	tbx_method(tb, 65 /* Gadget_SetFlags */, T_DEFINE, has_selection ? 0 : (int)(1u << 31), 0);
-	{
-		/* Markup needs a selection in a PDF; a note just a PDF. Only on a
-		 * change, so the icons don't flicker. */
-		static ObjectId last_tb;
-		static int last = -1;
-		int state = (can_annotate ? 1 : 0) | (has_selection ? 2 : 0);
-		if (tb != last_tb || state != last) {
-			int markup = can_annotate && has_selection ? 0 : (int)(1u << 31);
-			tbx_method(tb, 65, T_HILITE, markup, 0);
-			tbx_method(tb, 65, T_ULINE, markup, 0);
-			tbx_method(tb, 65, T_STRIKE, markup, 0);
-			tbx_method(tb, 65, T_NOTE, can_annotate ? 0 : (int)(1u << 31), 0);
-			last_tb = tb;
-			last = state;
-		}
+	set_if(tb, T_ZOOM, 448, st->zoom, sizeof st->zoom, s);
+	if (st->dark != dark) {
+		st->dark = dark;
+		set_selected(tb, T_DARK, dark);
 	}
+	if (st->thumbs != thumbs) {
+		st->thumbs = thumbs;
+		set_selected(tb, T_THUMBS, thumbs);
+	}
+	/* Markup needs a selection in a PDF; a note just a PDF. */
+	flags_if(tb, T_DEFINE, &st->define, !has_selection);
+	if (st->markup != (can_annotate && has_selection)) {
+		int shaded = !(can_annotate && has_selection);
+		st->markup = !shaded;
+		tbx_method(tb, 65, T_HILITE, shaded ? (int)(1u << 31) : 0, 0);
+		tbx_method(tb, 65, T_ULINE, shaded ? (int)(1u << 31) : 0, 0);
+		tbx_method(tb, 65, T_STRIKE, shaded ? (int)(1u << 31) : 0, 0);
+	}
+	flags_if(tb, T_NOTE, &st->note, !can_annotate);
 }
 
 /* A click on a toolbar button: the matching document window event. */

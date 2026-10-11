@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test12 (11-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test13 (11-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -102,6 +102,7 @@ void docwin_open_request(docwin *w, int *block);
 void toolbar_update(ObjectId tb, int page, int pages, int exact, float zoom,
 		int dark, int thumbs, int has_selection, int can_annotate);
 int toolbar_event_for(int component);
+void toolbar_forget(ObjectId tb);   /* it's being deleted */
 int toolbar_typed_page(ObjectId tb);
 int toolbar_is_page_field(int component);
 void toolbar_pointer(int wimp_handle, int entering);   /* Pointer_Entering/Leaving */
