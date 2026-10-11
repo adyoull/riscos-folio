@@ -63,6 +63,7 @@ struct docwin {
 	int can_annotate;
 	int modified;             /* as last shown in the title */
 	int fit_polls;            /* polls left to keep checking the toolbar's width */
+	int grew_left, grew_right;  /* how much the window was widened for the drawer */
 };
 
 typedef struct {
@@ -1348,13 +1349,54 @@ static void toggle_toolbar(docwin *w)
 	tb_update(w);
 }
 
+/* Widens the window by the drawer's width when it opens, to the left so the
+ * pages stay where they are on the screen (to the right if the screen's
+ * edge is in the way), and gives the same back when it closes. Opened
+ * through the Toolbox, so the toolbar follows. */
+static void make_room_for_drawer(docwin *w, int opening)
+{
+	int st[9];
+	get_state(w, st);
+	if (opening) {
+		int want = thumbs_width();
+		int left = st[1] - want >= 0 ? want : (st[1] > 0 ? st[1] : 0);
+		int right = want - left;
+		if (st[3] + right > app.screen_w)
+			right = app.screen_w - st[3] > 0 ? app.screen_w - st[3] : 0;
+		st[1] -= left;
+		st[3] += right;
+		/* The pages moved right in the work area by the drawer's width: keep
+		 * the same part of them under the same bit of screen. */
+		st[5] += right;
+		w->grew_left = left;
+		w->grew_right = right;
+	} else {
+		if (st[3] - st[1] - w->grew_left - w->grew_right < 400) {
+			w->grew_left = w->grew_right = 0;
+			return;           /* the reader has made it small since: leave it */
+		}
+		st[1] += w->grew_left;
+		st[3] -= w->grew_right;
+		st[5] -= w->grew_right;
+		if (st[5] < 0)
+			st[5] = 0;
+		w->grew_left = w->grew_right = 0;
+	}
+	st[7] = -1;
+	tbx_show(w->obj, 0, 1, st + 1, 0, -1);
+}
+
 static void toggle_thumbs(docwin *w)
 {
 	if (!w->thumbs)
 		return;
 	w->show_thumbs = !w->show_thumbs;
+	if (!w->show_thumbs)
+		thumbs_show(w->thumbs, 0, w->top);
 	relayout_furniture(w);
-	thumbs_show(w->thumbs, w->show_thumbs, w->top);
+	make_room_for_drawer(w, w->show_thumbs);
+	if (w->show_thumbs)
+		thumbs_show(w->thumbs, 1, w->top);
 	thumbs_set_current(w->thumbs, current_page(w), 1);
 	w->fit_polls = 25;
 	w->want_render = 1;
