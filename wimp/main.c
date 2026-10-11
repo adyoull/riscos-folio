@@ -103,9 +103,10 @@ static void create_objects(void)
 
 	/* Icon bar menu: Info, Help..., Quit (Style Guide p46). */
 	entry(&ib, 0, 0, "Info", MENU_SUBMENU, 0, "Move right to see information about this version of Folio.");
-	entry(&ib, 1, 1, "Help...", 0, EV_HELP, "Click to read Folio's help.");
-	entry(&ib, 2, 2, "Quit", 0, EV_QUIT, "Click to leave Folio.");
-	app.iconbar_menu = make_menu(&ib, "Folio", 3, 0);
+	entry(&ib, 1, 3, "Bookshelf...", 0, EV_BOOKSHELF, "Click to see your bookshelf.");
+	entry(&ib, 2, 1, "Help...", 0, EV_HELP, "Click to read Folio's help.");
+	entry(&ib, 3, 2, "Quit", 0, EV_QUIT, "Click to leave Folio.");
+	app.iconbar_menu = make_menu(&ib, "Folio", 4, 0);
 	check(menu_set_submenu(app.iconbar_menu, 0, app.proginfo));
 
 	/* Document menu: View and Navigate submenus. */
@@ -145,9 +146,10 @@ static void create_objects(void)
 	entry(&dm, 3, 2, "Navigate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right for moving through the document.");
 	/* The context item (DESIGN §3.4): its text names the word when it's shown. */
 	entry(&dm, 4, DOC_FIND, "Find...        F4", 0, EV_FIND, "Click to find text in the document.");
-	entry(&dm, 5, DOC_DEFINE, "Define", MENU_FADED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
+	entry(&dm, 5, DOC_DEFINE, "Define", MENU_FADED | MENU_DOTTED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
 	dm.e[5].max_text = 80;
-	app.doc_menu = make_menu(&dm, "Folio", 6, EV_DOCMENU_SHOWN);
+	entry(&dm, 6, DOC_SHELF, "On bookshelf", 0, EV_ADD_SHELF, "Click to put this document on the bookshelf, or take it off.");
+	app.doc_menu = make_menu(&dm, "Folio", 7, EV_DOCMENU_SHOWN);
 	check(menu_set_submenu(app.doc_menu, 3, app.edit_menu));
 	check(menu_set_submenu(app.doc_menu, 1, app.view_menu));
 	check(menu_set_submenu(app.doc_menu, 2, app.nav_menu));
@@ -157,7 +159,9 @@ static void create_objects(void)
 	icon.position = -1;
 	icon.sprite_name = "!folio";
 	icon.max_sprite_name = 12;
-	icon.help_message = "This is the Folio icon.|MDrag a PDF or ebook file here to read it.";
+	icon.help_message = "This is the Folio icon.|MClick Select to see your bookshelf. Drag a PDF or ebook file here to read it.";
+	icon.flags = 1 << 5;            /* an event for Select clicks (Toolbox p152) */
+	icon.select_event = EV_BOOKSHELF;
 	icon.max_help = 100;
 	check(tbx_create(Class_Iconbar, 100, 0, &icon, sizeof icon, &app.iconbar));
 	check(iconbar_set_menu(app.iconbar, app.iconbar_menu));
@@ -187,6 +191,11 @@ static int message(int *b)
 		docwin_close_all();
 		return 1;
 	case Message_DataLoad:
+		/* Dropped on the Bookshelf: put it there. */
+		if (bookshelf_data_load(b)) {
+			ack_load(b);
+			break;
+		}
 		/* Dropped on the icon bar or a document window: open it. */
 		ack_load(b);
 		docwin_open((const char *)(b + 11));
@@ -252,6 +261,9 @@ static int toolbox_event(int *b)
 		}
 		docwin_close_all();
 		return 1;
+	case EV_BOOKSHELF:
+		bookshelf_open();
+		break;
 	case EV_HELP:
 		_swix(OS_CLI, _IN(0), "Filer_Run <Folio$Dir>.!Help");
 		break;
@@ -271,6 +283,10 @@ static int toolbox_event(int *b)
 		break;
 	case EV_DICT_COPY:
 		dict_copy();
+		break;
+	case EV_SH_OPEN: case EV_SH_REMOVE: case EV_SH_FILER: case EV_SH_RECENT: case EV_SH_TITLE:
+	case EV_SH_AUTHOR: case EV_SH_FOLDERS: case EV_SH_REFRESH: case EV_SH_MISSING:
+		bookshelf_event(code);
 		break;
 	case EV_FIND_NEXT:
 	case EV_FIND_PREV:
@@ -342,6 +358,7 @@ int main(int argc, char **argv)
 	if (worker_init())
 		app_log("no worker thread: pages will be drawn in the poll loop");
 	create_objects();
+	bookshelf_init();
 	if (argc > 1)
 		docwin_open(argv[1]);
 
@@ -368,6 +385,8 @@ int main(int argc, char **argv)
 				thumbs_redraw(thumbs_from_wimp(block[0]), block);
 			else if (toolbar_tip_owns(block[0]))
 				toolbar_tip_redraw(block);
+			else if (bookshelf_owns(block[0]))
+				bookshelf_redraw(block);
 			break;
 		}
 		case Wimp_EOpenWindow:
@@ -377,11 +396,15 @@ int main(int argc, char **argv)
 				_swix(Wimp_OpenWindow, _IN(1), block);
 			else if (thumbs_from_wimp(block[0]))
 				thumbs_open_request(thumbs_from_wimp(block[0]), block);
+			else if (bookshelf_owns(block[0]))
+				bookshelf_open_request(block);
 			break;
 		case Wimp_ECloseWindow: {
 			docwin *w = docwin_from_wimp(block[0]);
 			if (w)
 				docwin_close_request(w);
+			else if (bookshelf_owns(block[0]))
+				bookshelf_close(block[0]);
 			break;
 		}
 		case Wimp_EPointerEntering:
@@ -400,6 +423,8 @@ int main(int argc, char **argv)
 				contents_click(block);
 			else if (thumbs_from_wimp(block[3]))
 				thumbs_click(thumbs_from_wimp(block[3]), block);
+			else if (bookshelf_owns(block[3]))
+				bookshelf_click(block);
 			else if ((w = docwin_from_toolbar(app.idb.self_id)) != NULL)
 				docwin_toolbar_click(w, app.idb.self_component, block);
 			break;
@@ -408,6 +433,8 @@ int main(int argc, char **argv)
 			/* Return or Escape in the toolbar's page field; other keys the
 			 * window's shortcuts didn't take go on to other tasks. */
 			docwin *w = docwin_from_toolbar(app.idb.self_id);
+			if (bookshelf_key(block))
+				break;
 			if (!(w && docwin_toolbar_key(w, block[6])))
 				_swix(Wimp_ProcessKey, _IN(0), block[6]);
 			break;
@@ -424,8 +451,10 @@ int main(int argc, char **argv)
 		busy |= dict_background();
 		busy |= find_background();
 		busy |= toolbar_background();
+		busy |= bookshelf_background();
 	}
 	dict_quit();
+	bookshelf_quit();
 	app_log("quit");
 	return 0;
 }

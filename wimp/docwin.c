@@ -288,6 +288,10 @@ static void take_result(render_job *r)
 {
 	docwin *w = r->owner;
 	cache_entry *c;
+	if (bookshelf_owns_job(r)) {
+		bookshelf_take(r);
+		return;
+	}
 	if (r->kind == JOB_THUMB) {
 		if (is_window(w) && r->mode == w->mode && !r->aborted)
 			thumbs_take(w->thumbs, r->page, r->gen, r->area, r->ok);
@@ -681,6 +685,7 @@ docwin *docwin_open(const char *path)
 
 	w->next = windows;
 	windows = w;
+	bookshelf_note(w->path, 0, 0, folio_title(w->doc), folio_author(w->doc));
 	app_log("opened %s: %s, %d chapter(s), page %gx%g pt", path, folio_format(w->doc),
 		folio_chapters(w->doc), w->page.x1, w->page.y1);
 	return w;
@@ -700,6 +705,15 @@ void docwin_close(docwin *w)
 	worker_stop_for(w);
 	core_lock();
 	save_place(w);
+	if (w->doc) {
+		int exact = 0, pages = folio_page_count(w->doc, &exact);
+		char title[128], author[96];
+		snprintf(title, sizeof title, "%s", folio_title(w->doc));
+		snprintf(author, sizeof author, "%s", folio_author(w->doc));
+		core_unlock();
+		bookshelf_note(w->path, current_page(w), exact ? pages : 0, title, author);
+		core_lock();
+	}
 	folio_close(w->doc);
 	core_unlock();
 	cache_forget(w);
@@ -1250,6 +1264,7 @@ static int define_word(docwin *w, char *word, size_t size)
 void docwin_doc_menu_shown(docwin *w)
 {
 	menu_set_fade(app.doc_menu, DOC_SAVE, !w->can_annotate);
+	menu_set_tick(app.doc_menu, DOC_SHELF, bookshelf_has(w->path));
 	static char entry[100];
 	char word[64];
 	if (define_word(w, word, sizeof word) == 0) {
@@ -1461,6 +1476,7 @@ void docwin_event(docwin *w, int code)
 		if (w->can_annotate)
 			save_open(w, 0);
 		break;
+	case EV_ADD_SHELF: bookshelf_toggle(w->path); break;
 	case EV_THUMBS: toggle_thumbs(w); break;
 	case EV_CONTENTS: contents_open(w); break;
 	}

@@ -52,6 +52,58 @@ static unsigned now_cs(void)
 	return t;
 }
 
+/* A cover: open the book, draw page 1 into the sprite, close it. The
+ * document is put in job.doc while it's open, so folio_abort can reach it. */
+static void run_cover(void)
+{
+	folio_doc *doc;
+	folio_loc loc;
+	folio_rect b;
+	core_lock();
+	doc = folio_open(job.fc, job.path, NULL);
+	/* Under job_mutex: worker_stop_for reads it there, so it never aborts a
+	 * document this has closed. */
+	pthread_mutex_lock(&job_mutex);
+	job.doc = doc;
+	pthread_mutex_unlock(&job_mutex);
+	job.ok = 0;
+	if (!doc) {
+		snprintf(job.err, sizeof job.err, "%s", folio_error(job.fc));
+	} else {
+		snprintf(job.title, sizeof job.title, "%s", folio_title(doc));
+		snprintf(job.author, sizeof job.author, "%s", folio_author(doc));
+		if (folio_count_step(doc, 1) >= 0 && folio_loc_from_number(doc, 0, &loc) == 0 &&
+				folio_page_bounds(doc, loc, &b) == 0 && b.x1 > 0 && b.y1 > 0) {
+			float zoom = (float)job.px_w / b.x1;
+			int h = (int)(b.y1 * zoom + 0.5f);
+			folio_irect tile;
+			if (h > job.px_h)
+				h = job.px_h;
+			if (h < 1)
+				h = 1;
+			tile.x0 = 0;
+			tile.y0 = 0;
+			tile.x1 = job.px_w;
+			tile.y1 = h;
+			if (folio_render_tile(doc, loc, zoom, tile, FOLIO_PAGE_NORMAL, 1,
+					(uint32_t *)(job.area + 4 + 11), job.px_w * 4) == 0) {
+				job.area[4 + 5] = h - 1;             /* the sprite's height */
+				job.px_h = h;
+				job.ok = 1;
+			} else {
+				job.aborted = folio_aborted(doc);
+			}
+		}
+		if (!job.ok && !job.err[0])
+			snprintf(job.err, sizeof job.err, "%s", folio_error(job.fc));
+		pthread_mutex_lock(&job_mutex);
+		job.doc = NULL;
+		pthread_mutex_unlock(&job_mutex);
+		folio_close(doc);
+	}
+	core_unlock();
+}
+
 /* Draws the current job (in the worker, or in the caller without one). */
 static void run_job(void)
 {
@@ -59,6 +111,11 @@ static void run_job(void)
 	unsigned t0;
 	int rc;
 	t0 = now_cs();
+	if (job.kind == JOB_COVER) {
+		run_cover();
+		job.cs = (int)(now_cs() - t0);
+		return;
+	}
 	tile.x0 = 0;
 	tile.y0 = 0;
 	tile.x1 = job.px_w;
@@ -176,9 +233,9 @@ void worker_stop_for(void *owner)
 		free(job.area);
 		return;
 	}
-	pthread_mutex_unlock(&job_mutex);
-	if (state == RUNNING)
+	if (state == RUNNING && job.doc)
 		folio_abort(job.doc);
+	pthread_mutex_unlock(&job_mutex);
 	while (worker_busy())
 		yield();
 	if (worker_take(&r))

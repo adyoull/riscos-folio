@@ -1,9 +1,25 @@
-Folio (test build 0.0.1-test14)
+Folio (test build 0.0.1-test15)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
 MuPDF. This is an early test: it opens and shows documents, selects and
 copies text, and looks words up. Markup, notebooks and the rest come later.
+
+The bookshelf
+  Click Select on Folio's icon bar icon (or choose Bookshelf... from its
+  menu) to see your bookshelf: the covers of your books, with how far
+  you've read each. Double-click a cover to open it.
+  To add books, drag them to the bookshelf, or choose On bookshelf from a
+  document's menu. Drag a directory to the bookshelf to have Folio watch
+  it: Folio looks in it, and the directories inside, for new documents
+  each time it starts and when you choose Refresh from the bookshelf's
+  menu. Watched folders... on that menu lists them (click Stop watching to
+  drop one).
+  Remove from bookshelf (or Delete) only takes a book off the shelf; the
+  file isn't touched. Books whose files can't be found are shown grey;
+  Remove missing books takes them all off. Sort by recent, title or
+  author from the menu. The shelf is kept in <Choices$Write>.Folio.Shelf
+  and the covers in <Choices$Write>.Folio.Covers.
 
 Opening a document
   Drag a file to Folio's icon on the icon bar, or double-click a PDF while

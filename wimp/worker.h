@@ -8,11 +8,11 @@
 #include <stddef.h>
 #include <stdio.h>
 
-enum { JOB_PAGE = 0, JOB_THUMB = 1 };
+enum { JOB_PAGE = 0, JOB_THUMB = 1, JOB_COVER = 2 };
 
 typedef struct {
 	void *owner;             /* the window */
-	int kind;                /* JOB_PAGE or JOB_THUMB */
+	int kind;                /* JOB_PAGE, JOB_THUMB or JOB_COVER */
 	folio_ctx *fc;
 	folio_doc *doc;
 	int page, gen;
@@ -22,6 +22,11 @@ typedef struct {
 	int px_w, px_h;
 	int *area;               /* sprite area, header filled in; pixels go after it */
 	size_t bytes;
+	/* JOB_COVER: the worker opens path itself and draws page 1 px_w wide
+	 * (at most px_h high: the sprite's height is set to what was drawn),
+	 * and returns the title and author. */
+	char path[256];
+	char title[128], author[96];
 	/* results */
 	int ok, aborted, cs;
 	char err[128];

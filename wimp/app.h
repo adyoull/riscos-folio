@@ -9,11 +9,11 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test14 (11-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test15 (11-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
-	EV_QUIT = 0x100, EV_HELP,
+	EV_QUIT = 0x100, EV_HELP, EV_BOOKSHELF,
 	EV_DARK = 0x110, EV_SEPIA, EV_ZOOM_IN, EV_ZOOM_OUT, EV_ZOOM_100, EV_FIT_WIDTH,
 	EV_TOOLBAR, EV_THUMBS,
 	EV_NEXT = 0x120, EV_PREV, EV_FIRST, EV_LAST, EV_LINE_DOWN, EV_LINE_UP,
@@ -21,16 +21,19 @@ enum {
 	EV_VIEW_SHOWN = 0x140, EV_DOCMENU_SHOWN, EV_EDIT_SHOWN,
 	EV_COPY = 0x150, EV_SELECT_ALL, EV_CLEAR_SEL, EV_DEFINE, EV_FIND, EV_CONTENTS,
 	EV_HIGHLIGHT = 0x160, EV_UNDERLINE, EV_STRIKE, EV_NOTE, EV_UNDO, EV_REDO, EV_DEL_ANNOT, EV_SAVE,
+	EV_ADD_SHELF,
 	EV_DICT_COPY = 0x200,  /* the pop-up's, not a window's */
 	EV_FIND_NEXT = 0x210, EV_FIND_PREV, EV_FIND_CANCEL,
-	EV_NOTE_OK = 0x220, EV_NOTE_DELETE, EV_NOTE_CANCEL
+	EV_NOTE_OK = 0x220, EV_NOTE_DELETE, EV_NOTE_CANCEL,
+	EV_SH_OPEN = 0x230, EV_SH_REMOVE, EV_SH_FILER, EV_SH_RECENT, EV_SH_TITLE, EV_SH_AUTHOR,
+	EV_SH_FOLDERS, EV_SH_REFRESH, EV_SH_MISSING
 };
 
 /* View menu entries (component ids). */
 enum { EDIT_COPY = 1, EDIT_SELECT_ALL, EDIT_CLEAR, EDIT_UNDO, EDIT_REDO, EDIT_HILITE,
 	EDIT_ULINE, EDIT_STRIKE, EDIT_NOTE, EDIT_DELANNOT };
 /* Document menu entries. */
-enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6 };
+enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6, DOC_SHELF = 7 };
 /* Navigate menu entries. */
 enum { NAV_CONTENTS = 5 };
 enum { VIEW_DARK = 1, VIEW_SEPIA, VIEW_ZOOM_IN, VIEW_ZOOM_OUT, VIEW_ZOOM_100, VIEW_FIT_WIDTH,
@@ -158,6 +161,26 @@ void clip_set_text(const char *utf8);
 char *app_desktop_text(const char *utf8);
 /* The desktop's alphabet to UTF-8; malloc'd. */
 char *app_utf8_text(const char *desktop);
+
+/* bookshelf.c */
+#include "worker.h"
+void bookshelf_init(void);
+void bookshelf_quit(void);
+void bookshelf_open(void);
+int bookshelf_owns(int wimp_handle);
+void bookshelf_redraw(int *block);
+void bookshelf_click(int *block);
+int bookshelf_key(int *block);
+void bookshelf_open_request(int *block);
+void bookshelf_close(int wimp_handle);
+void bookshelf_event(int code);
+int bookshelf_data_load(int *block);      /* 1 if it was for the bookshelf */
+int bookshelf_background(void);
+int bookshelf_owns_job(const render_job *r);
+void bookshelf_take(render_job *r);
+int bookshelf_has(const char *path);
+void bookshelf_toggle(const char *path);
+void bookshelf_note(const char *path, int page, int pages, const char *title, const char *author);
 
 /* annotui.c: the Note, Save and Discard/Cancel/Save boxes */
 void note_open(docwin *w, int page, int index, folio_point at, const char *text);

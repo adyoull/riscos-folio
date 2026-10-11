@@ -73,6 +73,42 @@ int main(int argc, char **argv)
 	CHECK(core_trylock(), "trylock when free");
 	core_unlock();
 
+	/* A cover: the worker opens the file itself, draws page 1 80 px wide
+	 * (A4: 113 high, within 200), and reads the title and author. */
+	j = make(fc, NULL, 0, 80, 200, &owner_a);
+	j.kind = JOB_COVER;
+	snprintf(j.path, sizeof j.path, "%s", argv[1]);
+	worker_submit(&j);
+	for (slices = 0; !worker_slice(5) && slices < 2000; slices++)
+		;
+	CHECK(worker_take(&r) && r.ok, "cover: %s", r.err);
+	CHECK(r.px_h == 113 && r.area[4 + 5] == 112, "cover height %d (sprite %d)", r.px_h, r.area[4 + 5]);
+	CHECK(!strcmp(r.title, "Folio Test PDF") && !strcmp(r.author, "A. Tester"), "cover title '%s' author '%s'",
+		r.title, r.author);
+	CHECK(r.doc == NULL, "the cover's document wasn't let go");
+	free(r.area);
+
+	/* A cover that can't be made: a failed result, with a reason. */
+	j = make(fc, NULL, 0, 80, 200, &owner_a);
+	j.kind = JOB_COVER;
+	snprintf(j.path, sizeof j.path, "%s.missing", argv[1]);
+	worker_submit(&j);
+	for (slices = 0; !worker_slice(5) && slices < 2000; slices++)
+		;
+	CHECK(worker_take(&r) && !r.ok && r.err[0], "missing cover: ok %d err '%s'", r.ok, r.err);
+	free(r.area);
+
+	/* Stopping covers over and over while they run must be safe. */
+	for (slices = 0; slices < 20; slices++) {
+		j = make(fc, NULL, 0, 80, 200, &owner_a);
+		j.kind = JOB_COVER;
+		snprintf(j.path, sizeof j.path, "%s", argv[1]);
+		worker_submit(&j);
+		worker_slice(slices % 3);
+		worker_stop_for(NULL);
+	}
+	CHECK(worker_idle(), "idle after stopping covers");
+
 	folio_close(d);
 	folio_drop(fc);
 	printf("%d checks, %d failed\n", checks, fails);
