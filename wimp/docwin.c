@@ -62,6 +62,7 @@ struct docwin {
 	folio_rect asel_rect;
 	int can_annotate;
 	int modified;             /* as last shown in the title */
+	int fit_polls;            /* polls left to keep checking the toolbar's width */
 };
 
 typedef struct {
@@ -271,6 +272,9 @@ static void tb_update(docwin *w);
 static void abort_for(docwin *w);
 static void sel_draw(docwin *w, int i, int x0, int y1);
 static void asel_draw(docwin *w, int i, int x0, int y1);
+static void sel_eor_change(docwin *w, int page, const folio_quad *oldq, int n_old,
+		const folio_quad *newq, int n_new);
+static folio_quad old_q[SEL_QUADS];   /* the selection as last drawn, for sel_update */
 static void markup(docwin *w, folio_annot_kind kind);
 static void new_note(docwin *w);
 static void undo_redo(docwin *w, int redo);
@@ -671,8 +675,7 @@ docwin *docwin_open(const char *path)
 	st[6] = 0;
 	st[7] = -1;
 	tbx_show(w->obj, 0, 1, st + 1, 0, -1);
-	if (w->show_toolbar)
-		toolbar_fit(w->toolbar, w->wimp);
+	w->fit_polls = 25;
 	tb_update(w);
 
 	w->next = windows;
@@ -961,6 +964,17 @@ int docwin_background(void)
 	for (w = windows; w; w = w->next) {
 		busy |= sel_drag_tick(w);
 		busy |= w->want_render;
+		/* The toolbar's width: after every event, since the Toolbox shows
+		 * and places it on its own schedule (after the window opens, and
+		 * again when the drawer comes or goes); for a few null polls more
+		 * after those. */
+		if (w->show_toolbar) {
+			toolbar_fit(w->toolbar, w->wimp);
+			if (w->fit_polls > 0) {
+				w->fit_polls--;
+				busy = 1;
+			}
+		}
 	}
 	return busy;
 }
@@ -1020,10 +1034,12 @@ static void redraw_page(docwin *w, int i)
 static void sel_update(docwin *w, folio_select_mode mode)
 {
 	folio_loc loc;
+	int n_old = w->sel_n;
 	if (!w->sel || folio_loc_from_number(w->doc, w->sel_page, &loc)) {
 		w->sel_n = 0;
 		return;
 	}
+	memcpy(old_q, w->sel_q, (size_t)n_old * sizeof old_q[0]);
 	core_now();
 	if (mode != FOLIO_SELECT_CHARS)
 		folio_snap(w->doc, loc, &w->sel_a, &w->sel_b, mode);
@@ -1031,7 +1047,8 @@ static void sel_update(docwin *w, folio_select_mode mode)
 	if (w->sel_n < 0)
 		w->sel_n = 0;
 	core_unlock();
-	redraw_page(w, w->sel_page);
+	if (n_old != w->sel_n || memcmp(old_q, w->sel_q, (size_t)n_old * sizeof old_q[0]))
+		sel_eor_change(w, w->sel_page, old_q, n_old, w->sel_q, w->sel_n);
 	tb_update(w);
 }
 
@@ -1039,23 +1056,22 @@ static void sel_clear(docwin *w)
 {
 	if (!w->sel)
 		return;
+	sel_eor_change(w, w->sel_page, w->sel_q, w->sel_n, NULL, 0);
 	w->sel = 0;
 	w->sel_n = 0;
 	w->sel_word[0] = 0;
 	w->dragging = 0;
-	redraw_page(w, w->sel_page);
 }
 
 /* EOR the selection over page i (screen origin of the page at x0, y1). */
-static void sel_draw(docwin *w, int i, int x0, int y1)
+/* EOR quads over a page whose top left is at x0, y1 (screen). */
+static void eor_quads(docwin *w, const folio_quad *quads, int count, int x0, int y1)
 {
 	float k = 2.5f * w->zoom;
 	int n;
-	if (!w->sel || i != w->sel_page)
-		return;
 	_swix(ColourTrans_SetGCOL, _IN(0) | _INR(3, 4), 0xffffff00u, 0, 3);
-	for (n = 0; n < w->sel_n; n++) {
-		folio_quad *q = &w->sel_q[n];
+	for (n = 0; n < count; n++) {
+		const folio_quad *q = &quads[n];
 		float qx0 = q->ul.x < q->ll.x ? q->ul.x : q->ll.x;
 		float qx1 = q->ur.x > q->lr.x ? q->ur.x : q->lr.x;
 		float qy0 = q->ul.y < q->ur.y ? q->ul.y : q->ur.y;
@@ -1064,6 +1080,37 @@ static void sel_draw(docwin *w, int i, int x0, int y1)
 		int ry1 = y1 - (int)(qy0 * k), ry0 = y1 - (int)(qy1 * k + 0.999f);
 		_swix(OS_Plot, _INR(0, 2), 4, rx0, ry0);
 		_swix(OS_Plot, _INR(0, 2), 96 + 5, rx1 - 1, ry1 - 1);
+	}
+}
+
+static void sel_draw(docwin *w, int i, int x0, int y1)
+{
+	if (!w->sel || i != w->sel_page)
+		return;
+	eor_quads(w, w->sel_q, w->sel_n, x0, y1);
+}
+
+/* Changes what's shown of the selection on page from the quads old to new
+ * in place (Wimp_UpdateWindow), EORing the old off and the new on, instead
+ * of drawing the whole page again: no flicker while dragging. Only where the
+ * page itself is showing (a placeholder gets the selection when it's drawn). */
+static void sel_eor_change(docwin *w, int page, const folio_quad *oldq, int n_old,
+		const folio_quad *newq, int n_new)
+{
+	int b[11], more = 0;
+	if ((n_old == 0 && n_new == 0) || !cache_find(w, page))
+		return;
+	b[0] = w->wimp;
+	b[1] = page_left(w);
+	b[2] = page_top(w, page) - w->slot_h;
+	b[3] = page_left(w) + w->slot_w;
+	b[4] = page_top(w, page);
+	_swix(Wimp_UpdateWindow, _IN(1) | _OUT(0), b, &more);
+	while (more) {
+		int x0 = b[1] - b[5] + page_left(w), y1 = b[4] - b[6] + page_top(w, page);
+		eor_quads(w, oldq, n_old, x0, y1);
+		eor_quads(w, newq, n_new, x0, y1);
+		_swix(Wimp_GetRectangle, _IN(1) | _OUT(0), b, &more);
 	}
 }
 
@@ -1293,9 +1340,8 @@ static void toggle_toolbar(docwin *w)
 {
 	w->show_toolbar = !w->show_toolbar;
 	toolbar_attach(w->obj, w->toolbar, w->show_toolbar);
-	if (w->show_toolbar)
-		toolbar_fit(w->toolbar, w->wimp);
 	relayout_furniture(w);
+	w->fit_polls = 25;
 	thumbs_reopen(w->thumbs, w->top);
 	tb_update(w);
 }
@@ -1308,6 +1354,7 @@ static void toggle_thumbs(docwin *w)
 	relayout_furniture(w);
 	thumbs_show(w->thumbs, w->show_thumbs, w->top);
 	thumbs_set_current(w->thumbs, current_page(w), 1);
+	w->fit_polls = 25;
 	w->want_render = 1;
 	tb_update(w);
 }
@@ -1498,6 +1545,7 @@ void docwin_open_request(docwin *w, int *b)
 	tbx_show(w->obj, 0, 1, b + 1, 0, -1);
 	if (w->show_toolbar)
 		toolbar_fit(w->toolbar, w->wimp);
+	w->fit_polls = 10;
 }
 
 /* ---- Annotations ---------------------------------------------------------- */
