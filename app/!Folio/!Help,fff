@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test10)
+Folio (test build 0.0.1-test11)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -23,13 +23,22 @@ The toolbar and thumbnails
   The toolbar along the top of each document window has, from the left:
   thumbnails on/off, Contents, previous page, the page number (type a
   number and press Return to go there), next page, zoom out, the scale,
-  zoom in, fit width, dark page, Find and Define. The highlighter,
-  underline, strike-out and note tools are shaded: annotations come in a
-  later test build. Rest the pointer on a button for a moment to see its
+  zoom in, fit width, dark page, Find, Define, Highlight, Underline,
+  Strike out and Note. Rest the pointer on a button for a moment to see its
   name. View > Toolbar hides or shows it.
   The thumbnails drawer (View > Thumbnails, or the first toolbar button)
   shows small pages down the left of the window; the page you're reading
   is framed in blue, and a click on a thumbnail goes to that page.
+
+Notes and markings (PDFs)
+  Select some text, then click Highlight, Underline or Strike out on the
+  toolbar (or use the Edit menu). Note adds a note at the selection, or at
+  the top of the page; click on a note to read, change or delete it.
+  Click on a highlight to select it; Delete removes it.
+  Ctrl-Z undoes the last change and Ctrl-Y redoes it.
+  F3 (or Save... on the menu) saves the PDF with its notes and markings;
+  the window's title shows * while there are changes to save, and
+  closing the window or quitting asks first. Ebooks can't be marked yet.
 
 Contents and Find
   Navigate > Contents... lists the document's chapters and sections, with

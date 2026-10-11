@@ -255,8 +255,10 @@ folio_doc *folio_open(folio_ctx *fc, const char *path, const char *accel_path)
 		doc->format = meta(ctx, doc->doc, FZ_META_FORMAT);
 		doc->title = meta(ctx, doc->doc, FZ_META_INFO_TITLE);
 		doc->author = meta(ctx, doc->doc, FZ_META_INFO_AUTHOR);
-		if (pdf_specifics(ctx, doc->doc))
+		if (pdf_specifics(ctx, doc->doc)) {
 			doc->lang = pdf_language(ctx, doc->doc);
+			folio_annot_init(doc);
+		}
 		else if (!strncmp(doc->format, "EPUB", 4) || !strncmp(doc->format, "epub", 4))
 			doc->lang = epub_language(ctx, path);
 		else

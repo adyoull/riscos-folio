@@ -94,9 +94,8 @@ static const char *const tips[T_COUNT] = {
 	"Thumbnails", "Contents", "Previous page (Page Up)",
 	"Page number: type one and press Return", NULL, "Next page (Page Down)",
 	"Zoom out", "Scale", "Zoom in", "Fit width", "Dark page (Ctrl-N)", "Find (F4)",
-	"Define the selected word", "Highlight (in a later test build)",
-	"Underline (in a later test build)", "Strike out (in a later test build)",
-	"Note (in a later test build)"
+	"Define the selected word", "Highlight the selection",
+	"Underline the selection", "Strike out the selection", "Add a note"
 };
 
 static void build_template(void)
@@ -136,17 +135,17 @@ static void build_template(void)
 	button(&g.dark, T_DARK, x, "R5;Stb_dark", "Click for a black page with light text (^N); click again for white."); x += BTN + 20;
 	button(&g.find, T_FIND, x, "R5;Stb_find", "Click to find text (F4)."); x += BTN + 4;
 	button(&g.define, T_DEFINE, x, "R5;Stb_define", "Click to see what the selected word means."); x += BTN + 20;
-	button(&g.hilite, T_HILITE, x, "R5;Stb_hilite", "Highlighting comes in a later test build."); x += BTN + 4;
-	button(&g.uline, T_ULINE, x, "R5;Stb_uline", "Underlining comes in a later test build."); x += BTN + 4;
-	button(&g.strike, T_STRIKE, x, "R5;Stb_strike", "Striking out comes in a later test build."); x += BTN + 4;
-	button(&g.note, T_NOTE, x, "R5;Stb_note", "Notes come in a later test build.");
+	button(&g.hilite, T_HILITE, x, "R5;Stb_hilite", "Click to highlight the selected text (PDFs).|MSave the document (F3) to keep it."); x += BTN + 4;
+	button(&g.uline, T_ULINE, x, "R5;Stb_uline", "Click to underline the selected text (PDFs)."); x += BTN + 4;
+	button(&g.strike, T_STRIKE, x, "R5;Stb_strike", "Click to strike out the selected text (PDFs)."); x += BTN + 4;
+	button(&g.note, T_NOTE, x, "R5;Stb_note", "Click to add a note at the selection, or at the top of the page (PDFs).");
 	gadgets[T_THUMBS] = &g.thumbs.h; gadgets[T_CONTENTS] = &g.contents.h;
 	gadgets[T_PREV] = &g.prev.h; gadgets[T_PAGE] = &g.page.h; gadgets[T_OF] = &g.of.h;
 	gadgets[T_NEXT] = &g.next.h; gadgets[T_ZOOMOUT] = &g.zoomout.h; gadgets[T_ZOOM] = &g.zoom.h;
 	gadgets[T_ZOOMIN] = &g.zoomin.h; gadgets[T_FITW] = &g.fitw.h; gadgets[T_DARK] = &g.dark.h;
 	gadgets[T_FIND] = &g.find.h; gadgets[T_DEFINE] = &g.define.h; gadgets[T_HILITE] = &g.hilite.h;
 	gadgets[T_ULINE] = &g.uline.h; gadgets[T_STRIKE] = &g.strike.h; gadgets[T_NOTE] = &g.note.h;
-	/* Not yet: shaded (bit 31). */
+	/* Shaded until there's something to mark up (toolbar_update). */
 	g.hilite.h.flags = g.uline.h.flags = g.strike.h.flags = g.note.h.flags = (int)(1u << 31);
 }
 
@@ -221,7 +220,7 @@ static void set_selected(ObjectId tb, int comp, int on)
 }
 
 void toolbar_update(ObjectId tb, int page, int pages, int exact, float zoom,
-		int dark, int thumbs, int has_selection)
+		int dark, int thumbs, int has_selection, int can_annotate)
 {
 	char s[24];
 	int caret[6], wh = 0;
@@ -241,6 +240,22 @@ void toolbar_update(ObjectId tb, int page, int pages, int exact, float zoom,
 	set_selected(tb, T_DARK, dark);
 	set_selected(tb, T_THUMBS, thumbs);
 	tbx_method(tb, 65 /* Gadget_SetFlags */, T_DEFINE, has_selection ? 0 : (int)(1u << 31), 0);
+	{
+		/* Markup needs a selection in a PDF; a note just a PDF. Only on a
+		 * change, so the icons don't flicker. */
+		static ObjectId last_tb;
+		static int last = -1;
+		int state = (can_annotate ? 1 : 0) | (has_selection ? 2 : 0);
+		if (tb != last_tb || state != last) {
+			int markup = can_annotate && has_selection ? 0 : (int)(1u << 31);
+			tbx_method(tb, 65, T_HILITE, markup, 0);
+			tbx_method(tb, 65, T_ULINE, markup, 0);
+			tbx_method(tb, 65, T_STRIKE, markup, 0);
+			tbx_method(tb, 65, T_NOTE, can_annotate ? 0 : (int)(1u << 31), 0);
+			last_tb = tb;
+			last = state;
+		}
+	}
 }
 
 /* A click on a toolbar button: the matching document window event. */
@@ -257,6 +272,10 @@ int toolbar_event_for(int component)
 	case T_DARK: return EV_DARK;
 	case T_FIND: return EV_FIND;
 	case T_DEFINE: return EV_DEFINE;
+	case T_HILITE: return EV_HIGHLIGHT;
+	case T_ULINE: return EV_UNDERLINE;
+	case T_STRIKE: return EV_STRIKE;
+	case T_NOTE: return EV_NOTE;
 	}
 	return 0;
 }

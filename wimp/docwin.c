@@ -57,6 +57,11 @@ struct docwin {
 	int show_toolbar, show_thumbs;
 	thumbs *thumbs;
 	int top, left;            /* work area kept clear for them, OS units */
+	/* The annotation clicked on (PDFs): page -1 if none. */
+	int asel_page, asel_index;
+	folio_rect asel_rect;
+	int can_annotate;
+	int modified;             /* as last shown in the title */
 };
 
 typedef struct {
@@ -265,6 +270,10 @@ static int is_window(docwin *w);
 static void tb_update(docwin *w);
 static void abort_for(docwin *w);
 static void sel_draw(docwin *w, int i, int x0, int y1);
+static void asel_draw(docwin *w, int i, int x0, int y1);
+static void markup(docwin *w, folio_annot_kind kind);
+static void new_note(docwin *w);
+static void undo_redo(docwin *w, int redo);
 static int sel_drag_tick(docwin *w);
 static int current_page(docwin *w);
 static void go_to_page(docwin *w, int i);
@@ -481,7 +490,7 @@ static void save_place(docwin *w)
 	folio_mark m;
 	FILE *f;
 	int page = current_page(w);
-	if (w->pending_mark)
+	if (w->pending_mark || !w->doc)
 		return;          /* never got there: keep the old position */
 	if (folio_loc_from_number(w->doc, page, &loc) || folio_make_mark(w->doc, loc, &m))
 		return;
@@ -516,6 +525,10 @@ static tbx_shortcut shortcuts[] = {
 	{ 0, 1, EV_SELECT_ALL, 0 },     /* ^A */
 	{ 0, 27, EV_CLEAR_SEL, 0 },     /* Escape: clear the selection (DESIGN §3.8) */
 	{ 0, 0x184, EV_FIND, 0 },       /* F4: Find (as in Edit, SG p60) */
+	{ 0, 26, EV_UNDO, 0 },          /* ^Z: undo (DESIGN §3.8) */
+	{ 0, 25, EV_REDO, 0 },          /* ^Y: redo */
+	{ 0, 0x7f, EV_DEL_ANNOT, 0 },   /* Delete: the selected annotation */
+	{ 0, 0x183, EV_SAVE, 0 },       /* F3: Save (SG p84) */
 };
 
 static ObjectId create_window(docwin *w)
@@ -606,6 +619,8 @@ docwin *docwin_open(const char *path)
 		return NULL;
 	}
 	w->reflow = folio_is_reflowable(w->doc);
+	w->can_annotate = folio_can_annotate(w->doc);
+	w->asel_page = -1;
 	/* Count the first chapter now, so page 1 can be shown at once; the rest
 	 * are counted in null polls. */
 	w->counting = folio_count_step(w->doc, 1) == 0;
@@ -677,6 +692,7 @@ void docwin_close(docwin *w)
 		}
 	find_forget(w);
 	contents_forget(w);
+	annotui_forget(w);
 	worker_stop_for(w);
 	core_lock();
 	save_place(w);
@@ -700,6 +716,16 @@ void docwin_close_all(void)
 void docwin_close_request(docwin *w)
 {
 	int ptr[5];
+	if (w->can_annotate) {
+		int modified;
+		core_now();
+		modified = folio_is_modified(w->doc);
+		core_unlock();
+		if (modified) {
+			dcs_open(w);      /* Discard / Cancel / Save (Style Guide p86) */
+			return;
+		}
+	}
 	_swix(Wimp_GetPointerInfo, _IN(1), ptr);
 	/* Adjust: close and open the document's directory (Style Guide p29). */
 	if (ptr[2] & 1) {
@@ -764,6 +790,7 @@ void docwin_redraw(docwin *w, int *b)
 				/* OS_SpriteOp 52 (PutSpriteScaled), user area, sprite by pointer. */
 				_swix(OS_SpriteOp, _INR(0, 7), 52 + 512, c->area, c->area + 4, x0, y0, 0, 0, 0);
 				sel_draw(w, i, x0, y1);
+				asel_draw(w, i, x0, y1);
 			} else {
 				fill_rect(page_colour(w), x0, y0, x1, y1);
 				w->want_render = 1;
@@ -1040,6 +1067,8 @@ static void sel_draw(docwin *w, int i, int x0, int y1)
 	}
 }
 
+static void asel_click(docwin *w, int *b);
+
 void docwin_click(docwin *w, int *b)
 {
 	folio_point pt;
@@ -1048,8 +1077,9 @@ void docwin_click(docwin *w, int *b)
 	 * work (Style Guide p69). Button type 10: click = x256, drag = x16,
 	 * double-click = x1; Select = 4, Adjust = 1. */
 	_swix(Wimp_SetCaretPosition, _INR(0, 5), w->wimp, -1, 0, 0, 1 << 25, -1);
-	if (buttons == 0x400) {                  /* Select click: deselect */
+	if (buttons == 0x400) {                  /* Select click: an annotation, or deselect */
 		sel_clear(w);
+		asel_click(w, b);
 	} else if (buttons == 0x40) {            /* Select drag: start a selection */
 		page = point_at(w, b[0], b[1], &pt, -1);
 		if (page < 0)
@@ -1169,6 +1199,7 @@ static int define_word(docwin *w, char *word, size_t size)
 
 void docwin_doc_menu_shown(docwin *w)
 {
+	menu_set_fade(app.doc_menu, DOC_SAVE, !w->can_annotate);
 	static char entry[100];
 	char word[64];
 	if (define_word(w, word, sizeof word) == 0) {
@@ -1205,6 +1236,20 @@ static void define(docwin *w)
 
 void docwin_edit_menu_shown(docwin *w)
 {
+	int undo = 0, redo = 0, markup_ok = w->can_annotate && w->sel && w->sel_n > 0;
+	if (w->can_annotate) {
+		core_now();
+		undo = folio_can_undo(w->doc);
+		redo = folio_can_redo(w->doc);
+		core_unlock();
+	}
+	menu_set_fade(app.edit_menu, EDIT_UNDO, !undo);
+	menu_set_fade(app.edit_menu, EDIT_REDO, !redo);
+	menu_set_fade(app.edit_menu, EDIT_HILITE, !markup_ok);
+	menu_set_fade(app.edit_menu, EDIT_ULINE, !markup_ok);
+	menu_set_fade(app.edit_menu, EDIT_STRIKE, !markup_ok);
+	menu_set_fade(app.edit_menu, EDIT_NOTE, !w->can_annotate);
+	menu_set_fade(app.edit_menu, EDIT_DELANNOT, w->asel_page < 0);
 	menu_set_fade(app.edit_menu, EDIT_COPY, !w->sel || w->sel_n == 0);
 	menu_set_fade(app.edit_menu, EDIT_CLEAR, !w->sel);
 }
@@ -1224,7 +1269,7 @@ static void tb_update(docwin *w)
 		exact = !w->counting;
 	}
 	toolbar_update(w->toolbar, current_page(w), w->pages, exact, w->zoom,
-		w->mode == FOLIO_PAGE_DARK, w->show_thumbs, w->sel && w->sel_n > 0);
+		w->mode == FOLIO_PAGE_DARK, w->show_thumbs, w->sel && w->sel_n > 0, w->can_annotate);
 }
 
 /* The toolbar and the drawer take room at the top and left of the work
@@ -1311,6 +1356,20 @@ void docwin_event(docwin *w, int code)
 	case EV_DEFINE: define(w); break;
 	case EV_FIND: find_open(w); break;
 	case EV_TOOLBAR: toggle_toolbar(w); break;
+	case EV_HIGHLIGHT: markup(w, FOLIO_ANNOT_HIGHLIGHT); break;
+	case EV_UNDERLINE: markup(w, FOLIO_ANNOT_UNDERLINE); break;
+	case EV_STRIKE: markup(w, FOLIO_ANNOT_STRIKEOUT); break;
+	case EV_NOTE: new_note(w); break;
+	case EV_UNDO: undo_redo(w, 0); break;
+	case EV_REDO: undo_redo(w, 1); break;
+	case EV_DEL_ANNOT:
+		if (w->asel_page >= 0)
+			docwin_delete_annot(w, w->asel_page, w->asel_index);
+		break;
+	case EV_SAVE:
+		if (w->can_annotate)
+			save_open(w, 0);
+		break;
 	case EV_THUMBS: toggle_thumbs(w); break;
 	case EV_CONTENTS: contents_open(w); break;
 	}
@@ -1439,4 +1498,307 @@ void docwin_open_request(docwin *w, int *b)
 	tbx_show(w->obj, 0, 1, b + 1, 0, -1);
 	if (w->show_toolbar)
 		toolbar_fit(w->toolbar, w->wimp);
+}
+
+/* ---- Annotations ---------------------------------------------------------- */
+
+/* The title: the file's name, with " *" while there are unsaved changes
+ * (Style Guide p84). */
+static void update_title(docwin *w)
+{
+	int modified = 0;
+	if (w->can_annotate && core_trylock()) {
+		modified = folio_is_modified(w->doc);
+		core_unlock();
+	} else {
+		modified = w->modified;
+	}
+	if (modified == w->modified && w->title[0])
+		return;
+	w->modified = modified;
+	snprintf(w->title, sizeof w->title, "%.250s%s", leafname(w->path), modified ? " *" : "");
+	window_set_title(w->obj, w->title);
+}
+
+/* A page's annotations changed: draw it (and its thumbnail) again. */
+static void page_changed(docwin *w, int page)
+{
+	int i;
+	for (i = 0; i < CACHE_SLOTS; i++)
+		if (cache[i].w == w && (page < 0 || cache[i].page == page))
+			cache_drop(&cache[i]);
+	thumbs_forget(w->thumbs, page);
+	w->want_render = 1;
+	if (page < 0)
+		redraw_all(w);
+	else
+		redraw_page(w, page);
+	update_title(w);
+	tb_update(w);
+}
+
+static void asel_clear(docwin *w)
+{
+	if (w->asel_page < 0)
+		return;
+	{
+		int page = w->asel_page;
+		w->asel_page = -1;
+		redraw_page(w, page);
+	}
+}
+
+/* A dotted frame round the selected annotation (EOR, so drawing it again
+ * removes it; the page is redrawn underneath first anyway). */
+static void asel_draw(docwin *w, int i, int x0, int y1)
+{
+	float k = 2.5f * w->zoom;
+	int rx0, ry0, rx1, ry1;
+	if (w->asel_page != i)
+		return;
+	rx0 = x0 + (int)(w->asel_rect.x0 * k) - 6;
+	rx1 = x0 + (int)(w->asel_rect.x1 * k) + 6;
+	ry1 = y1 - (int)(w->asel_rect.y0 * k) + 6;
+	ry0 = y1 - (int)(w->asel_rect.y1 * k) - 6;
+	_swix(ColourTrans_SetGCOL, _IN(0) | _INR(3, 4), 0xbe5a1e00u, 0, 0);
+	/* Two OS units thick. */
+	_swix(OS_Plot, _INR(0, 2), 4, rx0, ry0);
+	_swix(OS_Plot, _INR(0, 2), 96 + 5, rx1, ry0 + 3);
+	_swix(OS_Plot, _INR(0, 2), 4, rx0, ry1 - 3);
+	_swix(OS_Plot, _INR(0, 2), 96 + 5, rx1, ry1);
+	_swix(OS_Plot, _INR(0, 2), 4, rx0, ry0);
+	_swix(OS_Plot, _INR(0, 2), 96 + 5, rx0 + 3, ry1);
+	_swix(OS_Plot, _INR(0, 2), 4, rx1 - 3, ry0);
+	_swix(OS_Plot, _INR(0, 2), 96 + 5, rx1, ry1);
+}
+
+/* A Select click: on a note, open it; on other markup, select it. */
+static void asel_click(docwin *w, int *b)
+{
+	folio_point pt;
+	folio_loc loc;
+	folio_annot_kind kind = FOLIO_ANNOT_OTHER;
+	folio_rect r;
+	int page, n;
+	char *text = NULL;
+	asel_clear(w);
+	if (!w->can_annotate)
+		goto done;
+	page = point_at(w, b[0], b[1], &pt, -1);
+	if (page < 0 || folio_loc_from_number(w->doc, page, &loc))
+		goto done;
+	core_now();
+	n = folio_annot_at(w->doc, loc, pt, &kind, &r);
+	if (n >= 0 && kind == FOLIO_ANNOT_NOTE)
+		text = folio_annot_text(w->doc, loc, n);
+	core_unlock();
+	if (n < 0)
+		goto done;
+	if (kind == FOLIO_ANNOT_NOTE) {
+		note_open(w, page, n, pt, text ? text : "");
+		if (text) {
+			core_lock();
+			folio_free(w->doc, text);
+			core_unlock();
+		}
+	}
+	w->asel_page = page;
+	w->asel_index = n;
+	w->asel_rect = r;
+	redraw_page(w, page);
+done:
+	tb_update(w);
+}
+
+static void markup(docwin *w, folio_annot_kind kind)
+{
+	folio_loc loc;
+	int page = w->sel_page, rc;
+	if (!w->can_annotate || !w->sel || w->sel_n == 0 ||
+			folio_loc_from_number(w->doc, page, &loc))
+		return;
+	core_now();
+	rc = folio_annot_markup(w->doc, loc, kind, w->sel_a, w->sel_b);
+	core_unlock();
+	if (rc) {
+		app_log("markup: %s", folio_error(app.fc));
+		return;
+	}
+	app_log("%s: markup %d on page %d", w->title, (int)kind, page + 1);
+	sel_clear(w);
+	page_changed(w, page);
+}
+
+/* Note: at the selection's start (just above it), else the top left of the
+ * page being read. */
+static void new_note(docwin *w)
+{
+	folio_point at = { 24, 24 };
+	int page;
+	if (!w->can_annotate)
+		return;
+	if (w->sel && w->sel_n > 0) {
+		folio_quad *q = &w->sel_q[0];
+		page = w->sel_page;
+		at.x = q->ul.x;
+		at.y = q->ul.y - 22;
+		if (at.y < 0)
+			at.y = 0;
+	} else {
+		int st[9];
+		float k = 2.5f * w->zoom;
+		page = current_page(w);
+		get_state(w, st);
+		/* The top of what's showing of the page, if it's partly scrolled off. */
+		at.y = (page_top(w, page) - (st[6] - w->top)) / k + 24;
+		if (at.y < 24)
+			at.y = 24;
+	}
+	note_open(w, page, -1, at, NULL);
+}
+
+void docwin_note_done(docwin *w, int page, int index, folio_point at, const char *utf8)
+{
+	folio_loc loc;
+	int rc;
+	if (!is_window(w) || folio_loc_from_number(w->doc, page, &loc))
+		return;
+	core_now();
+	rc = index < 0 ? folio_annot_note(w->doc, loc, at, utf8)
+		: folio_annot_set_text(w->doc, loc, index, utf8);
+	core_unlock();
+	if (rc)
+		app_log("note: %s", folio_error(app.fc));
+	else
+		page_changed(w, page);
+}
+
+void docwin_delete_annot(docwin *w, int page, int index)
+{
+	folio_loc loc;
+	int rc;
+	if (!is_window(w) || folio_loc_from_number(w->doc, page, &loc))
+		return;
+	core_now();
+	rc = folio_annot_delete(w->doc, loc, index);
+	core_unlock();
+	if (rc) {
+		app_log("delete: %s", folio_error(app.fc));
+		return;
+	}
+	w->asel_page = -1;
+	page_changed(w, page);
+}
+
+static void undo_redo(docwin *w, int redo)
+{
+	int rc;
+	if (!w->can_annotate)
+		return;
+	core_now();
+	rc = redo ? folio_redo(w->doc) : folio_undo(w->doc);
+	core_unlock();
+	if (rc)
+		return;
+	w->asel_page = -1;
+	page_changed(w, -1);
+}
+
+const char *docwin_path(docwin *w)
+{
+	return w->path;
+}
+
+docwin *docwin_first_modified(void)
+{
+	docwin *w;
+	for (w = windows; w; w = w->next) {
+		int m = 0;
+		if (!w->can_annotate)
+			continue;
+		core_now();
+		m = folio_is_modified(w->doc);
+		core_unlock();
+		if (m)
+			return w;
+	}
+	return NULL;
+}
+
+/* Saves to path. The open PDF is still being read by MuPDF, so the new file
+ * is written beside it first; then the document is closed, the old file
+ * moved aside, the new one put in its place, and the document opened again
+ * from there (RISC OS can't replace a file that's open). */
+int docwin_save(docwin *w, const char *path)
+{
+	char tmp[300], bak[300];
+	_kernel_oserror *e;
+	int page = current_page(w), had_old, type = 0;
+	folio_doc *doc;
+	if (strlen(path) + 3 >= sizeof tmp) {
+		tbx_report("The file name is too long.");
+		return -1;
+	}
+	snprintf(tmp, sizeof tmp, "%s~n", path);
+	snprintf(bak, sizeof bak, "%s~o", path);
+	_swix(Hourglass_On, 0);
+	core_now();
+	if (folio_save_pdf(w->doc, w->path, tmp)) {
+		char msg[300];
+		core_unlock();
+		_swix(Hourglass_Off, 0);
+		_swix(OS_File, _INR(0, 1), 6, tmp);
+		snprintf(msg, sizeof msg, "Folio couldn't save the document: %s", folio_error(app.fc));
+		tbx_report(msg);
+		return -1;
+	}
+	folio_close(w->doc);
+	w->doc = NULL;
+	/* Move any file already there aside, then the new one in. */
+	_swix(OS_File, _INR(0, 1) | _OUT(0), 17, path, &type);
+	had_old = type == 1;
+	if (had_old) {
+		_swix(OS_File, _INR(0, 1), 6, bak);
+		e = _swix(OS_FSControl, _INR(0, 2), 25, path, bak);
+		if (e)
+			had_old = -1;
+	}
+	e = had_old < 0 ? NULL : _swix(OS_FSControl, _INR(0, 2), 25, tmp, path);
+	if (had_old < 0 || e) {
+		/* Put things back as they were. */
+		if (had_old == 1)
+			_swix(OS_FSControl, _INR(0, 2), 25, bak, path);
+		app_log("save: rename failed: %s", e ? e->errmess : "the old file couldn't be moved");
+	} else {
+		if (had_old == 1)
+			_swix(OS_File, _INR(0, 1), 6, bak);
+		_swix(OS_File, _INR(0, 2), 18, path, 0xadf);
+		snprintf(w->path, sizeof w->path, "%s", path);
+	}
+	/* Open it again (the saved file, or the old one if that failed). */
+	doc = folio_open(app.fc, w->path, NULL);
+	if (doc) {
+		w->doc = doc;
+		folio_count_step(doc, 1 << 20);
+	}
+	core_unlock();
+	_swix(Hourglass_Off, 0);
+	if (!doc) {
+		tbx_report("Folio couldn't open the document again after saving it; its window will close.");
+		docwin_close(w);
+		return -1;
+	}
+	if (had_old < 0 || e) {
+		char msg[700];
+		snprintf(msg, sizeof msg, "Folio couldn't replace '%s' (the new copy is in '%s').", path, tmp);
+		tbx_report(msg);
+		return -1;
+	}
+	app_log("saved %s", path);
+	w->asel_page = -1;
+	w->modified = -1;          /* force the title to be redone */
+	update_title(w);
+	go_to_page(w, page);
+	tb_update(w);
+	return 0;
 }

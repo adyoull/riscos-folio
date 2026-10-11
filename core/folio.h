@@ -201,4 +201,40 @@ typedef struct {
 /* Link at p on the page, if any (returns 1 and fills *link), else 0. */
 int folio_link_at(folio_doc *doc, folio_loc loc, folio_point p, folio_link *link);
 
+/* ---- Annotations (PDFs) ------------------------------------------------ */
+
+typedef enum {
+	FOLIO_ANNOT_HIGHLIGHT, FOLIO_ANNOT_UNDERLINE, FOLIO_ANNOT_STRIKEOUT,
+	FOLIO_ANNOT_NOTE, FOLIO_ANNOT_OTHER
+} folio_annot_kind;
+
+/* 1 if annotations can be added (PDFs). */
+int folio_can_annotate(folio_doc *doc);
+/* Highlights, underlines or strikes out the text from a to b (as for
+ * folio_selection_quads). One undoable operation. 0 or -1. */
+int folio_annot_markup(folio_doc *doc, folio_loc loc, folio_annot_kind kind,
+		folio_point a, folio_point b);
+/* A note (sticky-note icon) with text, its top left at 'at'. */
+int folio_annot_note(folio_doc *doc, folio_loc loc, folio_point at, const char *text);
+/* The annotation under p: its number on the page, kind and box; -1 if none.
+ * Text markup is hit only on its quads. */
+int folio_annot_at(folio_doc *doc, folio_loc loc, folio_point p, folio_annot_kind *kind,
+		folio_rect *rect);
+/* Its text (folio_free it), or NULL. */
+char *folio_annot_text(folio_doc *doc, folio_loc loc, int n);
+int folio_annot_set_text(folio_doc *doc, folio_loc loc, int n, const char *text);
+int folio_annot_delete(folio_doc *doc, folio_loc loc, int n);
+
+/* Undo and redo of annotation changes (every page is redrawn after). */
+int folio_can_undo(folio_doc *doc);
+int folio_can_redo(folio_doc *doc);
+int folio_undo(folio_doc *doc);
+int folio_redo(folio_doc *doc);
+/* Unsaved changes? */
+int folio_is_modified(folio_doc *doc);
+/* Writes the PDF with its changes to path, which must not be the open file
+ * (save to a new file, close, then replace). original is the open file's
+ * path, for an incremental save (or NULL for a full one). */
+int folio_save_pdf(folio_doc *doc, const char *original, const char *path);
+
 #endif

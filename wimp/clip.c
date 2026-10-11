@@ -72,6 +72,32 @@ char *app_desktop_text(const char *utf8)
 	return to_latin1(utf8, &len);
 }
 
+char *app_utf8_text(const char *desktop)
+{
+	const unsigned char *p = (const unsigned char *)desktop;
+	char *out, *o;
+	if (alphabet_utf8()) {
+		size_t n = strlen(desktop);
+		out = malloc(n + 1);
+		if (out)
+			memcpy(out, desktop, n + 1);
+		return out;
+	}
+	out = malloc(strlen(desktop) * 2 + 1);
+	if (!out)
+		return NULL;
+	for (o = out; *p; p++) {
+		if (*p < 0x80) {
+			*o++ = (char)*p;
+		} else {
+			*o++ = (char)(0xc0 | (*p >> 6));
+			*o++ = (char)(0x80 | (*p & 0x3f));
+		}
+	}
+	*o = 0;
+	return out;
+}
+
 void clip_set_text(const char *utf8)
 {
 	int b[6];

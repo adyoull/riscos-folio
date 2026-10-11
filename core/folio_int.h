@@ -60,6 +60,9 @@ folio_cpage *folio_get_page(folio_doc *doc, folio_loc loc);
 /* The structured text of a cached page (made on demand), or throws. */
 fz_stext_page *folio_get_text(folio_doc *doc, folio_cpage *cp);
 void folio_drop_cpage(folio_doc *doc, folio_cpage *cp);
+void folio_forget_pages(folio_doc *doc);
+/* PDFs: turn on the undo journal (annot.c). */
+void folio_annot_init(folio_doc *doc);
 /* Throws if folio_abort() was called during the work just done. */
 void folio_check_abort(folio_doc *doc);
 /* Start of a call that may load or draw pages: an earlier abort no longer applies. */

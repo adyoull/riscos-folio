@@ -57,7 +57,7 @@ static void check(_kernel_oserror *e)
 /* A menu template: header fields then entries, in one block. */
 typedef struct {
 	tbx_menu m;
-	tbx_menu_entry e[8];
+	tbx_menu_entry e[12];
 } menu_block;
 
 static ObjectId make_menu(menu_block *b, const char *title, int n, int show_event)
@@ -126,19 +126,28 @@ static void create_objects(void)
 	entry(&nm, 4, NAV_CONTENTS, "Contents...", 0, EV_CONTENTS, "Click to see the document's contents list, and go to any part of it.");
 	app.nav_menu = make_menu(&nm, "Navigate", 5, 0);
 
-	entry(&em, 0, EDIT_COPY, "Copy            ^C", 0, EV_COPY, "Click to copy the selected text to the clipboard.");
-	entry(&em, 1, EDIT_SELECT_ALL, "Select all      ^A", 0, EV_SELECT_ALL, "Click to select all the text on this page.");
-	entry(&em, 2, EDIT_CLEAR, "Clear selection Esc", 0, EV_CLEAR_SEL, "Click to clear the selection.");
-	app.edit_menu = make_menu(&em, "Edit", 3, EV_EDIT_SHOWN);
+	/* Undo and Redo first (Style Guide p40; DESIGN §3.8). */
+	entry(&em, 0, EDIT_UNDO, "Undo              ^Z", 0, EV_UNDO, "Click to undo the last change to the notes and markings.");
+	entry(&em, 1, EDIT_REDO, "Redo              ^Y", MENU_DOTTED, EV_REDO, "Click to redo the change you undid.");
+	entry(&em, 2, EDIT_COPY, "Copy              ^C", 0, EV_COPY, "Click to copy the selected text to the clipboard.");
+	entry(&em, 3, EDIT_SELECT_ALL, "Select all        ^A", 0, EV_SELECT_ALL, "Click to select all the text on this page.");
+	entry(&em, 4, EDIT_CLEAR, "Clear selection  Esc", MENU_DOTTED, EV_CLEAR_SEL, "Click to clear the selection.");
+	entry(&em, 5, EDIT_HILITE, "Highlight", 0, EV_HIGHLIGHT, "Click to highlight the selected text (PDFs).");
+	entry(&em, 6, EDIT_ULINE, "Underline", 0, EV_UNDERLINE, "Click to underline the selected text (PDFs).");
+	entry(&em, 7, EDIT_STRIKE, "Strike out", 0, EV_STRIKE, "Click to strike out the selected text (PDFs).");
+	entry(&em, 8, EDIT_NOTE, "Note...", 0, EV_NOTE, "Click to add a note at the selection, or at the top of the page (PDFs).");
+	entry(&em, 9, EDIT_DELANNOT, "Delete annotation Del", 0, EV_DEL_ANNOT, "Click to delete the annotation you clicked on.");
+	app.edit_menu = make_menu(&em, "Edit", 10, EV_EDIT_SHOWN);
 
-	entry(&dm, 0, 3, "Edit", MENU_SUBMENU, 0, "Move right for copying text.");
-	entry(&dm, 1, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
-	entry(&dm, 2, 2, "Navigate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right for moving through the document.");
+	entry(&dm, 0, DOC_SAVE, "Save...        F3", MENU_DOTTED, EV_SAVE, "Click to save the document with its notes and markings (PDFs).");
+	entry(&dm, 1, 3, "Edit", MENU_SUBMENU, 0, "Move right for undo, copying, highlighting and notes.");
+	entry(&dm, 2, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
+	entry(&dm, 3, 2, "Navigate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right for moving through the document.");
 	/* The context item (DESIGN §3.4): its text names the word when it's shown. */
-	entry(&dm, 3, DOC_FIND, "Find...        F4", 0, EV_FIND, "Click to find text in the document.");
-	entry(&dm, 4, DOC_DEFINE, "Define", MENU_FADED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
-	dm.e[4].max_text = 80;
-	app.doc_menu = make_menu(&dm, "Folio", 5, EV_DOCMENU_SHOWN);
+	entry(&dm, 4, DOC_FIND, "Find...        F4", 0, EV_FIND, "Click to find text in the document.");
+	entry(&dm, 5, DOC_DEFINE, "Define", MENU_FADED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
+	dm.e[5].max_text = 80;
+	app.doc_menu = make_menu(&dm, "Folio", 6, EV_DOCMENU_SHOWN);
 	check(menu_set_submenu(app.doc_menu, 3, app.edit_menu));
 	check(menu_set_submenu(app.doc_menu, 1, app.view_menu));
 	check(menu_set_submenu(app.doc_menu, 2, app.nav_menu));
@@ -189,9 +198,17 @@ static int message(int *b)
 			docwin_open((const char *)(b + 11));
 		}
 		break;
-	case Message_PreQuit:
-		/* Nothing to save in a reader yet. */
+	case Message_PreQuit: {
+		/* Unsaved changes: object (acknowledge the message) and ask
+		 * (PRM Message_PreQuit; Style Guide p86). */
+		docwin *w = docwin_first_modified();
+		if (w) {
+			b[3] = b[2];
+			_swix(Wimp_SendMessage, _INR(0, 2), Wimp_EUserMessageAcknowledge, b, b[1]);
+			dcs_open(w);
+		}
 		break;
+	}
 	case Message_ModeChange:
 		app_read_mode();
 		docwin_mode_changed();
@@ -221,11 +238,18 @@ static int toolbox_event(int *b)
 	app_log("event &%x: self &%x/%d parent &%x/%d ancestor &%x/%d", code,
 		app.idb.self_id, app.idb.self_component, app.idb.parent_id,
 		app.idb.parent_component, app.idb.ancestor_id, app.idb.ancestor_component);
+	if (annotui_event(b))
+		return 0;
 	switch (code) {
 	case Toolbox_Error:
 		tbx_report((const char *)(b + 5));
 		break;
 	case EV_QUIT:
+		/* Unsaved changes: ask first (Style Guide p86). */
+		if ((w = docwin_first_modified()) != NULL) {
+			dcs_open(w);
+			break;
+		}
 		docwin_close_all();
 		return 1;
 	case EV_HELP:

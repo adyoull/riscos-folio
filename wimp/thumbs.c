@@ -428,3 +428,24 @@ void thumbs_open_request(thumbs *t, int *b)
 {
 	_swix(Wimp_OpenWindow, _IN(1), b);
 }
+
+/* A page's thumbnail is out of date (its annotations changed); -1: all. */
+void thumbs_forget(thumbs *t, int page)
+{
+	int i;
+	if (!t)
+		return;
+	for (i = 0; i < t->pages; i++) {
+		if (page >= 0 && i != page)
+			continue;
+		if (t->area[i]) {
+			t->bytes -= (size_t)t->area[i][0];
+			free(t->area[i]);
+			t->area[i] = NULL;
+		}
+		t->state[i] = T_NONE;
+		if (t->shown)
+			redraw_row(t, i);
+	}
+	t->gen++;   /* a thumbnail being drawn now is of the old page */
+}

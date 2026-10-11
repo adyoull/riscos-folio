@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test10 (10-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test11 (11-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -20,14 +20,17 @@ enum {
 	EV_CLOSE = 0x130,
 	EV_VIEW_SHOWN = 0x140, EV_DOCMENU_SHOWN, EV_EDIT_SHOWN,
 	EV_COPY = 0x150, EV_SELECT_ALL, EV_CLEAR_SEL, EV_DEFINE, EV_FIND, EV_CONTENTS,
+	EV_HIGHLIGHT = 0x160, EV_UNDERLINE, EV_STRIKE, EV_NOTE, EV_UNDO, EV_REDO, EV_DEL_ANNOT, EV_SAVE,
 	EV_DICT_COPY = 0x200,  /* the pop-up's, not a window's */
-	EV_FIND_NEXT = 0x210, EV_FIND_PREV, EV_FIND_CANCEL
+	EV_FIND_NEXT = 0x210, EV_FIND_PREV, EV_FIND_CANCEL,
+	EV_NOTE_OK = 0x220, EV_NOTE_DELETE, EV_NOTE_CANCEL
 };
 
 /* View menu entries (component ids). */
-enum { EDIT_COPY = 1, EDIT_SELECT_ALL, EDIT_CLEAR };
+enum { EDIT_COPY = 1, EDIT_SELECT_ALL, EDIT_CLEAR, EDIT_UNDO, EDIT_REDO, EDIT_HILITE,
+	EDIT_ULINE, EDIT_STRIKE, EDIT_NOTE, EDIT_DELANNOT };
 /* Document menu entries. */
-enum { DOC_FIND = 5, DOC_DEFINE = 4 };
+enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6 };
 /* Navigate menu entries. */
 enum { NAV_CONTENTS = 5 };
 enum { VIEW_DARK = 1, VIEW_SEPIA, VIEW_ZOOM_IN, VIEW_ZOOM_OUT, VIEW_ZOOM_100, VIEW_FIT_WIDTH,
@@ -82,6 +85,11 @@ void docwin_go_to(docwin *w, int page);
 void docwin_show_hit(docwin *w, int page, const folio_quad *q, int n);
 
 docwin *docwin_from_toolbar(ObjectId id);
+const char *docwin_path(docwin *w);
+int docwin_save(docwin *w, const char *path);            /* 0 if saved */
+void docwin_note_done(docwin *w, int page, int index, folio_point at, const char *utf8);
+void docwin_delete_annot(docwin *w, int page, int index);
+docwin *docwin_first_modified(void);
 void docwin_toolbar_click(docwin *w, int component, int *block);
 int docwin_toolbar_key(docwin *w, int key);   /* 1 if taken */
 
@@ -92,7 +100,7 @@ void toolbar_attach(ObjectId win, ObjectId tb, int on);
 void toolbar_fit(ObjectId tb, int parent_wimp);
 void docwin_open_request(docwin *w, int *block);
 void toolbar_update(ObjectId tb, int page, int pages, int exact, float zoom,
-		int dark, int thumbs, int has_selection);
+		int dark, int thumbs, int has_selection, int can_annotate);
 int toolbar_event_for(int component);
 int toolbar_typed_page(ObjectId tb);
 int toolbar_is_page_field(int component);
@@ -115,6 +123,7 @@ void thumbs_layout(thumbs *t, float page_w, float page_h, int pages, folio_page_
 void thumbs_set_current(thumbs *t, int page, int scroll);
 int thumbs_wanted(thumbs *t, int busy_page, int *px_w, int *px_h, float *ppp, int *gen);
 void thumbs_take(thumbs *t, int page, int gen, int *area, int ok);
+void thumbs_forget(thumbs *t, int page);   /* -1: every page */
 void thumbs_redraw(thumbs *t, int *block);
 void thumbs_click(thumbs *t, int *block);
 void thumbs_open_request(thumbs *t, int *block);
@@ -146,6 +155,15 @@ void dict_quit(void);
 void clip_set_text(const char *utf8);
 /* UTF-8 to the desktop's alphabet (Latin-1 unless it's UTF-8); malloc'd. */
 char *app_desktop_text(const char *utf8);
+/* The desktop's alphabet to UTF-8; malloc'd. */
+char *app_utf8_text(const char *desktop);
+
+/* annotui.c: the Note, Save and Discard/Cancel/Save boxes */
+void note_open(docwin *w, int page, int index, folio_point at, const char *text);
+void save_open(docwin *w, int close_after);
+void dcs_open(docwin *w);
+int annotui_event(int *block);           /* 1 if it was theirs */
+void annotui_forget(docwin *w);
 int clip_message(int *block);
 
 #endif
