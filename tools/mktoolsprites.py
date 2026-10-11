@@ -153,11 +153,20 @@ def note():
         d.line([(u(6), u(y)), (u(18), u(y))], fill=INK, width=S)
     return im
 
+def twopages():
+    im, d = canvas()
+    page(d, u(1.5), u(4), u(11.5), u(20))
+    page(d, u(12.5), u(4), u(22.5), u(20))
+    for y in (8, 11, 14):
+        d.line([(u(4), u(y)), (u(9), u(y))], fill=ACC, width=S)
+        d.line([(u(15), u(y)), (u(20), u(y))], fill=ACC, width=S)
+    return im
+
 
 ICONS = [
     ('tb_thumbs', thumbs), ('tb_contents', contents), ('tb_prev', lambda: arrow(True)),
     ('tb_next', lambda: arrow(False)), ('tb_zoomout', lambda: zoom(False)),
-    ('tb_zoomin', lambda: zoom(True)), ('tb_fitw', fitwidth), ('tb_dark', dark),
+    ('tb_zoomin', lambda: zoom(True)), ('tb_fitw', fitwidth), ('tb_twoup', twopages), ('tb_dark', dark),
     ('tb_find', find), ('tb_define', define), ('tb_hilite', highlight),
     ('tb_uline', underline), ('tb_strike', strikeout), ('tb_note', note),
 ]

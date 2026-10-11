@@ -5,7 +5,7 @@ It's built on [MuPDF](https://mupdf.com) with a native front end that follows
 the RISC OS Style Guide, and takes its ideas for markup and reading from
 Flexcil. "Folio" is a working name.
 
-Status: **test builds** (0.0.1-test15). It's used day to day on a Raspberry Pi
+Status: **test builds** (0.0.1-test16). It's used day to day on a Raspberry Pi
 running RISC OS 5, but expect rough edges. The design is in
 [`docs/DESIGN.md`](docs/DESIGN.md).
 
@@ -14,9 +14,10 @@ running RISC OS 5, but expect rough edges. The design is in
 - **Reading:** pages for continuous scrolling, drawn in a background thread,
   so the desktop never waits; ebooks laid out and counted in the background;
   Folio reopens each document where you left it.
-- **View:** zoom, fit width, **dark page** (black page, light text, pictures
-  kept) and sepia, each with a toolbar button; a **thumbnail drawer** down
-  the left of the window.
+- **View:** zoom, fit width, **two pages side by side** (with the first
+  page alone, as in a book, or not), **dark page** (black page, light text,
+  pictures kept) and sepia, each with a toolbar button; a **thumbnail
+  drawer** down the left of the window.
 - **Navigating:** a **Contents** window, **Find** (F4), page keys, a page
   number to type into on the toolbar.
 - **Text:** select by dragging, double-click a word, Copy to the global
@@ -26,6 +27,8 @@ running RISC OS 5, but expect rough edges. The design is in
 - **Annotations (PDFs):** highlight, underline, strike out and notes, with
   undo and redo (Ctrl-Z, Ctrl-Y), saved into the PDF (incrementally, so
   signatures survive); Discard/Cancel/Save on closing with changes.
+- **Passwords (PDFs):** Folio asks for the password of a protected PDF,
+  and can put a password on a PDF (AES-256) or take one off.
 - **Bookshelf:** Select on the icon bar icon. Covers, progress, sorting by
   recent, title or author; drag books to it, or drag directories to have
   Folio watch them for new documents when it starts and on Refresh.
@@ -68,10 +71,10 @@ Needs: the riscos-crossdev toolchain and a riscos-crossdev checkout,
 
 | Directory | What's there |
 |---|---|
-| `core/` | MuPDF wrapped for the reader, with no Wimp code: documents, layout and counting, reading positions, drawing tiles into 32bpp sprite pixels (normal, dark, sepia), text selection and find, links, annotations and saving, the dictionary's URLs and HTML |
-| `wimp/` | The RISC OS front end: a Toolbox application through a thin layer of our own (`tbx.h`, objects from in-memory templates), the page worker thread, document windows, toolbar, thumbnail drawer, Contents, Find, the dictionary pop-up, annotation dialogues and the Bookshelf |
+| `core/` | MuPDF wrapped for the reader, with no Wimp code: documents, layout and counting, reading positions, drawing tiles into 32bpp sprite pixels (normal, dark, sepia), text selection and find, links, annotations and saving, passwords, the dictionary's URLs and HTML |
+| `wimp/` | The RISC OS front end: a Toolbox application through a thin layer of our own (`tbx.h`, objects from in-memory templates), the page worker thread, document windows, toolbar, thumbnail drawer, Contents, Find, the dictionary pop-up, annotation and password dialogues and the Bookshelf |
 | `app/!Folio` | The application's files |
-| `tests/` | Tests for the core, the worker, the dictionary, Find, annotations and the Bookshelf's data, run under qemu |
+| `tests/` | Tests for the core, the worker, the dictionary, Find, annotations, passwords and the Bookshelf's data, run under qemu |
 | `tools/` | The icon and toolbar sprites, drawn by script |
 | `mupdf/` | MuPDF's build script and patches |
 | `third/cjson` | cJSON 1.7.18 (MIT), for the dictionary's JSON |

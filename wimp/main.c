@@ -116,9 +116,11 @@ static void create_objects(void)
 	entry(&vm, 3, VIEW_ZOOM_OUT, "Zoom out", 0, EV_ZOOM_OUT, "Click to make the pages smaller.");
 	entry(&vm, 4, VIEW_ZOOM_100, "Actual size", 0, EV_ZOOM_100, "Click to show the pages at their real size.");
 	entry(&vm, 5, VIEW_FIT_WIDTH, "Fit width", MENU_DOTTED, EV_FIT_WIDTH, "Click to fit the pages to the window's width.");
-	entry(&vm, 6, VIEW_TOOLBAR, "Toolbar", 0, EV_TOOLBAR, "Click to show or hide the toolbar.");
-	entry(&vm, 7, VIEW_THUMBS, "Thumbnails", 0, EV_THUMBS, "Click to show or hide the page thumbnails at the left.");
-	app.view_menu = make_menu(&vm, "View", 8, EV_VIEW_SHOWN);
+	entry(&vm, 6, VIEW_TWO_PAGES, "Two pages", 0, EV_TWO_PAGES, "Click to show the pages two side by side, or one at a time.");
+	entry(&vm, 7, VIEW_COVER_ALONE, "First page alone", MENU_DOTTED, EV_COVER_ALONE, "Click to show the first page on its own, so facing pages pair up as in a book.");
+	entry(&vm, 8, VIEW_TOOLBAR, "Toolbar", 0, EV_TOOLBAR, "Click to show or hide the toolbar.");
+	entry(&vm, 9, VIEW_THUMBS, "Thumbnails", 0, EV_THUMBS, "Click to show or hide the page thumbnails at the left.");
+	app.view_menu = make_menu(&vm, "View", 10, EV_VIEW_SHOWN);
 
 	entry(&nm, 0, 1, "Next page    PageDown", 0, EV_NEXT, "Click to go to the next page.");
 	entry(&nm, 1, 2, "Previous page  PageUp", 0, EV_PREV, "Click to go to the previous page.");
@@ -140,16 +142,17 @@ static void create_objects(void)
 	entry(&em, 9, EDIT_DELANNOT, "Delete annotation Del", 0, EV_DEL_ANNOT, "Click to delete the annotation you clicked on.");
 	app.edit_menu = make_menu(&em, "Edit", 10, EV_EDIT_SHOWN);
 
-	entry(&dm, 0, DOC_SAVE, "Save...        F3", MENU_DOTTED, EV_SAVE, "Click to save the document with its notes and markings (PDFs).");
-	entry(&dm, 1, 3, "Edit", MENU_SUBMENU, 0, "Move right for undo, copying, highlighting and notes.");
-	entry(&dm, 2, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
-	entry(&dm, 3, 2, "Navigate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right for moving through the document.");
+	entry(&dm, 0, DOC_SAVE, "Save...        F3", 0, EV_SAVE, "Click to save the document with its notes and markings (PDFs).");
+	entry(&dm, 1, DOC_PASSWORD, "Password...", MENU_DOTTED, EV_PASSWORD, "Click to put a password on the document, or take one off (PDFs).");
+	entry(&dm, 2, 3, "Edit", MENU_SUBMENU, 0, "Move right for undo, copying, highlighting and notes.");
+	entry(&dm, 3, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
+	entry(&dm, 4, 2, "Navigate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right for moving through the document.");
 	/* The context item (DESIGN §3.4): its text names the word when it's shown. */
-	entry(&dm, 4, DOC_FIND, "Find...        F4", 0, EV_FIND, "Click to find text in the document.");
-	entry(&dm, 5, DOC_DEFINE, "Define", MENU_FADED | MENU_DOTTED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
-	dm.e[5].max_text = 80;
-	entry(&dm, 6, DOC_SHELF, "On bookshelf", 0, EV_ADD_SHELF, "Click to put this document on the bookshelf, or take it off.");
-	app.doc_menu = make_menu(&dm, "Folio", 7, EV_DOCMENU_SHOWN);
+	entry(&dm, 5, DOC_FIND, "Find...        F4", 0, EV_FIND, "Click to find text in the document.");
+	entry(&dm, 6, DOC_DEFINE, "Define", MENU_FADED | MENU_DOTTED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
+	dm.e[6].max_text = 80;
+	entry(&dm, 7, DOC_SHELF, "On bookshelf", 0, EV_ADD_SHELF, "Click to put this document on the bookshelf, or take it off.");
+	app.doc_menu = make_menu(&dm, "Folio", 8, EV_DOCMENU_SHOWN);
 	check(menu_set_submenu(app.doc_menu, 3, app.edit_menu));
 	check(menu_set_submenu(app.doc_menu, 1, app.view_menu));
 	check(menu_set_submenu(app.doc_menu, 2, app.nav_menu));
@@ -247,7 +250,7 @@ static int toolbox_event(int *b)
 	app_log("event &%x: self &%x/%d parent &%x/%d ancestor &%x/%d", code,
 		app.idb.self_id, app.idb.self_component, app.idb.parent_id,
 		app.idb.parent_component, app.idb.ancestor_id, app.idb.ancestor_component);
-	if (annotui_event(b))
+	if (annotui_event(b) || passui_event(code))
 		return 0;
 	switch (code) {
 	case Toolbox_Error:

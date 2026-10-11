@@ -13,6 +13,7 @@
 struct folio_ctx {
 	fz_context *ctx;
 	char err[256];
+	int code;                   /* FOLIO_ERR_* for the last folio_open */
 };
 
 typedef struct {
@@ -48,6 +49,14 @@ struct folio_doc {
 	int outline_n;
 	char *outline_strings;
 
+	/* Security (PDFs; security.c). */
+	char *path;                 /* the file opened, for checking an owner password */
+	int encrypted;              /* the file is encrypted */
+	int needs_pw;               /* opening it needs a password */
+	int owner;                  /* opened with full rights */
+	int pw_change;              /* FOLIO_PW_*: applied by the next folio_save_pdf */
+	char new_pw[128];           /* UTF-8, for FOLIO_PW_SET */
+
 	fz_cookie cookie;           /* folio_abort() sets cookie.abort */
 	folio_cpage cache[FOLIO_PAGE_CACHE];
 	unsigned clock;
@@ -63,6 +72,10 @@ void folio_drop_cpage(folio_doc *doc, folio_cpage *cp);
 void folio_forget_pages(folio_doc *doc);
 /* PDFs: turn on the undo journal (annot.c). */
 void folio_annot_init(folio_doc *doc);
+/* Security state after opening (security.c); pw is the password used. */
+void folio_security_init(folio_doc *doc, const char *pw);
+/* Sets up a full save that applies a password change (security.c). */
+void folio_security_write_options(folio_doc *doc, pdf_write_options *opts);
 /* Throws if folio_abort() was called during the work just done. */
 void folio_check_abort(folio_doc *doc);
 /* Start of a call that may load or draw pages: an earlier abort no longer applies. */

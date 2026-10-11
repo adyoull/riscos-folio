@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test15)
+Folio (test build 0.0.1-test16)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -24,6 +24,7 @@ The bookshelf
 Opening a document
   Drag a file to Folio's icon on the icon bar, or double-click a PDF while
   Folio is running. A document that is already open comes to the front.
+  If a PDF needs a password, Folio asks for it.
 
 In a document window
   Scroll as usual. Page Down / Page Up    next / previous page
@@ -31,21 +32,29 @@ In a document window
   Ctrl-N         dark page on and off     Ctrl-F2     close the window
   F4             Find
   Menu           View: Dark page, Sepia page, Zoom in, Zoom out,
-                 Actual size, Fit width. Navigate: the page moves above,
-                 and Contents. Find... and Define "word".
+                 Actual size, Fit width, Two pages. Navigate: the page
+                 moves above, and Contents. Find... and Define "word".
   Close with Adjust also opens the document's directory.
 
 The toolbar and thumbnails
   The toolbar along the top of each document window has, from the left:
   thumbnails on/off, Contents, previous page, the page number (type a
   number and press Return to go there), next page, zoom out, the scale,
-  zoom in, fit width, dark page, Find, Define, Highlight, Underline,
+  zoom in, fit width, two pages, dark page, Find, Define, Highlight, Underline,
   Strike out and Note. Rest the pointer on a button for a moment to see its
   name. View > Toolbar hides or shows it.
   The thumbnails drawer (View > Thumbnails, or the first toolbar button)
   shows small pages down the left of the window, which widens to make room
   for it (and narrows again when it closes); the page you're reading
   is framed in blue, and a click on a thumbnail goes to that page.
+
+Two pages side by side
+  View > Two pages (or the two-pages toolbar button) shows the pages in
+  pairs; the window widens to make room, and narrows again when you go
+  back to one. Page Down and Page Up then move a pair at a time. With
+  First page alone ticked (as it is to start with), the first page sits
+  on its own on the right and the rest pair up as in a printed book; untick
+  it for pages 1 and 2 side by side.
 
 Notes and markings (PDFs)
   Select some text, then click Highlight, Underline or Strike out on the
@@ -56,6 +65,18 @@ Notes and markings (PDFs)
   F3 (or Save... on the menu) saves the PDF with its notes and markings;
   the window's title shows * while there are changes to save, and
   closing the window or quitting asks first. Ebooks can't be marked yet.
+
+Passwords (PDFs)
+  Password... on a PDF's menu shows whether it has a password, and puts
+  one on or takes it off. Type the new password twice and click Set
+  password; the Save box then opens, and the password is on the file once
+  it's saved (Folio writes the whole file again, encrypted with AES-256).
+  Remove password saves it without one. A PDF that anyone can open but
+  that has an owner password needs that password first.
+  Don't forget the password: without it, nobody can open the file.
+  Setting a password needs the CryptRandom module, which Folio loads from
+  !System; saving with a new password, or without one, also undoes any
+  digital signatures in the file.
 
 Contents and Find
   Navigate > Contents... lists the document's chapters and sections, with

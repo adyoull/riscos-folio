@@ -246,7 +246,7 @@ void dcs_open(docwin *w)
 	if (!ui.dcs) {
 		_kernel_oserror *e;
 		memset(&t, 0, sizeof t);
-		t.message = "This document has unsaved notes and markings.";
+		t.message = "This document has unsaved changes.";
 		t.max_message = sizeof message;
 		e = tbx_create(Class_DCS, 100, 0, &t, sizeof t, &ui.dcs);
 		if (e) {
@@ -256,7 +256,7 @@ void dcs_open(docwin *w)
 		}
 	}
 	ui.dcs_w = w;
-	snprintf(message, sizeof message, "'%s' has unsaved notes and markings.", docwin_title(w));
+	snprintf(message, sizeof message, "'%s' has unsaved changes.", docwin_title(w));
 	tbx_method(ui.dcs, 1 /* DCS_SetMessage */, (int)message, 0, 0);
 	tbx_show(ui.dcs, 0, 0, NULL, 0, -1);
 }

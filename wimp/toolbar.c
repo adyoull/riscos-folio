@@ -5,7 +5,7 @@
  * things also on the menus (Style Guide: a toolbar is a short cut, never
  * the only way), a page number to type into, and the zoom.
  *
- *   [Thumbnails][Contents] | [Up][page] of N [Down] | [-] 100% [+] [Fit] |
+ *   [Thumbnails][Contents] | [Up][page] of N [Down] | [-] 100% [+] [Fit] [Two] |
  *   [Dark] | [Find][Define] | [Highlight][Underline][Strike][Note]
  *
  * The annotation tools are shaded until annotations are written. Button
@@ -18,11 +18,11 @@
 
 #define TB_H     76
 #define BTN      60
-#define TB_W     1340
+#define TB_W     1420
 
 enum {
 	T_THUMBS = 1, T_CONTENTS, T_PREV, T_PAGE, T_OF, T_NEXT, T_ZOOMOUT, T_ZOOM, T_ZOOMIN,
-	T_FITW, T_DARK, T_FIND, T_DEFINE, T_HILITE, T_ULINE, T_STRIKE, T_NOTE, T_COUNT
+	T_FITW, T_TWOUP, T_DARK, T_FIND, T_DEFINE, T_HILITE, T_ULINE, T_STRIKE, T_NOTE, T_COUNT
 };
 
 typedef struct {
@@ -60,7 +60,7 @@ static struct {
 	display_gadget of;
 	button_gadget next, zoomout;
 	display_gadget zoom;
-	button_gadget zoomin, fitw, dark, find, define, hilite, uline, strike, note;
+	button_gadget zoomin, fitw, twoup, dark, find, define, hilite, uline, strike, note;
 } g;
 
 static void hdr(gadget_hdr *h, int type, int size, int id, int x0, int x1, const char *help)
@@ -93,7 +93,7 @@ static const char *const tips[T_COUNT] = {
 	NULL,
 	"Thumbnails", "Contents", "Previous page (Page Up)",
 	"Page number: type one and press Return", NULL, "Next page (Page Down)",
-	"Zoom out", "Scale", "Zoom in", "Fit width", "Dark page (Ctrl-N)", "Find (F4)",
+	"Zoom out", "Scale", "Zoom in", "Fit width", "Two pages side by side", "Dark page (Ctrl-N)", "Find (F4)",
 	"Define the selected word", "Highlight the selection",
 	"Underline the selection", "Strike out the selection", "Add a note"
 };
@@ -131,7 +131,8 @@ static void build_template(void)
 	g.zoom.max_text = 8;
 	x += 112 + 4;
 	button(&g.zoomin, T_ZOOMIN, x, "R5;Stb_zoomin", "Click to make the pages bigger."); x += BTN + 4;
-	button(&g.fitw, T_FITW, x, "R5;Stb_fitw", "Click to fit the pages to the window's width."); x += BTN + 20;
+	button(&g.fitw, T_FITW, x, "R5;Stb_fitw", "Click to fit the pages to the window's width."); x += BTN + 4;
+	button(&g.twoup, T_TWOUP, x, "R5;Stb_twoup", "Click to show two pages side by side; click again for one."); x += BTN + 20;
 	button(&g.dark, T_DARK, x, "R5;Stb_dark", "Click for a black page with light text (^N); click again for white."); x += BTN + 20;
 	button(&g.find, T_FIND, x, "R5;Stb_find", "Click to find text (F4)."); x += BTN + 4;
 	button(&g.define, T_DEFINE, x, "R5;Stb_define", "Click to see what the selected word means."); x += BTN + 20;
@@ -142,7 +143,8 @@ static void build_template(void)
 	gadgets[T_THUMBS] = &g.thumbs.h; gadgets[T_CONTENTS] = &g.contents.h;
 	gadgets[T_PREV] = &g.prev.h; gadgets[T_PAGE] = &g.page.h; gadgets[T_OF] = &g.of.h;
 	gadgets[T_NEXT] = &g.next.h; gadgets[T_ZOOMOUT] = &g.zoomout.h; gadgets[T_ZOOM] = &g.zoom.h;
-	gadgets[T_ZOOMIN] = &g.zoomin.h; gadgets[T_FITW] = &g.fitw.h; gadgets[T_DARK] = &g.dark.h;
+	gadgets[T_ZOOMIN] = &g.zoomin.h; gadgets[T_FITW] = &g.fitw.h; gadgets[T_TWOUP] = &g.twoup.h;
+	gadgets[T_DARK] = &g.dark.h;
 	gadgets[T_FIND] = &g.find.h; gadgets[T_DEFINE] = &g.define.h; gadgets[T_HILITE] = &g.hilite.h;
 	gadgets[T_ULINE] = &g.uline.h; gadgets[T_STRIKE] = &g.strike.h; gadgets[T_NOTE] = &g.note.h;
 	/* Shaded until there's something to mark up (toolbar_update). */
@@ -225,7 +227,7 @@ static void set_selected(ObjectId tb, int comp, int on)
 typedef struct {
 	ObjectId tb;
 	char page[24], of[24], zoom[24];
-	int dark, thumbs, define, markup, note;
+	int dark, thumbs, two, define, markup, note;
 } shown_state;
 
 static shown_state shown[16];
@@ -242,7 +244,7 @@ static shown_state *state_for(ObjectId tb)
 	i = free_i >= 0 ? free_i : 0;    /* (more than 16 windows: share, and set more often) */
 	memset(&shown[i], 0, sizeof shown[i]);
 	shown[i].tb = tb;
-	shown[i].dark = shown[i].thumbs = shown[i].define = shown[i].markup = shown[i].note = -1;
+	shown[i].dark = shown[i].thumbs = shown[i].two = shown[i].define = shown[i].markup = shown[i].note = -1;
 	return &shown[i];
 }
 
@@ -271,7 +273,7 @@ static void flags_if(ObjectId tb, int comp, int *was, int shaded)
 }
 
 void toolbar_update(ObjectId tb, int page, int pages, int exact, float zoom,
-		int dark, int thumbs, int has_selection, int can_annotate)
+		int dark, int thumbs, int two, int has_selection, int can_annotate)
 {
 	char s[24];
 	int caret[6], wh = 0;
@@ -299,6 +301,10 @@ void toolbar_update(ObjectId tb, int page, int pages, int exact, float zoom,
 		st->thumbs = thumbs;
 		set_selected(tb, T_THUMBS, thumbs);
 	}
+	if (st->two != two) {
+		st->two = two;
+		set_selected(tb, T_TWOUP, two);
+	}
 	/* Markup needs a selection in a PDF; a note just a PDF. */
 	flags_if(tb, T_DEFINE, &st->define, !has_selection);
 	if (st->markup != (can_annotate && has_selection)) {
@@ -322,6 +328,7 @@ int toolbar_event_for(int component)
 	case T_ZOOMOUT: return EV_ZOOM_OUT;
 	case T_ZOOMIN: return EV_ZOOM_IN;
 	case T_FITW: return EV_FIT_WIDTH;
+	case T_TWOUP: return EV_TWO_PAGES;
 	case T_DARK: return EV_DARK;
 	case T_FIND: return EV_FIND;
 	case T_DEFINE: return EV_DEFINE;

@@ -393,7 +393,7 @@ int folio_is_modified(folio_doc *doc)
 		r = pdf_has_unsaved_changes(doc->ctx, pdf);
 	fz_catch(doc->ctx)
 		r = 0;
-	return r;
+	return r || doc->pw_change != FOLIO_PW_KEEP;
 }
 
 /* Copies file from to file to (both closed when this returns). */
@@ -434,12 +434,17 @@ int folio_save_pdf(folio_doc *doc, const char *original, const char *path)
 	}
 	opts = pdf_default_write_options;
 	fz_try(ctx) {
-		/* Incremental (the original bytes, then the changes) keeps
-		 * signatures and is quick. MuPDF appends to path, so path starts as
-		 * a copy of the original. */
-		opts.do_incremental = original && pdf_can_be_saved_incrementally(ctx, pdf);
-		if (opts.do_incremental && copy_file(original, path))
-			opts.do_incremental = 0;
+		if (doc->pw_change != FOLIO_PW_KEEP) {
+			/* A password on or off: a full save, encrypted or not. */
+			folio_security_write_options(doc, &opts);
+		} else {
+			/* Incremental (the original bytes, then the changes) keeps
+			 * signatures and is quick. MuPDF appends to path, so path starts
+			 * as a copy of the original. */
+			opts.do_incremental = original && pdf_can_be_saved_incrementally(ctx, pdf);
+			if (opts.do_incremental && copy_file(original, path))
+				opts.do_incremental = 0;
+		}
 		pdf_save_document(ctx, pdf, path, &opts);
 	}
 	fz_catch(ctx) {

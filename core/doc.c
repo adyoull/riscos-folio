@@ -51,6 +51,11 @@ const char *folio_error(folio_ctx *fc)
 	return fc->err;
 }
 
+int folio_error_code(folio_ctx *fc)
+{
+	return fc->code;
+}
+
 /* ---- Page cache ------------------------------------------------------- */
 
 void folio_drop_cpage(folio_doc *doc, folio_cpage *cp)
@@ -235,8 +240,15 @@ static void reset_counts(folio_doc *doc)
 
 folio_doc *folio_open(folio_ctx *fc, const char *path, const char *accel_path)
 {
+	return folio_open_password(fc, path, accel_path, NULL);
+}
+
+folio_doc *folio_open_password(folio_ctx *fc, const char *path, const char *accel_path,
+		const char *password)
+{
 	fz_context *ctx = fc->ctx;
 	folio_doc *doc = calloc(1, sizeof *doc);
+	fc->code = FOLIO_ERR_OTHER;
 	if (!doc) {
 		snprintf(fc->err, sizeof fc->err, "out of memory");
 		return NULL;
@@ -249,14 +261,25 @@ folio_doc *folio_open(folio_ctx *fc, const char *path, const char *accel_path)
 			doc->doc = fz_open_accelerated_document(ctx, path, accel_path);
 		else
 			doc->doc = fz_open_document(ctx, path);
-		if (fz_needs_password(ctx, doc->doc))
-			fz_throw(ctx, FZ_ERROR_ARGUMENT, "the document is password protected");
+		if (fz_needs_password(ctx, doc->doc)) {
+			doc->needs_pw = 1;
+			if (!password || !*password) {
+				fc->code = FOLIO_ERR_PASSWORD;
+				fz_throw(ctx, FZ_ERROR_ARGUMENT, "the document needs a password");
+			}
+			if (!fz_authenticate_password(ctx, doc->doc, password)) {
+				fc->code = FOLIO_ERR_WRONG_PASSWORD;
+				fz_throw(ctx, FZ_ERROR_ARGUMENT, "the password isn't right");
+			}
+		}
+		doc->path = fz_strdup(ctx, path);
 		doc->reflow = fz_is_document_reflowable(ctx, doc->doc);
 		doc->format = meta(ctx, doc->doc, FZ_META_FORMAT);
 		doc->title = meta(ctx, doc->doc, FZ_META_INFO_TITLE);
 		doc->author = meta(ctx, doc->doc, FZ_META_INFO_AUTHOR);
 		if (pdf_specifics(ctx, doc->doc)) {
 			doc->lang = pdf_language(ctx, doc->doc);
+			folio_security_init(doc, password);
 			folio_annot_init(doc);
 		}
 		else if (!strncmp(doc->format, "EPUB", 4) || !strncmp(doc->format, "epub", 4))
@@ -368,7 +391,9 @@ void folio_close(folio_doc *doc)
 	fz_free(ctx, doc->title);
 	fz_free(ctx, doc->author);
 	fz_free(ctx, doc->lang);
+	fz_free(ctx, doc->path);
 	fz_drop_document(ctx, doc->doc);
+	memset(doc->new_pw, 0, sizeof doc->new_pw);
 	free(doc);
 }
 

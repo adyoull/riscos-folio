@@ -9,35 +9,36 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test15 (11-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test16 (11-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
 	EV_QUIT = 0x100, EV_HELP, EV_BOOKSHELF,
 	EV_DARK = 0x110, EV_SEPIA, EV_ZOOM_IN, EV_ZOOM_OUT, EV_ZOOM_100, EV_FIT_WIDTH,
-	EV_TOOLBAR, EV_THUMBS,
+	EV_TOOLBAR, EV_THUMBS, EV_TWO_PAGES, EV_COVER_ALONE,
 	EV_NEXT = 0x120, EV_PREV, EV_FIRST, EV_LAST, EV_LINE_DOWN, EV_LINE_UP,
 	EV_CLOSE = 0x130,
 	EV_VIEW_SHOWN = 0x140, EV_DOCMENU_SHOWN, EV_EDIT_SHOWN,
 	EV_COPY = 0x150, EV_SELECT_ALL, EV_CLEAR_SEL, EV_DEFINE, EV_FIND, EV_CONTENTS,
 	EV_HIGHLIGHT = 0x160, EV_UNDERLINE, EV_STRIKE, EV_NOTE, EV_UNDO, EV_REDO, EV_DEL_ANNOT, EV_SAVE,
-	EV_ADD_SHELF,
+	EV_ADD_SHELF, EV_PASSWORD,
 	EV_DICT_COPY = 0x200,  /* the pop-up's, not a window's */
 	EV_FIND_NEXT = 0x210, EV_FIND_PREV, EV_FIND_CANCEL,
 	EV_NOTE_OK = 0x220, EV_NOTE_DELETE, EV_NOTE_CANCEL,
 	EV_SH_OPEN = 0x230, EV_SH_REMOVE, EV_SH_FILER, EV_SH_RECENT, EV_SH_TITLE, EV_SH_AUTHOR,
-	EV_SH_FOLDERS, EV_SH_REFRESH, EV_SH_MISSING
+	EV_SH_FOLDERS, EV_SH_REFRESH, EV_SH_MISSING,
+	EV_PWOPEN_OK = 0x240, EV_PWOPEN_CANCEL, EV_PWSET, EV_PWREMOVE, EV_PWCANCEL
 };
 
 /* View menu entries (component ids). */
 enum { EDIT_COPY = 1, EDIT_SELECT_ALL, EDIT_CLEAR, EDIT_UNDO, EDIT_REDO, EDIT_HILITE,
 	EDIT_ULINE, EDIT_STRIKE, EDIT_NOTE, EDIT_DELANNOT };
 /* Document menu entries. */
-enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6, DOC_SHELF = 7 };
+enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6, DOC_SHELF = 7, DOC_PASSWORD = 8 };
 /* Navigate menu entries. */
 enum { NAV_CONTENTS = 5 };
 enum { VIEW_DARK = 1, VIEW_SEPIA, VIEW_ZOOM_IN, VIEW_ZOOM_OUT, VIEW_ZOOM_100, VIEW_FIT_WIDTH,
-	VIEW_TOOLBAR, VIEW_THUMBS };
+	VIEW_TOOLBAR, VIEW_THUMBS, VIEW_TWO_PAGES, VIEW_COVER_ALONE };
 
 typedef struct {
 	tbx_idblock idb;
@@ -61,6 +62,12 @@ void app_read_mode(void);
 /* docwin.c */
 typedef struct docwin docwin;
 docwin *docwin_open(const char *path);
+/* The same with a password (UTF-8; NULL for none). If the document needs
+ * one, the password box asks for it and opens it (returning NULL now). */
+docwin *docwin_open_password(const char *path, const char *password);
+int docwin_get_security(docwin *w, folio_security *s);
+int docwin_check_owner(docwin *w, const char *utf8);     /* 1, 0 or -1 */
+int docwin_set_password(docwin *w, const char *utf8);    /* NULL: remove; 0 or -1 */
 void docwin_close(docwin *w);
 void docwin_close_all(void);   /* on quit: saves reading positions */
 docwin *docwin_from_object(ObjectId id);
@@ -103,7 +110,7 @@ void toolbar_attach(ObjectId win, ObjectId tb, int on);
 void toolbar_fit(ObjectId tb, int parent_wimp);
 void docwin_open_request(docwin *w, int *block);
 void toolbar_update(ObjectId tb, int page, int pages, int exact, float zoom,
-		int dark, int thumbs, int has_selection, int can_annotate);
+		int dark, int thumbs, int two, int has_selection, int can_annotate);
 int toolbar_event_for(int component);
 void toolbar_forget(ObjectId tb);   /* it's being deleted */
 int toolbar_typed_page(ObjectId tb);
@@ -161,6 +168,12 @@ void clip_set_text(const char *utf8);
 char *app_desktop_text(const char *utf8);
 /* The desktop's alphabet to UTF-8; malloc'd. */
 char *app_utf8_text(const char *desktop);
+
+/* passui.c: the password boxes */
+void passui_ask_open(const char *path, int wrong);
+void passui_security(docwin *w);
+int passui_event(int code);              /* 1 if it was theirs */
+void passui_forget(docwin *w);
 
 /* bookshelf.c */
 #include "worker.h"

@@ -6,8 +6,10 @@
  * counted a chapter at a time; so the desktop never waits (Style Guide p103;
  * DESIGN.md §7). Pages ahead in the direction of reading are drawn early.
  *
- * Work area: x from 0 to ext_w, y from 0 down to -ext_h (OS units). Page i
- * occupies [left, left + slot_w] x [top(i) - slot_h, top(i)]. */
+ * Work area: x from 0 to ext_w, y from 0 down to -ext_h (OS units). Pages
+ * are laid out in rows of one, or two side by side (View > Two pages), the
+ * first page optionally alone on the right as in a book; page i occupies
+ * [left(i), left(i) + slot_w] x [top(i) - slot_h, top(i)]. */
 #include "app.h"
 #include "worker.h"
 #include "dict.h"
@@ -64,6 +66,12 @@ struct docwin {
 	int modified;             /* as last shown in the title */
 	int fit_polls;            /* polls left to keep checking the toolbar's width */
 	int grew_left, grew_right;  /* how much the window was widened for the drawer */
+	int cols;                 /* pages side by side: 1 or 2 */
+	int cover;                /* two pages: the first one alone, on the right */
+	int grew_two;             /* how much the window was widened for two pages */
+	/* PDF passwords: the one it was opened with (UTF-8), for opening it again
+	 * after saving, and a new one waiting to be saved. */
+	char password[128], new_password[128];
 };
 
 typedef struct {
@@ -90,14 +98,45 @@ static float px_per_pt(const docwin *w)
 	return w->zoom * 2.5f / (float)(1 << app.xeig);
 }
 
-static int page_top(const docwin *w, int i)
+/* Empty places before page 0 in the first row (1 when the first page is
+ * alone on the right). */
+static int lead(const docwin *w)
 {
-	return -(w->top + GAP + i * (w->slot_h + GAP));
+	return w->cols == 2 && w->cover ? 1 : 0;
 }
 
-static int page_left(const docwin *w)
+static int row_of(const docwin *w, int i)
 {
-	return w->left + (w->ext_w - w->left - w->slot_w) / 2;
+	return (i + lead(w)) / w->cols;
+}
+
+static int rows(const docwin *w)
+{
+	return (w->pages + lead(w) + w->cols - 1) / w->cols;
+}
+
+/* The first and last pages in row r. */
+static int first_in_row(const docwin *w, int r)
+{
+	int i = r * w->cols - lead(w);
+	return i < 0 ? 0 : i;
+}
+
+static int last_in_row(const docwin *w, int r)
+{
+	int i = (r + 1) * w->cols - 1 - lead(w);
+	return i >= w->pages ? w->pages - 1 : i;
+}
+
+static int page_top(const docwin *w, int i)
+{
+	return -(w->top + GAP + row_of(w, i) * (w->slot_h + GAP));
+}
+
+static int page_left(const docwin *w, int i)
+{
+	int spread = w->cols * w->slot_w + (w->cols - 1) * GAP;
+	return w->left + (w->ext_w - w->left - spread) / 2 + ((i + lead(w)) % w->cols) * (w->slot_w + GAP);
 }
 
 static const char *leafname(const char *path)
@@ -326,9 +365,8 @@ static void take_result(render_job *r)
 	c->bytes = r->bytes;
 	cache_bytes += r->bytes;
 	{
-		int y1 = page_top(w, r->page);
-		_swix(Wimp_ForceRedraw, _INR(0, 4), w->wimp, page_left(w), y1 - w->slot_h,
-			page_left(w) + w->slot_w, y1);
+		int y1 = page_top(w, r->page), x0 = page_left(w, r->page);
+		_swix(Wimp_ForceRedraw, _INR(0, 4), w->wimp, x0, y1 - w->slot_h, x0 + w->slot_w, y1);
 	}
 }
 
@@ -341,7 +379,7 @@ static void set_extent(docwin *w)
 	w->pages = folio_page_count(w->doc, &exact);
 	if (w->pages < 1)
 		w->pages = 1;
-	w->ext_h = w->top + GAP + w->pages * (w->slot_h + GAP);
+	w->ext_h = w->top + GAP + rows(w) * (w->slot_h + GAP);
 	thumbs_layout(w->thumbs, w->page.x1, w->page.y1, w->pages, w->mode);
 	box[0] = 0;
 	box[1] = -w->ext_h;
@@ -359,7 +397,7 @@ static void layout(docwin *w)
 	if (w->px_h < 1) w->px_h = 1;
 	w->slot_w = w->px_w << app.xeig;
 	w->slot_h = w->px_h << app.xeig;
-	w->ext_w = w->slot_w + 2 * GAP;
+	w->ext_w = w->cols * w->slot_w + (w->cols + 1) * GAP;
 	if (w->ext_w < 640)
 		w->ext_w = 640;
 	w->ext_w += w->left;
@@ -374,15 +412,24 @@ static void get_state(docwin *w, int *st)
 	_swix(Wimp_GetWindowState, _IN(1), st);
 }
 
-/* The page under the top of the visible area. */
+/* The page under the top of the visible area (the first in its row). */
 static int current_page(docwin *w)
 {
-	int st[9], i;
+	int st[9], r;
 	get_state(w, st);
-	i = (-st[6] - GAP / 2) / (w->slot_h + GAP);
-	if (i < 0) i = 0;
-	if (i >= w->pages) i = w->pages - 1;
-	return i;
+	r = (-st[6] - GAP / 2) / (w->slot_h + GAP);
+	if (r < 0) r = 0;
+	if (r >= rows(w)) r = rows(w) - 1;
+	return first_in_row(w, r);
+}
+
+/* The first page of the row after (or before) the one being read. */
+static int row_step(docwin *w, int by)
+{
+	int r = row_of(w, current_page(w)) + by;
+	if (r < 0) r = 0;
+	if (r >= rows(w)) r = rows(w) - 1;
+	return first_in_row(w, r);
 }
 
 static void scroll_to(docwin *w, int y)
@@ -590,7 +637,19 @@ static ObjectId create_window(docwin *w)
 
 /* ---- Open and close ---------------------------------------------------- */
 
+static void wipe(char *p, size_t n)
+{
+	volatile char *v = p;
+	while (n--)
+		*v++ = 0;
+}
+
 docwin *docwin_open(const char *path)
+{
+	return docwin_open_password(path, NULL);
+}
+
+docwin *docwin_open_password(const char *path, const char *password)
 {
 	docwin *w;
 	int st[9], vis_w, vis_h, x0, y1;
@@ -611,22 +670,34 @@ docwin *docwin_open(const char *path)
 	snprintf(w->title, sizeof w->title, "%s", leafname(path));
 	w->zoom = 1.0f;
 	w->mode = FOLIO_PAGE_NORMAL;
+	w->cols = 1;
+	w->cover = 1;
 
 	_swix(Hourglass_On, 0);
 	make_accel_path(w);
 	/* The core is the worker's while it draws: stop it, then take the lock. */
 	worker_stop_for(NULL);
 	core_lock();
-	w->doc = folio_open(app.fc, path, w->accel[0] ? w->accel : NULL);
+	w->doc = folio_open_password(app.fc, path, w->accel[0] ? w->accel : NULL, password);
 	if (!w->doc) {
 		char msg[300];
+		int code = folio_error_code(app.fc);
 		core_unlock();
 		_swix(Hourglass_Off, 0);
+		free(w);
+		if (code == FOLIO_ERR_PASSWORD || code == FOLIO_ERR_WRONG_PASSWORD) {
+			/* Ask, then come back here with what was typed. */
+			app_log("%s needs a password%s", leafname(path),
+				code == FOLIO_ERR_WRONG_PASSWORD ? " (the one given wasn't right)" : "");
+			passui_ask_open(path, code == FOLIO_ERR_WRONG_PASSWORD);
+			return NULL;
+		}
 		snprintf(msg, sizeof msg, "Folio can't open %s: %s", leafname(path), folio_error(app.fc));
 		tbx_report(msg);
-		free(w);
 		return NULL;
 	}
+	if (password)
+		snprintf(w->password, sizeof w->password, "%s", password);
 	w->reflow = folio_is_reflowable(w->doc);
 	w->can_annotate = folio_can_annotate(w->doc);
 	w->asel_page = -1;
@@ -702,6 +773,7 @@ void docwin_close(docwin *w)
 	find_forget(w);
 	contents_forget(w);
 	annotui_forget(w);
+	passui_forget(w);
 	worker_stop_for(w);
 	core_lock();
 	save_place(w);
@@ -724,6 +796,8 @@ void docwin_close(docwin *w)
 		toolbar_forget(w->toolbar);
 		tbx_delete(w->toolbar, 0);
 	}
+	wipe(w->password, sizeof w->password);
+	wipe(w->new_password, sizeof w->new_password);
 	free(w);
 }
 
@@ -795,12 +869,14 @@ void docwin_redraw(docwin *w, int *b)
 		int top_work = cy1 - oy, bottom_work = cy0 - oy;
 		int i0, i1, i;
 		fill_rect(gutter_colour(w), cx0, cy0, cx1, cy1);
-		i0 = (-top_work - w->top - GAP) / (w->slot_h + GAP);
+		i0 = (-top_work - w->top - GAP) / (w->slot_h + GAP);     /* rows */
 		i1 = (-bottom_work - w->top) / (w->slot_h + GAP);
 		if (i0 < 0) i0 = 0;
-		if (i1 >= w->pages) i1 = w->pages - 1;
+		if (i1 >= rows(w)) i1 = rows(w) - 1;
+		i0 = first_in_row(w, i0);                                 /* pages */
+		i1 = last_in_row(w, i1);
 		for (i = i0; i <= i1; i++) {
-			int x0 = ox + page_left(w), y1 = oy + page_top(w, i);
+			int x0 = ox + page_left(w, i), y1 = oy + page_top(w, i);
 			int x1 = x0 + w->slot_w, y0 = y1 - w->slot_h;
 			cache_entry *c;
 			if (x1 <= cx0 || x0 >= cx1 || y1 <= cy0 || y0 >= cy1)
@@ -873,13 +949,15 @@ static int wanted_page(docwin *w)
 	vis_h = st[4] - st[2];
 	top = st[6];
 	bottom = top - vis_h;
-	i0 = (-top - GAP) / (w->slot_h + GAP);     /* the toolbar covers w->top of it */
+	i0 = (-top - GAP) / (w->slot_h + GAP);     /* rows; the toolbar covers w->top of it */
 	i1 = (-bottom - w->top) / (w->slot_h + GAP);
 	if (i0 < 0) i0 = 0;
-	if (i1 >= w->pages) i1 = w->pages - 1;
-	for (i = i0; i <= i1 && n < 60; i++)
+	if (i1 >= rows(w)) i1 = rows(w) - 1;
+	i0 = first_in_row(w, i0);
+	i1 = last_in_row(w, i1);
+	for (i = i0; i <= i1 && n < 58; i++)
 		order[n++] = i;
-	for (k = 1; k <= 2; k++)
+	for (k = 1; k <= 2 * w->cols; k++)
 		order[n++] = w->dir >= 0 ? i1 + k : i0 - k;
 	for (k = 0; k < n; k++) {
 		folio_loc loc;
@@ -1023,10 +1101,27 @@ static int point_at(docwin *w, int sx, int sy, folio_point *pt, int clamp_page)
 	get_state(w, st);
 	wx = sx - (st[1] - st[5]);
 	wy = sy - (st[4] - st[6]);
-	i = clamp_page >= 0 ? clamp_page : (-wy - w->top - GAP / 2) / (w->slot_h + GAP);
+	if (clamp_page >= 0) {
+		i = clamp_page;
+	} else {
+		/* The row, then the page in it nearest across. */
+		int r = (-wy - w->top - GAP / 2) / (w->slot_h + GAP), j, best = -1;
+		if (-wy - w->top - GAP / 2 < 0 || r >= rows(w))
+			return -1;
+		i = -1;
+		for (j = first_in_row(w, r); j <= last_in_row(w, r); j++) {
+			int d = wx - (page_left(w, j) + w->slot_w / 2);
+			if (d < 0)
+				d = -d;
+			if (i < 0 || d < best) {
+				i = j;
+				best = d;
+			}
+		}
+	}
 	if (i < 0 || i >= w->pages)
 		return -1;
-	pt->x = (wx - page_left(w)) / os_per_pt;
+	pt->x = (wx - page_left(w, i)) / os_per_pt;
 	pt->y = (page_top(w, i) - wy) / os_per_pt;
 	if (clamp_page >= 0) {
 		/* Dragging off the page: hold to its edges. */
@@ -1042,9 +1137,8 @@ static int point_at(docwin *w, int sx, int sy, folio_point *pt, int clamp_page)
 
 static void redraw_page(docwin *w, int i)
 {
-	int y1 = page_top(w, i);
-	_swix(Wimp_ForceRedraw, _INR(0, 4), w->wimp, page_left(w), y1 - w->slot_h,
-		page_left(w) + w->slot_w, y1);
+	int y1 = page_top(w, i), x0 = page_left(w, i);
+	_swix(Wimp_ForceRedraw, _INR(0, 4), w->wimp, x0, y1 - w->slot_h, x0 + w->slot_w, y1);
 }
 
 /* Recompute the selection's quads (snapping to 'mode') and redraw. */
@@ -1118,13 +1212,13 @@ static void sel_eor_change(docwin *w, int page, const folio_quad *oldq, int n_ol
 	if ((n_old == 0 && n_new == 0) || !cache_find(w, page))
 		return;
 	b[0] = w->wimp;
-	b[1] = page_left(w);
+	b[1] = page_left(w, page);
 	b[2] = page_top(w, page) - w->slot_h;
-	b[3] = page_left(w) + w->slot_w;
+	b[3] = page_left(w, page) + w->slot_w;
 	b[4] = page_top(w, page);
 	_swix(Wimp_UpdateWindow, _IN(1) | _OUT(0), b, &more);
 	while (more) {
-		int x0 = b[1] - b[5] + page_left(w), y1 = b[4] - b[6] + page_top(w, page);
+		int x0 = b[1] - b[5] + page_left(w, page), y1 = b[4] - b[6] + page_top(w, page);
 		eor_quads(w, oldq, n_old, x0, y1);
 		eor_quads(w, newq, n_new, x0, y1);
 		_swix(Wimp_GetRectangle, _IN(1) | _OUT(0), b, &more);
@@ -1132,6 +1226,7 @@ static void sel_eor_change(docwin *w, int page, const folio_quad *oldq, int n_ol
 }
 
 static void asel_click(docwin *w, int *b);
+static void asel_clear(docwin *w);
 
 void docwin_click(docwin *w, int *b)
 {
@@ -1264,6 +1359,7 @@ static int define_word(docwin *w, char *word, size_t size)
 void docwin_doc_menu_shown(docwin *w)
 {
 	menu_set_fade(app.doc_menu, DOC_SAVE, !w->can_annotate);
+	menu_set_fade(app.doc_menu, DOC_PASSWORD, !w->can_annotate);
 	menu_set_tick(app.doc_menu, DOC_SHELF, bookshelf_has(w->path));
 	static char entry[100];
 	char word[64];
@@ -1292,7 +1388,7 @@ static void define(docwin *w)
 		float k = 2.5f * w->zoom;
 		float qx = q->ul.x < q->ll.x ? q->ul.x : q->ll.x;
 		float qy = q->ll.y > q->lr.y ? q->ll.y : q->lr.y;
-		x = (st[1] - st[5]) + page_left(w) + (int)(qx * k);
+		x = (st[1] - st[5]) + page_left(w, w->sel_page) + (int)(qx * k);
 		y = (st[4] - st[6]) + page_top(w, w->sel_page) - (int)(qy * k) - 8;
 	}
 	app_log("define '%s' (%s)", word, folio_language(w->doc));
@@ -1334,7 +1430,7 @@ static void tb_update(docwin *w)
 		exact = !w->counting;
 	}
 	toolbar_update(w->toolbar, current_page(w), w->pages, exact, w->zoom,
-		w->mode == FOLIO_PAGE_DARK, w->show_thumbs, w->sel && w->sel_n > 0, w->can_annotate);
+		w->mode == FOLIO_PAGE_DARK, w->show_thumbs, w->cols == 2, w->sel && w->sel_n > 0, w->can_annotate);
 }
 
 /* The toolbar and the drawer take room at the top and left of the work
@@ -1418,6 +1514,59 @@ static void toggle_thumbs(docwin *w)
 	tb_update(w);
 }
 
+/* One page or two side by side (and whether the first is alone). The page
+ * sprites stay; the window widens to show the second page (to the right,
+ * or left if the screen's edge is in the way), and narrows again after. */
+static void set_columns(docwin *w, int cols, int cover)
+{
+	int page = current_page(w), st[9], gen = w->gen;
+	if (cols == w->cols && cover == w->cover)
+		return;
+	sel_clear(w);         /* before the pages move: it's EORed where it was */
+	asel_clear(w);
+	if (cols != w->cols) {
+		get_state(w, st);
+		st[5] = 0;
+		if (cols == 2) {
+			/* Only as much as the two pages need beyond what's showing. */
+			int need = w->left + 2 * w->slot_w + 3 * GAP - (st[3] - st[1]);
+			int want = need < 0 ? 0 : need > w->slot_w + GAP ? w->slot_w + GAP : need;
+			int right = want, left = 0;
+			if (st[3] + right > app.screen_w) {
+				right = app.screen_w - st[3] > 0 ? app.screen_w - st[3] : 0;
+				left = want - right;
+				if (st[1] - left < 0)
+					left = st[1] > 0 ? st[1] : 0;
+			}
+			st[1] -= left;
+			st[3] += right;
+			w->grew_two = left + right;
+			w->cols = 2;
+			w->cover = cover;
+			layout(w);
+		} else {
+			if (w->grew_two && st[3] - st[1] - w->grew_two >= 400)
+				st[3] -= w->grew_two;
+			w->grew_two = 0;
+			w->cols = 1;
+			w->cover = cover;
+			layout(w);
+		}
+		st[7] = -1;
+		tbx_show(w->obj, 0, 1, st + 1, 0, -1);
+		w->fit_polls = 25;
+	} else {
+		w->cover = cover;
+		layout(w);
+	}
+	w->gen = gen;         /* same zoom: the page sprites are still good */
+	app_log("%s: %d page(s) across%s", w->title, w->cols, w->cols == 2 && w->cover ? ", first alone" : "");
+	go_to_page(w, page);
+	redraw_all(w);
+	w->want_render = 1;
+	tb_update(w);
+}
+
 static void set_mode(docwin *w, folio_page_mode m)
 {
 	w->mode = w->mode == m ? FOLIO_PAGE_NORMAL : m;
@@ -1441,10 +1590,13 @@ void docwin_event(docwin *w, int code)
 	case EV_ZOOM_100: set_zoom(w, 1.0f); break;
 	case EV_FIT_WIDTH:
 		get_state(w, st);
-		set_zoom(w, (float)(st[3] - st[1] - w->left - 2 * GAP) / (w->page.x1 * 2.5f));
+		set_zoom(w, (float)(st[3] - st[1] - w->left - (w->cols + 1) * GAP) /
+			(w->cols * w->page.x1 * 2.5f));
 		break;
-	case EV_NEXT: go_to_page(w, current_page(w) + 1); break;
-	case EV_PREV: go_to_page(w, current_page(w) - 1); break;
+	case EV_TWO_PAGES: set_columns(w, w->cols == 2 ? 1 : 2, w->cover); break;
+	case EV_COVER_ALONE: set_columns(w, w->cols, !w->cover); break;
+	case EV_NEXT: go_to_page(w, row_step(w, 1)); break;
+	case EV_PREV: go_to_page(w, row_step(w, -1)); break;
 	case EV_FIRST: go_to_page(w, 0); break;
 	case EV_LAST: go_to_page(w, w->pages - 1); break;
 	case EV_LINE_DOWN:
@@ -1477,6 +1629,10 @@ void docwin_event(docwin *w, int code)
 			save_open(w, 0);
 		break;
 	case EV_ADD_SHELF: bookshelf_toggle(w->path); break;
+	case EV_PASSWORD:
+		if (w->can_annotate)
+			passui_security(w);
+		break;
 	case EV_THUMBS: toggle_thumbs(w); break;
 	case EV_CONTENTS: contents_open(w); break;
 	}
@@ -1489,6 +1645,9 @@ void docwin_view_menu_shown(docwin *w)
 	menu_set_tick(app.view_menu, VIEW_ZOOM_100, w->zoom > 0.999f && w->zoom < 1.001f);
 	menu_set_tick(app.view_menu, VIEW_TOOLBAR, w->show_toolbar);
 	menu_set_tick(app.view_menu, VIEW_THUMBS, w->show_thumbs);
+	menu_set_tick(app.view_menu, VIEW_TWO_PAGES, w->cols == 2);
+	menu_set_tick(app.view_menu, VIEW_COVER_ALONE, w->cover);
+	menu_set_fade(app.view_menu, VIEW_COVER_ALONE, w->cols != 2);
 	menu_set_fade(app.view_menu, VIEW_TOOLBAR, !w->toolbar);
 	menu_set_fade(app.view_menu, VIEW_THUMBS, !w->thumbs);
 	menu_set_fade(app.view_menu, VIEW_ZOOM_IN, w->zoom >= MAX_ZOOM);
@@ -1817,6 +1976,52 @@ const char *docwin_path(docwin *w)
 	return w->path;
 }
 
+/* ---- Passwords ----------------------------------------------------------- */
+
+int docwin_get_security(docwin *w, folio_security *s)
+{
+	int rc;
+	if (!is_window(w) || !w->doc)
+		return -1;
+	core_now();
+	rc = folio_get_security(w->doc, s);
+	core_unlock();
+	return rc;
+}
+
+int docwin_check_owner(docwin *w, const char *utf8)
+{
+	int rc;
+	if (!is_window(w) || !w->doc)
+		return -1;
+	core_now();
+	rc = folio_check_owner_password(w->doc, utf8);
+	core_unlock();
+	app_log("%s: owner password %s", w->title, rc == 1 ? "right" : rc == 0 ? "wrong" : "not checked");
+	return rc;
+}
+
+int docwin_set_password(docwin *w, const char *utf8)
+{
+	int rc;
+	if (!is_window(w) || !w->doc || !w->can_annotate)
+		return -1;
+	core_now();
+	rc = folio_set_password(w->doc, utf8);
+	core_unlock();
+	if (rc) {
+		app_log("%s: password: %s", w->title, folio_error(app.fc));
+		return -1;
+	}
+	if (utf8 && *utf8)
+		snprintf(w->new_password, sizeof w->new_password, "%s", utf8);
+	else
+		wipe(w->new_password, sizeof w->new_password);
+	app_log("%s: password to be %s when saved", w->title, utf8 && *utf8 ? "set" : "removed");
+	update_title(w);
+	return 0;
+}
+
 docwin *docwin_first_modified(void)
 {
 	docwin *w;
@@ -1841,8 +2046,9 @@ int docwin_save(docwin *w, const char *path)
 {
 	char tmp[300], bak[300];
 	_kernel_oserror *e;
-	int page = current_page(w), had_old, type = 0;
+	int page = current_page(w), had_old, type = 0, replaced;
 	folio_doc *doc;
+	folio_security sec;
 	if (strlen(path) + 3 >= sizeof tmp) {
 		tbx_report("The file name is too long.");
 		return -1;
@@ -1851,6 +2057,7 @@ int docwin_save(docwin *w, const char *path)
 	snprintf(bak, sizeof bak, "%s~o", path);
 	_swix(Hourglass_On, 0);
 	core_now();
+	folio_get_security(w->doc, &sec);
 	if (folio_save_pdf(w->doc, w->path, tmp)) {
 		char msg[300];
 		core_unlock();
@@ -1883,8 +2090,15 @@ int docwin_save(docwin *w, const char *path)
 		_swix(OS_File, _INR(0, 2), 18, path, 0xadf);
 		snprintf(w->path, sizeof w->path, "%s", path);
 	}
-	/* Open it again (the saved file, or the old one if that failed). */
-	doc = folio_open(app.fc, w->path, NULL);
+	/* Open it again (the saved file, or the old one if that failed), with
+	 * the password it now has. */
+	replaced = !(had_old < 0 || e);
+	if (replaced && sec.change == FOLIO_PW_SET)
+		snprintf(w->password, sizeof w->password, "%s", w->new_password);
+	else if (replaced && sec.change == FOLIO_PW_REMOVE)
+		wipe(w->password, sizeof w->password);
+	wipe(w->new_password, sizeof w->new_password);
+	doc = folio_open_password(app.fc, w->path, NULL, w->password[0] ? w->password : NULL);
 	if (doc) {
 		w->doc = doc;
 		folio_count_step(doc, 1 << 20);
@@ -1896,13 +2110,14 @@ int docwin_save(docwin *w, const char *path)
 		docwin_close(w);
 		return -1;
 	}
-	if (had_old < 0 || e) {
+	if (!replaced) {
 		char msg[700];
 		snprintf(msg, sizeof msg, "Folio couldn't replace '%s' (the new copy is in '%s').", path, tmp);
 		tbx_report(msg);
 		return -1;
 	}
-	app_log("saved %s", path);
+	app_log("saved %s%s", path, sec.change == FOLIO_PW_SET ? " with a new password" :
+		sec.change == FOLIO_PW_REMOVE ? " without its password" : "");
 	w->asel_page = -1;
 	w->modified = -1;          /* force the title to be redone */
 	update_title(w);

@@ -43,10 +43,19 @@ const char *folio_error(folio_ctx *fc);
 
 /* ---- Documents -------------------------------------------------------- */
 
+/* Why the last folio_open failed. */
+enum { FOLIO_ERR_OTHER = 0, FOLIO_ERR_PASSWORD = 1, FOLIO_ERR_WRONG_PASSWORD = 2 };
+int folio_error_code(folio_ctx *fc);
+
 /* Opens a document. accel_path, if not NULL, names the layout accelerator
  * file for re-flowed books: it is read now if it exists (stale ones are
  * ignored by MuPDF), and written by folio_save_accel(). */
 folio_doc *folio_open(folio_ctx *fc, const char *path, const char *accel_path);
+/* The same, for a document that may need a password (UTF-8, or NULL for
+ * none). Fails with folio_error_code() FOLIO_ERR_PASSWORD if one is needed
+ * and none was given, FOLIO_ERR_WRONG_PASSWORD if it isn't right. */
+folio_doc *folio_open_password(folio_ctx *fc, const char *path, const char *accel_path,
+		const char *password);
 void folio_close(folio_doc *doc);
 /* Opens a small HTML document held in memory (the dictionary pop-up), laid
  * out as one long page width_pt wide, with em the body font size. */
@@ -236,5 +245,30 @@ int folio_is_modified(folio_doc *doc);
  * (save to a new file, close, then replace). original is the open file's
  * path, for an incremental save (or NULL for a full one). */
 int folio_save_pdf(folio_doc *doc, const char *original, const char *path);
+
+/* ---- Passwords (PDFs) ---------------------------------------------------- */
+
+enum { FOLIO_PW_KEEP = 0, FOLIO_PW_SET = 1, FOLIO_PW_REMOVE = 2 };
+
+typedef struct {
+	int pdf;            /* 0: not a PDF, none of this applies */
+	int encrypted;      /* the file is encrypted (a password, or restrictions) */
+	int needs_password; /* opening it needs a password */
+	int owner;          /* opened with full rights, so its security can be changed */
+	int change;         /* FOLIO_PW_*: what the next save does */
+	char method[32];    /* "AES 256", "RC4 128"..., or "" */
+} folio_security;
+
+int folio_get_security(folio_doc *doc, folio_security *sec);
+/* Is this the document's owner password? 1 (and the document now has full
+ * rights), 0, or -1 on error. */
+int folio_check_owner_password(folio_doc *doc, const char *password);
+/* Sets a password (UTF-8) to open the document, or removes it (NULL or "").
+ * Needs full rights. It's applied when the document is next saved (a full
+ * save, encrypted with AES-256, the same password for owner and user); until
+ * then the document counts as modified. Setting a password needs a source of
+ * strong random numbers (on RISC OS, /dev/urandom, i.e. the CryptRandom
+ * module); without one this fails. */
+int folio_set_password(folio_doc *doc, const char *password);
 
 #endif

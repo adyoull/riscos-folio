@@ -31,13 +31,13 @@ AL_CFLAGS := -O2 -g -marm -mcpu=cortex-a8 -mfpu=vfpv3 -mfloat-abi=hard \
 WARN := -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -std=gnu99
 INC := -Icore -Ithird/cjson -I$(MUPDF)/include
 
-CORE_SRC := core/doc.c core/render.c core/text.c core/dict.c core/annot.c
+CORE_SRC := core/doc.c core/render.c core/text.c core/dict.c core/annot.c core/security.c
 CORE_HDR := core/folio.h core/folio_int.h core/dict.h
 CORE_OBJ = $(CORE_SRC:core/%.c=build/$(1)/%.o) build/$(1)/cJSON.o
 
-WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c wimp/clip.c wimp/dict.c wimp/contents.c wimp/find.c wimp/toolbar.c wimp/thumbs.c wimp/annotui.c wimp/bookshelf.c wimp/shelfdata.c
+WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c wimp/clip.c wimp/dict.c wimp/contents.c wimp/find.c wimp/toolbar.c wimp/thumbs.c wimp/annotui.c wimp/passui.c wimp/bookshelf.c wimp/shelfdata.c
 WIMP_HDR := wimp/app.h wimp/tbx.h wimp/worker.h wimp/shelfdata.h core/folio.h core/dict.h
-VERSION ?= 0.0.1-test15
+VERSION ?= 0.0.1-test16
 
 all: build/ro/libfolio.a build/al/libfolio.a build/al/core_test build/ro/core_test.elf build/ro/folio.elf
 
@@ -111,6 +111,10 @@ build/al/annot_test: tests/annot_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
 		-L$(MU_AL) -lmupdf -lmupdf-third -lm -lpthread -o $@
 
+build/al/password_test: tests/password_test.c build/al/libfolio.a
+	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
+		-L$(MU_AL) -lmupdf -lmupdf-third -lm -lpthread -o $@
+
 build/al/shelf_test: tests/shelf_test.c wimp/shelfdata.c wimp/shelfdata.h
 	$(AL_CC) $(AL_CFLAGS) $(WARN) -Iwimp -no-pie tests/shelf_test.c wimp/shelfdata.c -o $@
 
@@ -119,12 +123,13 @@ build/al/find_test: tests/find_test.c wimp/find.c wimp/worker.c $(WIMP_HDR) buil
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -Iwimp -Itests/stub-wimp -no-pie tests/find_test.c wimp/find.c \
 		wimp/worker.c build/al/libfolio.a -L$(MU_AL) -lmupdf -lmupdf-third -lm -lpthread -o $@
 
-test: build/al/core_test build/al/worker_test build/al/dict_test build/al/find_test build/al/annot_test build/al/shelf_test tests/data/stamp
+test: build/al/core_test build/al/worker_test build/al/dict_test build/al/find_test build/al/annot_test build/al/password_test build/al/shelf_test tests/data/stamp
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/core_test tests/data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/worker_test tests/data/doc.pdf
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/dict_test tests/dict
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/find_test tests/data/doc.pdf
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/annot_test tests/data
+	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/password_test tests/data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/shelf_test
 
 check: build/ro/core_test.elf
