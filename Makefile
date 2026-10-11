@@ -7,10 +7,15 @@
 #   make check      riscos-crossdev's checks on the RISC OS test program
 #
 # MuPDF comes from mupdf/build.sh (mupdf/src). RCD_DIR is a riscos-crossdev
-# checkout (for checks/ and qemu/aligntrap.sh).
+# checkout (for checks/ and qemu/aligntrap.sh); RISCOS_TOOLCHAIN is the
+# riscos-crossdev 1.4 toolchain. Set them on the command line, in the
+# environment, or in config.mk (not in git), e.g.
+#   RCD_DIR = $(HOME)/riscos-crossdev
+#   RISCOS_TOOLCHAIN = /opt/riscos-crossdev-toolchain-1.4-x86_64-linux
 
+-include config.mk
 RCD_DIR ?= ../riscos-crossdev
-RISCOS_TOOLCHAIN ?= /opt/xd/riscos-crossdev-toolchain-1.4-x86_64-linux
+RISCOS_TOOLCHAIN ?= /opt/riscos-crossdev-toolchain-1.4-x86_64-linux
 export PATH := $(RISCOS_TOOLCHAIN)/bin:$(PATH)
 MUPDF ?= $(CURDIR)/mupdf/src
 MU_RO := $(MUPDF)/build/ro-release-tofu_cjk

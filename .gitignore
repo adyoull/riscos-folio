@@ -9,3 +9,4 @@ tests/out/
 *START-HERE*.md
 handoffs/
 .DS_Store
+config.mk

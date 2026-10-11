@@ -11,7 +11,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 SRC=$HERE/src
 TAG=1.28.5
 WHAT=${1:-all}
-RISCOS_TOOLCHAIN=${RISCOS_TOOLCHAIN:-/opt/xd/riscos-crossdev-toolchain-1.4-x86_64-linux}
+RISCOS_TOOLCHAIN=${RISCOS_TOOLCHAIN:-/opt/riscos-crossdev-toolchain-1.4-x86_64-linux}
 export PATH=$RISCOS_TOOLCHAIN/bin:$PATH
 JOBS=${JOBS:-$(nproc)}
 

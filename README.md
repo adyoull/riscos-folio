@@ -1,57 +1,85 @@
-# Folio (working name): a RISC OS reader on MuPDF
+# Folio: a reader for RISC OS
 
-A native RISC OS reader for PDF, EPUB, CBZ, XPS, FB2 and MOBI, with markup and
-notebooks in the spirit of Flexcil. The design is in `docs/DESIGN.md`.
+Folio reads PDF, EPUB, FB2, MOBI, CBZ and XPS files on the RISC OS desktop.
+It's built on [MuPDF](https://mupdf.com) with a native front end that follows
+the RISC OS Style Guide, and takes its ideas for markup and reading from
+Flexcil. "Folio" is a working name.
 
-## State (2026-10-10): phase 1, the core
-`core/` is MuPDF wrapped for the reader, with no Wimp code, so all of it runs
-and is tested on ARM Linux under `qemu-arm-aligntrap` (RISC OS alignment
-rules, Cortex-A8) as well as on RISC OS. See `core/folio.h`:
+Status: **test builds** (0.0.1-test15). It's used day to day on a Raspberry Pi
+running RISC OS 5, but expect rough edges. The design is in
+[`docs/DESIGN.md`](docs/DESIGN.md).
 
-- **Documents:** open (with EPUB layout accelerator), format, title, author,
-  language (EPUB `dc:language`, PDF `/Lang`).
-- **Layout (re-flowed books):** page size, font size, margin, line spacing,
-  publisher styles; a key for naming accelerator files.
-- **Counting** a chapter at a time (for null polls), estimates until done;
-  page number and location both ways; next and previous page.
-- **Reading positions** (`folio_mark`) that survive re-layout and can be
-  saved: chapter, fraction, and the page's first words. MuPDF's own EPUB
-  bookmarks are pointers into the laid-out chapter, so they go stale.
-- **Contents**, flattened, with locations.
-- **Drawing tiles** straight into RISC OS 32bpp sprite pixels (&00BBGGRR),
-  in normal, dark (black page, light text, pictures kept, pure black) and
-  sepia (pictures kept) modes, with or without annotations.
-- **Text:** selection snapping (characters, words, lines), selection quads,
-  selected text, the word under the pointer (for double-click and the
-  dictionary), case-insensitive find.
-- **Links:** the link under the pointer and where it goes.
+## What it does
 
-## The application (first test build, 0.0.1-test1)
-`wimp/` is the RISC OS front end, a Toolbox application through our own
-thin layer (`wimp/tbx.h`: in-memory object templates, so the Res file only
-holds its header). It has an icon bar icon with Info, Help and Quit, and
-document windows showing pages for continuous scrolling, drawn from a cache
-of page sprites. Missing pages are drawn and ebook pages are counted in null
-polls. View menu: Dark page (^N), Sepia page, zooms, fit width. Navigate:
-page keys. `app/!Folio` holds the app's files; `make app` builds
-`build/Folio-<version>.zip`.
+- **Reading:** pages for continuous scrolling, drawn in a background thread,
+  so the desktop never waits; ebooks laid out and counted in the background;
+  Folio reopens each document where you left it.
+- **View:** zoom, fit width, **dark page** (black page, light text, pictures
+  kept) and sepia, each with a toolbar button; a **thumbnail drawer** down
+  the left of the window.
+- **Navigating:** a **Contents** window, **Find** (F4), page keys, a page
+  number to type into on the toolbar.
+- **Text:** select by dragging, double-click a word, Copy to the global
+  clipboard, and **Define**: a word's meanings from Wiktionary (with the
+  Free Dictionary API as a fallback), fetched through URL_Fetcher and kept
+  for offline use.
+- **Annotations (PDFs):** highlight, underline, strike out and notes, with
+  undo and redo (Ctrl-Z, Ctrl-Y), saved into the PDF (incrementally, so
+  signatures survive); Discard/Cancel/Save on closing with changes.
+- **Bookshelf:** Select on the icon bar icon. Covers, progress, sorting by
+  recent, title or author; drag books to it, or drag directories to have
+  Folio watch them for new documents when it starts and on Refresh.
+
+Not yet: annotations in ebooks, fonts through fontconfig (so CJK text that
+isn't embedded shows as boxes), a Choices window, printing.
+
+## Running it
+
+Needs RISC OS 5 on ARMv7 or later (a Raspberry Pi 2 or newer, for example),
+a 32 thousand or more colour screen mode, and the SharedUnixLibrary,
+ARMEABISupport and PThreadTicker modules (PThreadTicker is in the zip).
+Looking words up needs the network; Folio loads URL_Fetcher, AcornHTTP and
+AcornSSL from !System when it first needs them.
+
+Unzip `Folio-<version>.zip` (with filetypes) and double-click `!Folio`.
+`!Folio.!Help` describes everything. If something goes wrong,
+`<Wimp$ScrapDir>.FolioLog` says what Folio did.
 
 ## Building
-Needs the riscos-crossdev 1.4 toolchain and a riscos-crossdev checkout, and
-for the tests `gcc-arm-linux-gnueabihf`, `g++-arm-linux-gnueabihf`, `gawk`,
-`python3`.
 
-    mupdf/build.sh          # MuPDF 1.28.5 + mupdf/patches, for RISC OS and ARM Linux
-    make RCD_DIR=...        # core for both, the test program for both
-    make test               # 81 checks under qemu-arm-aligntrap
-    make check              # riscos-crossdev checks on the RISC OS test program
-    make app                # !Folio, checked, zipped with RISC OS filetypes
+Folio is cross-built on Linux (x86-64) with the
+[riscos-crossdev](https://github.com/adyoull/riscos-crossdev) 1.4 toolchain (GCC 10.2,
+UnixLib, ELF to AIF). The tests run on ARM Linux under
+`qemu-arm-aligntrap`, which applies RISC OS's alignment rules.
 
-The RISC OS test program can also be run on the machine itself (CoreTest zip,
-`RunCoreTest` in a TaskWindow).
+Needs: the riscos-crossdev toolchain and a riscos-crossdev checkout,
+`gcc-arm-linux-gnueabihf`, `g++-arm-linux-gnueabihf`, `qemu-user`, `gawk`,
+`python3` with Pillow.
+
+    # config.mk (not in git), or pass these on the command line
+    RCD_DIR = /path/to/riscos-crossdev
+    RISCOS_TOOLCHAIN = /path/to/riscos-crossdev-toolchain-1.4-x86_64-linux
+
+    mupdf/build.sh      # fetches MuPDF 1.28.5, applies mupdf/patches, builds for RISC OS and ARM Linux
+    make test           # the tests, under qemu-arm-aligntrap
+    make app            # !Folio, checked, zipped with RISC OS filetypes: build/Folio-<version>.zip
+
+## Layout
+
+| Directory | What's there |
+|---|---|
+| `core/` | MuPDF wrapped for the reader, with no Wimp code: documents, layout and counting, reading positions, drawing tiles into 32bpp sprite pixels (normal, dark, sepia), text selection and find, links, annotations and saving, the dictionary's URLs and HTML |
+| `wimp/` | The RISC OS front end: a Toolbox application through a thin layer of our own (`tbx.h`, objects from in-memory templates), the page worker thread, document windows, toolbar, thumbnail drawer, Contents, Find, the dictionary pop-up, annotation dialogues and the Bookshelf |
+| `app/!Folio` | The application's files |
+| `tests/` | Tests for the core, the worker, the dictionary, Find, annotations and the Bookshelf's data, run under qemu |
+| `tools/` | The icon and toolbar sprites, drawn by script |
+| `mupdf/` | MuPDF's build script and patches |
+| `third/cjson` | cJSON 1.7.18 (MIT), for the dictionary's JSON |
 
 ## Licence
-The program is **AGPL-3.0-or-later**, because it includes MuPDF (AGPL).
-Our build scripts, Makefiles, tests, tools and docs are **MIT**. Details in
-`LICENCES.md`; texts in `COPYING` and `LICENSE-MIT`. MuPDF is Copyright
-Artifex Software.
+
+Folio is **AGPL-3.0-or-later**, because it includes MuPDF, which is AGPL.
+The build scripts, Makefiles, tests, tools and docs are **MIT**. Details are
+in [`LICENCES.md`](LICENCES.md); the texts are in `COPYING` and
+`LICENSE-MIT`. MuPDF is Copyright Artifex Software. Dictionary definitions
+come from Wiktionary, under CC BY-SA.
