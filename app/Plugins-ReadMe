@@ -7,7 +7,8 @@ Plugins add to Folio. Put each one (a folder) in here, or in
 after adding one.
 
 Speech
-  The Speech folder from FolioSpeech-<version>.zip. It lets Folio read
+  FolioSpeech-<version>.zip: drag the !Folio in it over this one, which puts
+  its Speech folder here. It lets Folio read
   documents aloud with a natural-sounding voice: a speaker button appears on
   the toolbar, and Read aloud, Speak selection and Reading speed on the
   document's menu. See Speech.ReadMe.

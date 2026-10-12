@@ -1,0 +1,12 @@
+Speech for Folio: putting it in
+================================
+
+Drag the !Folio in this archive over your own !Folio (onto the directory
+that holds it): the Filer adds Plugins.Speech to it and leaves the rest of
+your !Folio as it is. Then quit Folio and run it again. A speaker button
+appears at the right of the toolbar.
+
+To take speech out again, delete !Folio.Plugins.Speech (Shift-double-click
+!Folio to open it).
+
+!Folio.Plugins.Speech.ReadMe says what speech needs and how to use it.

@@ -33,7 +33,8 @@ running RISC OS 5, but expect rough edges. The design is in
   signatures survive); Discard/Cancel/Save on closing with changes.
 - **Passwords (PDFs):** Folio asks for the password of a protected PDF,
   and can put a password on a PDF (AES-256) or take one off.
-- **Reading aloud** (with the Speech plugin, a separate download): Piper's
+- **Reading aloud** (with the Speech plugin, a separate download: drag the
+  !Folio in it over yours, as with OpenTTD's sound packs): Piper's
   natural-sounding voices run by
   [riscos-pvoice](https://github.com/adyoull/riscos-pvoice), with eSpeak NG
   for the phonemes; the sentence being read is shown and the pages turn.

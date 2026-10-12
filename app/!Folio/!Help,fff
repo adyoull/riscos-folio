@@ -75,8 +75,8 @@ Notes and markings (PDFs)
   closing the window or quitting asks first. Ebooks can't be marked yet.
 
 Reading aloud (with the Speech plugin)
-  FolioSpeech-<version>.zip holds a Speech folder: put it in !Folio.Plugins
-  (or <Choices$Write>.Folio.Plugins) and run Folio again. A speaker button
+  Drag the !Folio in FolioSpeech-<version>.zip over this !Folio (the Filer
+  adds Plugins.Speech to it), then run Folio again. A speaker button
   then appears at the right of the toolbar, and Read aloud, Speak selection
   and Reading speed on the document's menu. Without the plugin there's no
   speech, and nothing for it is loaded. Speech.ReadMe says what it needs

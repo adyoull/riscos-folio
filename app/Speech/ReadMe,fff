@@ -5,9 +5,11 @@ This plugin lets Folio read documents aloud, with a natural-sounding
 English (UK) voice made with Piper.
 
 Putting it in
-  Put this Speech folder in !Folio.Plugins (Shift-double-click !Folio to
-  open it), or in <Choices$Write>.Folio.Plugins, then quit Folio and run it
-  again. A speaker button appears at the right of the toolbar.
+  Drag the !Folio in FolioSpeech-<version>.zip over your own !Folio: that
+  puts this Speech folder in !Folio.Plugins. (It can go in
+  <Choices$Write>.Folio.Plugins instead, where it stays when you put in a
+  newer !Folio.) Then quit Folio and run it again. A speaker button appears
+  at the right of the toolbar. To take speech out, delete the folder.
 
 Needs
   - A Raspberry Pi 2 or later (any machine with NEON).

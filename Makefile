@@ -106,17 +106,21 @@ app: build/ro/folio.elf
 # The Speech plugin: a voice, eSpeak NG's English data and LoadSound, in a
 # Speech folder for !Folio.Plugins (or <Choices$Write>.Folio.Plugins).
 SPEECH_VOICE ?= $(PVOICE_DIR)/voices/en_GB-southern_english_female-low.voice
+# FolioSpeech-<version>.zip: a !Folio holding just Plugins.Speech, to drag
+# over the reader's own !Folio (the Filer merges them), as OpenTTD's sound
+# packs are; and a ReadMe saying so.
 plugin:
-	rm -rf build/plugin && mkdir -p build/plugin/Speech/Voices
-	cp -r app/Speech/* build/plugin/Speech/
-	cp $(SPEECH_VOICE) "build/plugin/Speech/Voices/$$(basename $(SPEECH_VOICE) .voice),ffd"
-	cp -r $(PVOICE_DIR)/build/espeak-ng-data build/plugin/Speech/espeak-ng-data
+	rm -rf build/plugin && mkdir -p build/plugin/!Folio/Plugins/Speech/Voices
+	cp -r app/Speech/* build/plugin/!Folio/Plugins/Speech/
+	cp $(SPEECH_VOICE) "build/plugin/!Folio/Plugins/Speech/Voices/$$(basename $(SPEECH_VOICE) .voice),ffd"
+	cp -r $(PVOICE_DIR)/build/espeak-ng-data build/plugin/!Folio/Plugins/Speech/espeak-ng-data
 	for f in phontab phonindex phondata intonations en_dict; do \
-		mv build/plugin/Speech/espeak-ng-data/$$f build/plugin/Speech/espeak-ng-data/$$f,ffd; done
-	for f in build/plugin/Speech/espeak-ng-data/lang/gmw/*; do mv "$$f" "$$f,fff"; done
-	cp $(PVOICE_DIR)/third/espeak-ng/COPYING build/plugin/Speech/eSpeakLicence,fff
-	cp $(PVOICE_DIR)/docs/VOICES.txt build/plugin/Speech/VoiceLicence,fff
-	python3 $(RCD_DIR)/package/rozip.py build/FolioSpeech-$(VERSION).zip -C build/plugin Speech
+		mv build/plugin/!Folio/Plugins/Speech/espeak-ng-data/$$f build/plugin/!Folio/Plugins/Speech/espeak-ng-data/$$f,ffd; done
+	for f in build/plugin/!Folio/Plugins/Speech/espeak-ng-data/lang/gmw/*; do mv "$$f" "$$f,fff"; done
+	cp $(PVOICE_DIR)/third/espeak-ng/COPYING build/plugin/!Folio/Plugins/Speech/eSpeakLicence,fff
+	cp $(PVOICE_DIR)/docs/VOICES.txt build/plugin/!Folio/Plugins/Speech/VoiceLicence,fff
+	cp app/Speech-Install build/plugin/ReadMe,fff
+	python3 $(RCD_DIR)/package/rozip.py build/FolioSpeech-$(VERSION).zip -C build/plugin '!Folio' 'ReadMe,fff'
 	@ls -l build/FolioSpeech-$(VERSION).zip
 
 tests/data/stamp: tests/make-data.sh tests/make-epub.py
