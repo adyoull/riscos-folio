@@ -5,7 +5,7 @@ It's built on [MuPDF](https://mupdf.com) with a native front end that follows
 the RISC OS Style Guide, and takes its ideas for markup and reading from
 Flexcil. "Folio" is a working name.
 
-Status: **test builds** (0.0.1-test16). It's used day to day on a Raspberry Pi
+Status: **test builds** (0.0.1-test17). It's used day to day on a Raspberry Pi
 running RISC OS 5, but expect rough edges. The design is in
 [`docs/DESIGN.md`](docs/DESIGN.md).
 
@@ -29,6 +29,11 @@ running RISC OS 5, but expect rough edges. The design is in
   signatures survive); Discard/Cancel/Save on closing with changes.
 - **Passwords (PDFs):** Folio asks for the password of a protected PDF,
   and can put a password on a PDF (AES-256) or take one off.
+- **Reading aloud** (with the Speech plugin, a separate download): Piper's
+  natural-sounding voices run by
+  [riscos-pvoice](https://github.com/adyoull/riscos-pvoice), with eSpeak NG
+  for the phonemes; the sentence being read is shown and the pages turn.
+  Without the plugin Folio has no speech button and loads nothing for it.
 - **Bookshelf:** Select on the icon bar icon. Covers, progress, sorting by
   recent, title or author; drag books to it, or drag directories to have
   Folio watch them for new documents when it starts and on Refresh.
@@ -55,17 +60,21 @@ Folio is cross-built on Linux (x86-64) with the
 UnixLib, ELF to AIF). The tests run on ARM Linux under
 `qemu-arm-aligntrap`, which applies RISC OS's alignment rules.
 
-Needs: the riscos-crossdev toolchain and a riscos-crossdev checkout,
+Needs: the riscos-crossdev toolchain and a riscos-crossdev checkout, a
+[riscos-pvoice](https://github.com/adyoull/riscos-pvoice) checkout built
+with its `tools/build-espeak.sh` and `make` (`PVOICE_DIR`),
 `gcc-arm-linux-gnueabihf`, `g++-arm-linux-gnueabihf`, `qemu-user`, `gawk`,
 `python3` with Pillow.
 
     # config.mk (not in git), or pass these on the command line
     RCD_DIR = /path/to/riscos-crossdev
     RISCOS_TOOLCHAIN = /path/to/riscos-crossdev-toolchain-1.4-x86_64-linux
+    PVOICE_DIR = /path/to/riscos-pvoice
 
     mupdf/build.sh      # fetches MuPDF 1.28.5, applies mupdf/patches, builds for RISC OS and ARM Linux
     make test           # the tests, under qemu-arm-aligntrap
     make app            # !Folio, checked, zipped with RISC OS filetypes: build/Folio-<version>.zip
+    make plugin         # the Speech plugin: build/FolioSpeech-<version>.zip
 
 ## Layout
 

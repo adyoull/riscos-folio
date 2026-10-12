@@ -198,6 +198,21 @@ void folio_free(folio_doc *doc, void *p);
 int folio_find_on_page(folio_doc *doc, folio_loc loc, const char *needle,
 		folio_quad *quads, int *mark, int max);
 
+/* The page's text in reading order, for reading aloud: UTF-8, with the
+ * character each byte belongs to (-1 for spaces and breaks added between
+ * lines and blocks) and each character's quad. Words hyphenated at line
+ * ends are joined (the hyphen left out); ligatures are spelt out; each text
+ * block ends with a blank line (a paragraph). Free with folio_page_text_free. */
+typedef struct {
+	char *text;            /* NUL-terminated */
+	int len;
+	int *byte_char;        /* len entries */
+	folio_quad *quads;     /* nchars entries */
+	int nchars;
+} folio_page_text;
+int folio_get_page_text(folio_doc *doc, folio_loc loc, folio_page_text *t);
+void folio_page_text_free(folio_page_text *t);
+
 /* ---- Links ------------------------------------------------------------ */
 
 typedef struct {

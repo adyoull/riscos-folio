@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test16)
+Folio (test build 0.0.1-test17)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -65,6 +65,19 @@ Notes and markings (PDFs)
   F3 (or Save... on the menu) saves the PDF with its notes and markings;
   the window's title shows * while there are changes to save, and
   closing the window or quitting asks first. Ebooks can't be marked yet.
+
+Reading aloud (with the Speech plugin)
+  FolioSpeech-<version>.zip holds a Speech folder: put it in !Folio.Plugins
+  (or <Choices$Write>.Folio.Plugins) and run Folio again. A speaker button
+  then appears at the right of the toolbar, and Read aloud, Speak selection
+  and Reading speed on the document's menu. Without the plugin there's no
+  speech, and nothing for it is loaded. Speech.ReadMe says what it needs
+  (SharedSoundBuffer and StreamManager among them).
+  Read aloud starts at the top of what you can see of the page, or at the
+  sentence the selection is in, and goes on through the document; the
+  sentence being read is shown with a tinted band, and the pages turn as it
+  goes. Click the button (or Read aloud) again to stop. Speak selection
+  reads just the selected text.
 
 Passwords (PDFs)
   Password... on a PDF's menu shows whether it has a password, and puts

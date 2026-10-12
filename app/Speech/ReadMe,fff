@@ -1,0 +1,33 @@
+Speech for Folio (test build)
+=============================
+
+This plugin lets Folio read documents aloud, with a natural-sounding
+English (UK) voice made with Piper.
+
+Putting it in
+  Put this Speech folder in !Folio.Plugins (Shift-double-click !Folio to
+  open it), or in <Choices$Write>.Folio.Plugins, then quit Folio and run it
+  again. A speaker button appears at the right of the toolbar.
+
+Needs
+  - A Raspberry Pi 2 or later (any machine with NEON).
+  - About 100 MB of free memory while the voice loads (65 MB after).
+  - SharedSound 1.07, StreamManager 0.03 and SharedSoundBuffer 0.07 in
+    System:Modules, as for !SoftMIDI. SharedSoundBuffer and StreamManager
+    are freeware by John Duffell and can't be included here: get ssb.zip
+    and merge its !System into yours. LoadSound (run by Folio the first
+    time it reads aloud) loads them.
+
+Using it
+  Click the speaker button (or choose Read aloud from the document's menu)
+  to hear the document from the top of the page you're looking at, or from
+  the sentence the selection is in. The sentence being read is shown with
+  a tinted band; the pages turn as it goes. Click again to stop.
+  Speak selection reads just the selected text. Reading speed has Slower,
+  Normal and Faster.
+  The first time, the voice takes a few seconds to load.
+
+Licences
+  The voice (Voices) is Piper's "southern_english_female", trained on the
+  OpenSLR SLR83 recordings, CC BY-SA 4.0: see VoiceLicence. eSpeak NG's
+  data (espeak-ng-data) is GPL-3.0-or-later: see eSpeakLicence.

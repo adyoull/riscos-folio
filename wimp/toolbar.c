@@ -6,7 +6,10 @@
  * the only way), a page number to type into, and the zoom.
  *
  *   [Thumbnails][Contents] | [Up][page] of N [Down] | [-] 100% [+] [Fit] [Two] |
- *   [Dark] | [Find][Define] | [Highlight][Underline][Strike][Note]
+ *   [Dark] | [Find][Define] | [Highlight][Underline][Strike][Note] | [Read aloud]
+ *
+ * Read aloud is there only with the Speech plugin (it's the last gadget, so
+ * the template simply has one fewer without it).
  *
  * The annotation tools are shaded until annotations are written. Button
  * gadgets report clicks as Wimp mouse clicks with the id block's component
@@ -18,11 +21,11 @@
 
 #define TB_H     76
 #define BTN      60
-#define TB_W     1420
+#define TB_W     1500
 
 enum {
 	T_THUMBS = 1, T_CONTENTS, T_PREV, T_PAGE, T_OF, T_NEXT, T_ZOOMOUT, T_ZOOM, T_ZOOMIN,
-	T_FITW, T_TWOUP, T_DARK, T_FIND, T_DEFINE, T_HILITE, T_ULINE, T_STRIKE, T_NOTE, T_COUNT
+	T_FITW, T_TWOUP, T_DARK, T_FIND, T_DEFINE, T_HILITE, T_ULINE, T_STRIKE, T_NOTE, T_SPEAK, T_COUNT
 };
 
 typedef struct {
@@ -60,7 +63,7 @@ static struct {
 	display_gadget of;
 	button_gadget next, zoomout;
 	display_gadget zoom;
-	button_gadget zoomin, fitw, twoup, dark, find, define, hilite, uline, strike, note;
+	button_gadget zoomin, fitw, twoup, dark, find, define, hilite, uline, strike, note, speak;
 } g;
 
 static void hdr(gadget_hdr *h, int type, int size, int id, int x0, int x1, const char *help)
@@ -95,7 +98,7 @@ static const char *const tips[T_COUNT] = {
 	"Page number: type one and press Return", NULL, "Next page (Page Down)",
 	"Zoom out", "Scale", "Zoom in", "Fit width", "Two pages side by side", "Dark page (Ctrl-N)", "Find (F4)",
 	"Define the selected word", "Highlight the selection",
-	"Underline the selection", "Strike out the selection", "Add a note"
+	"Underline the selection", "Strike out the selection", "Add a note", "Read aloud (click again to stop)"
 };
 
 static void build_template(void)
@@ -139,7 +142,8 @@ static void build_template(void)
 	button(&g.hilite, T_HILITE, x, "R5;Stb_hilite", "Click to highlight the selected text (PDFs).|MSave the document (F3) to keep it."); x += BTN + 4;
 	button(&g.uline, T_ULINE, x, "R5;Stb_uline", "Click to underline the selected text (PDFs)."); x += BTN + 4;
 	button(&g.strike, T_STRIKE, x, "R5;Stb_strike", "Click to strike out the selected text (PDFs)."); x += BTN + 4;
-	button(&g.note, T_NOTE, x, "R5;Stb_note", "Click to add a note at the selection, or at the top of the page (PDFs).");
+	button(&g.note, T_NOTE, x, "R5;Stb_note", "Click to add a note at the selection, or at the top of the page (PDFs)."); x += BTN + 20;
+	button(&g.speak, T_SPEAK, x, "R5;Stb_speak", "Click to hear the document read aloud from here (or from the selection); click again to stop.");
 	gadgets[T_THUMBS] = &g.thumbs.h; gadgets[T_CONTENTS] = &g.contents.h;
 	gadgets[T_PREV] = &g.prev.h; gadgets[T_PAGE] = &g.page.h; gadgets[T_OF] = &g.of.h;
 	gadgets[T_NEXT] = &g.next.h; gadgets[T_ZOOMOUT] = &g.zoomout.h; gadgets[T_ZOOM] = &g.zoom.h;
@@ -147,6 +151,7 @@ static void build_template(void)
 	gadgets[T_DARK] = &g.dark.h;
 	gadgets[T_FIND] = &g.find.h; gadgets[T_DEFINE] = &g.define.h; gadgets[T_HILITE] = &g.hilite.h;
 	gadgets[T_ULINE] = &g.uline.h; gadgets[T_STRIKE] = &g.strike.h; gadgets[T_NOTE] = &g.note.h;
+	gadgets[T_SPEAK] = speech_available() ? &g.speak.h : NULL;
 	/* Shaded until there's something to mark up (toolbar_update). */
 	g.hilite.h.flags = g.uline.h.flags = g.strike.h.flags = g.note.h.flags = (int)(1u << 31);
 }
@@ -170,7 +175,7 @@ ObjectId toolbar_create(docwin *w)
 	t.flags = 1 << 4;                       /* a toolbar */
 	t.help_message = "This is the toolbar.|MYou can hide it from the View menu.";
 	t.max_help = (int)strlen(t.help_message) + 1;
-	t.num_gadgets = T_COUNT - 1;
+	t.num_gadgets = speech_available() ? T_COUNT - 1 : T_COUNT - 2;
 	t.gadgets = &g;
 	t.default_focus = -1;
 	t.show_event = -1;
@@ -227,7 +232,7 @@ static void set_selected(ObjectId tb, int comp, int on)
 typedef struct {
 	ObjectId tb;
 	char page[24], of[24], zoom[24];
-	int dark, thumbs, two, define, markup, note;
+	int dark, thumbs, two, define, markup, note, speak;
 } shown_state;
 
 static shown_state shown[16];
@@ -244,7 +249,7 @@ static shown_state *state_for(ObjectId tb)
 	i = free_i >= 0 ? free_i : 0;    /* (more than 16 windows: share, and set more often) */
 	memset(&shown[i], 0, sizeof shown[i]);
 	shown[i].tb = tb;
-	shown[i].dark = shown[i].thumbs = shown[i].two = shown[i].define = shown[i].markup = shown[i].note = -1;
+	shown[i].dark = shown[i].thumbs = shown[i].two = shown[i].speak = shown[i].define = shown[i].markup = shown[i].note = -1;
 	return &shown[i];
 }
 
@@ -273,7 +278,7 @@ static void flags_if(ObjectId tb, int comp, int *was, int shaded)
 }
 
 void toolbar_update(ObjectId tb, int page, int pages, int exact, float zoom,
-		int dark, int thumbs, int two, int has_selection, int can_annotate)
+		int dark, int thumbs, int two, int has_selection, int can_annotate, int speaking)
 {
 	char s[24];
 	int caret[6], wh = 0;
@@ -304,6 +309,10 @@ void toolbar_update(ObjectId tb, int page, int pages, int exact, float zoom,
 	if (st->two != two) {
 		st->two = two;
 		set_selected(tb, T_TWOUP, two);
+	}
+	if (speech_available() && st->speak != speaking) {
+		st->speak = speaking;
+		set_selected(tb, T_SPEAK, speaking);
 	}
 	/* Markup needs a selection in a PDF; a note just a PDF. */
 	flags_if(tb, T_DEFINE, &st->define, !has_selection);
@@ -336,6 +345,7 @@ int toolbar_event_for(int component)
 	case T_ULINE: return EV_UNDERLINE;
 	case T_STRIKE: return EV_STRIKE;
 	case T_NOTE: return EV_NOTE;
+	case T_SPEAK: return EV_READ_ALOUD;
 	}
 	return 0;
 }

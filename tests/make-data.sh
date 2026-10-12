@@ -48,5 +48,20 @@ h.update();
 doc.save(scriptArgs[1]);
 JS
 "$AT" "$MUTOOL" run fix.js plain.pdf doc.pdf
-rm -f p1.txt p2.txt p3.txt fix.js
+# For reading aloud: a heading, then a paragraph with a word hyphenated at
+# a line end ("exam-" / "ple"). Page 2: one more sentence.
+cat > s1.txt <<'TXT'
+%%MediaBox 0 0 595 842
+%%Font Helv Helvetica
+BT /Helv 18 Tf 72 760 Td (Chapter One) Tj ET
+BT /Helv 12 Tf 72 700 Td (The quick brown fox jumps over the lazy dog. It is an exam-) Tj ET
+BT /Helv 12 Tf 72 686 Td (ple of a word split at the end of a line.) Tj ET
+TXT
+cat > s2.txt <<'TXT'
+%%MediaBox 0 0 595 842
+%%Font Helv Helvetica
+BT /Helv 12 Tf 72 760 Td (The second page has one more sentence.) Tj ET
+TXT
+"$AT" "$MUTOOL" create -o speech.pdf s1.txt s2.txt
+rm -f p1.txt p2.txt p3.txt s1.txt s2.txt fix.js
 ls -l

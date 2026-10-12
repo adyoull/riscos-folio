@@ -8,6 +8,8 @@
 | MuPDF 1.28.5 (Artifex Software), fetched by `mupdf/build.sh` | AGPL-3.0-or-later | MuPDF's `COPYING` |
 | MuPDF's bundled libraries (FreeType, HarfBuzz, zlib, libjpeg, OpenJPEG, jbig2dec, lcms2, gumbo, MuJS, brotli, extract) | Their own licences | in MuPDF's `thirdparty/` |
 | cJSON 1.7.18 (Dave Gamble and contributors), in `third/cjson/` | MIT | `third/cjson/LICENSE` |
+| riscos-pvoice (the Piper voice engine) and eSpeak NG, linked into the program for reading aloud | GPL-3.0-or-later (combined with the AGPL under its section 13) | riscos-pvoice's `COPYING`; `eSpeakLicence` in !Folio |
+| The Speech plugin's voice (Piper, trained on OpenSLR SLR83) | CC BY-SA 4.0 | `VoiceLicence` in the plugin |
 | fontconfig 2.14.1, expat 2.2.9 (when added) | MIT-style | their sources |
 
 **Why the program is AGPL:** MuPDF is AGPL-3.0. A program that includes it can be

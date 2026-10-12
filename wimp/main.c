@@ -89,7 +89,8 @@ static void entry(menu_block *b, int i, int comp, const char *text, int flags,
 
 static void create_objects(void)
 {
-	static menu_block ib, dm, em, vm, nm;
+	static menu_block ib, dm, em, vm, nm, sm;
+	int ndm;
 	static tbx_proginfo pi;
 	static tbx_iconbar icon;
 
@@ -152,7 +153,22 @@ static void create_objects(void)
 	entry(&dm, 6, DOC_DEFINE, "Define", MENU_FADED | MENU_DOTTED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
 	dm.e[6].max_text = 80;
 	entry(&dm, 7, DOC_SHELF, "On bookshelf", 0, EV_ADD_SHELF, "Click to put this document on the bookshelf, or take it off.");
-	app.doc_menu = make_menu(&dm, "Folio", 8, EV_DOCMENU_SHOWN);
+	ndm = 8;
+	/* Reading aloud: only with the Speech plugin. */
+	if (speech_available()) {
+		dm.e[7].flags |= MENU_DOTTED;
+		entry(&dm, 8, DOC_READ, "Read aloud", 0, EV_READ_ALOUD, "Click to hear the document read aloud from here (or from the selection); click again to stop.");
+		entry(&dm, 9, DOC_SPEAKSEL, "Speak selection", 0, EV_SPEAK_SEL, "Click to hear just the selected text.");
+		entry(&dm, 10, DOC_SPEED, "Reading speed", MENU_SUBMENU, 0, "Move right to choose how fast it reads.");
+		ndm = 11;
+		entry(&sm, 0, SPEED_SLOW, "Slower", 0, EV_SPEED_SLOW, "Click to read more slowly.");
+		entry(&sm, 1, SPEED_NORMAL, "Normal", 0, EV_SPEED_NORMAL, "Click to read at the voice's own speed.");
+		entry(&sm, 2, SPEED_FAST, "Faster", 0, EV_SPEED_FAST, "Click to read more quickly.");
+		app.speed_menu = make_menu(&sm, "Speed", 3, EV_SPEED_SHOWN);
+	}
+	app.doc_menu = make_menu(&dm, "Folio", ndm, EV_DOCMENU_SHOWN);
+	if (app.speed_menu)
+		check(menu_set_submenu(app.doc_menu, DOC_SPEED, app.speed_menu));
 	check(menu_set_submenu(app.doc_menu, 3, app.edit_menu));
 	check(menu_set_submenu(app.doc_menu, 1, app.view_menu));
 	check(menu_set_submenu(app.doc_menu, 2, app.nav_menu));
@@ -296,6 +312,14 @@ static int toolbox_event(int *b)
 	case EV_FIND_CANCEL:
 		find_event(code);
 		break;
+	case EV_SPEED_SLOW: speech_set_speed(SPEED_SLOW); break;
+	case EV_SPEED_NORMAL: speech_set_speed(SPEED_NORMAL); break;
+	case EV_SPEED_FAST: speech_set_speed(SPEED_FAST); break;
+	case EV_SPEED_SHOWN:
+		menu_set_tick(app.speed_menu, SPEED_SLOW, speech_speed() == SPEED_SLOW);
+		menu_set_tick(app.speed_menu, SPEED_NORMAL, speech_speed() == SPEED_NORMAL);
+		menu_set_tick(app.speed_menu, SPEED_FAST, speech_speed() == SPEED_FAST);
+		break;
 	case EV_EDIT_SHOWN:
 		if ((w = window_for_event()) != NULL)
 			docwin_edit_menu_shown(w);
@@ -360,6 +384,7 @@ int main(int argc, char **argv)
 	}
 	if (worker_init())
 		app_log("no worker thread: pages will be drawn in the poll loop");
+	speech_init();
 	create_objects();
 	bookshelf_init();
 	if (argc > 1)
@@ -455,7 +480,9 @@ int main(int argc, char **argv)
 		busy |= find_background();
 		busy |= toolbar_background();
 		busy |= bookshelf_background();
+		busy |= speech_background();
 	}
+	speech_quit();
 	dict_quit();
 	bookshelf_quit();
 	app_log("quit");

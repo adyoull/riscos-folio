@@ -1,0 +1,13 @@
+Folio plugins
+=============
+
+Plugins add to Folio. Put each one (a folder) in here, or in
+<Choices$Write>.Folio.Plugins, where it stays when you put in a newer
+!Folio. Folio looks for them when it starts, so quit Folio and run it again
+after adding one.
+
+Speech
+  The Speech folder from FolioSpeech-<version>.zip. It lets Folio read
+  documents aloud with a natural-sounding voice: a speaker button appears on
+  the toolbar, and Read aloud, Speak selection and Reading speed on the
+  document's menu. See Speech.ReadMe.

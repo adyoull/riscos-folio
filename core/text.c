@@ -3,6 +3,7 @@
 /* Folio core: text selection, words, copy, find and links. All points the
  * caller sees are relative to the page bounds' top left. */
 #include "folio_int.h"
+#include <stdlib.h>
 #include <string.h>
 
 fz_stext_page *folio_get_text(folio_doc *doc, folio_cpage *cp)
@@ -274,4 +275,144 @@ int folio_link_at(folio_doc *doc, folio_loc loc, folio_point p, folio_link *link
 		return -1;
 	}
 	return found;
+}
+
+/* ---- Text for reading aloud ------------------------------------------------ */
+
+typedef struct {
+	char *text;
+	int len, cap;
+	int *byte_char;
+	folio_quad *quads;
+	int nchars, qcap;
+	int bad;
+} text_buf;
+
+static void tb_put(text_buf *b, const char *s, int n, int ch)
+{
+	int i;
+	if (b->bad)
+		return;
+	if (b->len + n + 1 > b->cap) {
+		int cap = (b->len + n + 1) * 2 + 256;
+		char *t = realloc(b->text, cap);
+		int *m = realloc(b->byte_char, cap * sizeof *m);
+		if (t) b->text = t;
+		if (m) b->byte_char = m;
+		if (!t || !m) {
+			b->bad = 1;
+			return;
+		}
+		b->cap = cap;
+	}
+	for (i = 0; i < n; i++) {
+		b->text[b->len] = s[i];
+		b->byte_char[b->len++] = ch;
+	}
+	b->text[b->len] = 0;
+}
+
+static int tb_char(text_buf *b, folio_quad q)
+{
+	if (b->bad)
+		return -1;
+	if (b->nchars == b->qcap) {
+		int cap = b->qcap ? b->qcap * 2 : 1024;
+		folio_quad *n = realloc(b->quads, cap * sizeof *n);
+		if (!n) {
+			b->bad = 1;
+			return -1;
+		}
+		b->quads = n;
+		b->qcap = cap;
+	}
+	b->quads[b->nchars] = q;
+	return b->nchars++;
+}
+
+/* Ligatures spelt out, for eSpeak. */
+static const char *unligature(int c)
+{
+	switch (c) {
+	case 0xfb00: return "ff";
+	case 0xfb01: return "fi";
+	case 0xfb02: return "fl";
+	case 0xfb03: return "ffi";
+	case 0xfb04: return "ffl";
+	case 0xfb05: case 0xfb06: return "st";
+	}
+	return NULL;
+}
+
+int folio_get_page_text(folio_doc *doc, folio_loc loc, folio_page_text *t)
+{
+	fz_context *ctx = doc->ctx;
+	text_buf b;
+	memset(&b, 0, sizeof b);
+	memset(t, 0, sizeof *t);
+	folio_begin(doc);
+	fz_try(ctx) {
+		folio_cpage *cp = folio_get_page(doc, loc);
+		fz_stext_page *sp = folio_get_text(doc, cp);
+		fz_stext_block *blk;
+		for (blk = sp->first_block; blk; blk = blk->next) {
+			fz_stext_line *line;
+			int any = 0;
+			if (blk->type != FZ_STEXT_BLOCK_TEXT)
+				continue;
+			for (line = blk->u.t.first_line; line; line = line->next) {
+				fz_stext_char *ch;
+				int joined = (line->flags & FZ_STEXT_LINE_FLAGS_JOINED) != 0;
+				for (ch = line->first_char; ch; ch = ch->next) {
+					char u[8];
+					const char *lig;
+					int n, ci;
+					if (joined && !ch->next && fz_is_unicode_hyphen(ch->c))
+						continue;          /* "exam-" + "ple" */
+					if (ch->c == 0xad)
+						continue;          /* soft hyphen */
+					ci = tb_char(&b, quad_from_page(cp, ch->quad));
+					if ((lig = unligature(ch->c)) != NULL) {
+						tb_put(&b, lig, (int)strlen(lig), ci);
+					} else {
+						n = fz_runetochar(u, ch->c);
+						tb_put(&b, u, n, ci);
+					}
+					any = 1;
+				}
+				if (!joined)
+					tb_put(&b, " ", 1, -1);
+			}
+			if (any) {
+				if (b.len && b.text[b.len - 1] == ' ' && b.byte_char[b.len - 1] == -1)
+					b.len--;          /* the last line's space */
+				tb_put(&b, "\n\n", 2, -1);
+			}
+		}
+		if (b.bad)
+			fz_throw(ctx, FZ_ERROR_SYSTEM, "out of memory");
+		if (!b.text)
+			tb_put(&b, "", 0, -1);
+	}
+	fz_catch(ctx) {
+		folio_set_error(doc->fc);
+		free(b.text);
+		free(b.byte_char);
+		free(b.quads);
+		return -1;
+	}
+	t->text = b.text;
+	t->len = b.len;
+	t->byte_char = b.byte_char;
+	t->quads = b.quads;
+	t->nchars = b.nchars;
+	return 0;
+}
+
+void folio_page_text_free(folio_page_text *t)
+{
+	free(t->text);
+	free(t->byte_char);
+	free(t->quads);
+	memset(t, 0, sizeof *t);
 }

@@ -23,6 +23,7 @@
 #define MIN_ZOOM 0.25f
 #define MAX_ZOOM 4.0f
 #define SEL_QUADS 256
+#define SPK_BOXES 64
 
 struct docwin {
 	docwin *next;
@@ -66,6 +67,10 @@ struct docwin {
 	int modified;             /* as last shown in the title */
 	int fit_polls;            /* polls left to keep checking the toolbar's width */
 	int grew_left, grew_right;  /* how much the window was widened for the drawer */
+	/* The sentence being read aloud: boxes and their pages (n 0: none). */
+	int spk_n;
+	int spk_page[SPK_BOXES];
+	folio_quad spk_q[SPK_BOXES];
 	int cols;                 /* pages side by side: 1 or 2 */
 	int cover;                /* two pages: the first one alone, on the right */
 	int grew_two;             /* how much the window was widened for two pages */
@@ -311,6 +316,7 @@ static int is_window(docwin *w);
 static void tb_update(docwin *w);
 static void abort_for(docwin *w);
 static void sel_draw(docwin *w, int i, int x0, int y1);
+static void spk_draw(docwin *w, int i, int x0, int y1);
 static void asel_draw(docwin *w, int i, int x0, int y1);
 static void sel_eor_change(docwin *w, int page, const folio_quad *oldq, int n_old,
 		const folio_quad *newq, int n_new);
@@ -774,6 +780,7 @@ void docwin_close(docwin *w)
 	contents_forget(w);
 	annotui_forget(w);
 	passui_forget(w);
+	speech_forget(w);
 	worker_stop_for(w);
 	core_lock();
 	save_place(w);
@@ -887,6 +894,7 @@ void docwin_redraw(docwin *w, int *b)
 				_swix(OS_SpriteOp, _INR(0, 7), 52 + 512, c->area, c->area + 4, x0, y0, 0, 0, 0);
 				sel_draw(w, i, x0, y1);
 				asel_draw(w, i, x0, y1);
+				spk_draw(w, i, x0, y1);
 			} else {
 				fill_rect(page_colour(w), x0, y0, x1, y1);
 				w->want_render = 1;
@@ -1176,11 +1184,12 @@ static void sel_clear(docwin *w)
 
 /* EOR the selection over page i (screen origin of the page at x0, y1). */
 /* EOR quads over a page whose top left is at x0, y1 (screen). */
-static void eor_quads(docwin *w, const folio_quad *quads, int count, int x0, int y1)
+static void eor_quads_in(docwin *w, const folio_quad *quads, int count, int x0, int y1,
+		unsigned colour)
 {
 	float k = 2.5f * w->zoom;
 	int n;
-	_swix(ColourTrans_SetGCOL, _IN(0) | _INR(3, 4), 0xffffff00u, 0, 3);
+	_swix(ColourTrans_SetGCOL, _IN(0) | _INR(3, 4), colour, 0, 3);
 	for (n = 0; n < count; n++) {
 		const folio_quad *q = &quads[n];
 		float qx0 = q->ul.x < q->ll.x ? q->ul.x : q->ll.x;
@@ -1192,6 +1201,23 @@ static void eor_quads(docwin *w, const folio_quad *quads, int count, int x0, int
 		_swix(OS_Plot, _INR(0, 2), 4, rx0, ry0);
 		_swix(OS_Plot, _INR(0, 2), 96 + 5, rx1 - 1, ry1 - 1);
 	}
+}
+
+static void eor_quads(docwin *w, const folio_quad *quads, int count, int x0, int y1)
+{
+	eor_quads_in(w, quads, count, x0, y1, 0xffffff00u);
+}
+
+/* The sentence being read: EORed in a warm tint (a pale band on a white
+ * page, a dark blue one on a dark page; the text stays readable). */
+#define SPK_COLOUR 0x60402000u
+
+static void spk_draw(docwin *w, int i, int x0, int y1)
+{
+	int k;
+	for (k = 0; k < w->spk_n; k++)
+		if (w->spk_page[k] == i)
+			eor_quads_in(w, &w->spk_q[k], 1, x0, y1, SPK_COLOUR);
 }
 
 static void sel_draw(docwin *w, int i, int x0, int y1)
@@ -1360,6 +1386,10 @@ void docwin_doc_menu_shown(docwin *w)
 {
 	menu_set_fade(app.doc_menu, DOC_SAVE, !w->can_annotate);
 	menu_set_fade(app.doc_menu, DOC_PASSWORD, !w->can_annotate);
+	if (speech_available()) {
+		menu_set_tick(app.doc_menu, DOC_READ, speech_window() == w);
+		menu_set_fade(app.doc_menu, DOC_SPEAKSEL, !(w->sel && w->sel_n > 0));
+	}
 	menu_set_tick(app.doc_menu, DOC_SHELF, bookshelf_has(w->path));
 	static char entry[100];
 	char word[64];
@@ -1430,7 +1460,8 @@ static void tb_update(docwin *w)
 		exact = !w->counting;
 	}
 	toolbar_update(w->toolbar, current_page(w), w->pages, exact, w->zoom,
-		w->mode == FOLIO_PAGE_DARK, w->show_thumbs, w->cols == 2, w->sel && w->sel_n > 0, w->can_annotate);
+		w->mode == FOLIO_PAGE_DARK, w->show_thumbs, w->cols == 2, w->sel && w->sel_n > 0, w->can_annotate,
+		speech_window() == w);
 }
 
 /* The toolbar and the drawer take room at the top and left of the work
@@ -1633,6 +1664,8 @@ void docwin_event(docwin *w, int code)
 		if (w->can_annotate)
 			passui_security(w);
 		break;
+	case EV_READ_ALOUD: speech_read(w, 0); break;
+	case EV_SPEAK_SEL: speech_read(w, 1); break;
 	case EV_THUMBS: toggle_thumbs(w); break;
 	case EV_CONTENTS: contents_open(w); break;
 	}
@@ -1662,6 +1695,101 @@ const char *docwin_title(docwin *w) { return w->title; }
 int docwin_wimp(docwin *w) { return w->wimp; }
 int docwin_current_page(docwin *w) { return current_page(w); }
 int docwin_is_counting(docwin *w) { return w->counting; }
+int docwin_pages(docwin *w) { return w->pages; }
+void docwin_refresh_toolbar(docwin *w) { if (is_window(w)) tb_update(w); }
+
+/* ---- Reading aloud ---------------------------------------------------------- */
+
+static void extend_to(docwin *w, int page);
+
+/* Where to start: the selection (1: its first and last points on *page),
+ * else the top of what's showing of the page being read (0). */
+int docwin_read_start(docwin *w, int *page, folio_point *a, folio_point *b)
+{
+	if (w->sel && w->sel_n > 0) {
+		const folio_quad *f = &w->sel_q[0], *l = &w->sel_q[w->sel_n - 1];
+		*page = w->sel_page;
+		a->x = f->ul.x + 0.5f;
+		a->y = (f->ul.y + f->ll.y) / 2;
+		b->x = l->ur.x - 0.5f;
+		b->y = (l->ur.y + l->lr.y) / 2;
+		return 1;
+	}
+	{
+		int st[9];
+		float k = 2.5f * w->zoom;
+		*page = current_page(w);
+		get_state(w, st);
+		a->x = 0;
+		a->y = (page_top(w, *page) - (st[6] - w->top)) / k;
+		if (a->y < 0)
+			a->y = 0;
+		*b = *a;
+	}
+	return 0;
+}
+
+/* Shows the sentence being read (n 0: none), drawn in place, and scrolls
+ * to it if it's out of view. */
+void docwin_set_spoken(docwin *w, const int *pages, const folio_quad *q, int n)
+{
+	int old_page[SPK_BOXES], old_n = w->spk_n, i, j, done[2 * SPK_BOXES], nd = 0;
+	folio_quad old_q[SPK_BOXES];
+	if (n > SPK_BOXES)
+		n = SPK_BOXES;
+	memcpy(old_page, w->spk_page, sizeof old_page);
+	memcpy(old_q, w->spk_q, sizeof old_q);
+	for (i = 0; i < n; i++) {
+		w->spk_page[i] = pages[i];
+		w->spk_q[i] = q[i];
+	}
+	w->spk_n = n;
+	/* Each page involved: EOR the old boxes off and the new ones on. */
+	for (i = 0; i < old_n + n; i++) {
+		int page = i < old_n ? old_page[i] : pages[i - old_n], b[11], more = 0, seen = 0;
+		for (j = 0; j < nd; j++)
+			if (done[j] == page)
+				seen = 1;
+		if (seen || page < 0 || page >= w->pages)
+			continue;
+		done[nd++] = page;
+		if (!cache_find(w, page))
+			continue;          /* a placeholder: drawn with the page */
+		b[0] = w->wimp;
+		b[1] = page_left(w, page);
+		b[2] = page_top(w, page) - w->slot_h;
+		b[3] = page_left(w, page) + w->slot_w;
+		b[4] = page_top(w, page);
+		_swix(Wimp_UpdateWindow, _IN(1) | _OUT(0), b, &more);
+		while (more) {
+			int x0 = b[1] - b[5] + page_left(w, page), y1 = b[4] - b[6] + page_top(w, page);
+			for (j = 0; j < old_n; j++)
+				if (old_page[j] == page)
+					eor_quads_in(w, &old_q[j], 1, x0, y1, SPK_COLOUR);
+			for (j = 0; j < n; j++)
+				if (pages[j] == page)
+					eor_quads_in(w, &q[j], 1, x0, y1, SPK_COLOUR);
+			_swix(Wimp_GetRectangle, _IN(1) | _OUT(0), b, &more);
+		}
+	}
+	/* Out of view: bring it a third of the way down the window. */
+	if (n > 0) {
+		int st[9], top, bottom, vis_top, vis_bottom;
+		float k = 2.5f * w->zoom;
+		extend_to(w, pages[0]);
+		get_state(w, st);
+		top = page_top(w, pages[0]) - (int)(q[0].ul.y * k);
+		bottom = page_top(w, pages[n - 1]) - (int)(q[n - 1].ll.y * k);
+		vis_top = st[6] - w->top;
+		vis_bottom = st[6] - (st[4] - st[2]);
+		if (top > vis_top || bottom < vis_bottom) {
+			int y = top + (st[4] - st[2]) / 3;
+			if (y > 0)
+				y = 0;
+			scroll_to(w, y);
+		}
+	}
+}
 
 /* Pages counted since the extent was last set. Not with the core lock held. */
 static void extend_to(docwin *w, int page)

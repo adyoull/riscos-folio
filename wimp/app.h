@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test16 (11-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test17 (12-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -21,20 +21,23 @@ enum {
 	EV_VIEW_SHOWN = 0x140, EV_DOCMENU_SHOWN, EV_EDIT_SHOWN,
 	EV_COPY = 0x150, EV_SELECT_ALL, EV_CLEAR_SEL, EV_DEFINE, EV_FIND, EV_CONTENTS,
 	EV_HIGHLIGHT = 0x160, EV_UNDERLINE, EV_STRIKE, EV_NOTE, EV_UNDO, EV_REDO, EV_DEL_ANNOT, EV_SAVE,
-	EV_ADD_SHELF, EV_PASSWORD,
+	EV_ADD_SHELF, EV_PASSWORD, EV_READ_ALOUD, EV_SPEAK_SEL,
 	EV_DICT_COPY = 0x200,  /* the pop-up's, not a window's */
 	EV_FIND_NEXT = 0x210, EV_FIND_PREV, EV_FIND_CANCEL,
 	EV_NOTE_OK = 0x220, EV_NOTE_DELETE, EV_NOTE_CANCEL,
 	EV_SH_OPEN = 0x230, EV_SH_REMOVE, EV_SH_FILER, EV_SH_RECENT, EV_SH_TITLE, EV_SH_AUTHOR,
 	EV_SH_FOLDERS, EV_SH_REFRESH, EV_SH_MISSING,
-	EV_PWOPEN_OK = 0x240, EV_PWOPEN_CANCEL, EV_PWSET, EV_PWREMOVE, EV_PWCANCEL
+	EV_PWOPEN_OK = 0x240, EV_PWOPEN_CANCEL, EV_PWSET, EV_PWREMOVE, EV_PWCANCEL,
+	EV_SPEED_SLOW = 0x250, EV_SPEED_NORMAL, EV_SPEED_FAST, EV_SPEED_SHOWN
 };
 
 /* View menu entries (component ids). */
 enum { EDIT_COPY = 1, EDIT_SELECT_ALL, EDIT_CLEAR, EDIT_UNDO, EDIT_REDO, EDIT_HILITE,
 	EDIT_ULINE, EDIT_STRIKE, EDIT_NOTE, EDIT_DELANNOT };
 /* Document menu entries. */
-enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6, DOC_SHELF = 7, DOC_PASSWORD = 8 };
+enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6, DOC_SHELF = 7, DOC_PASSWORD = 8,
+	DOC_READ = 9, DOC_SPEAKSEL = 10, DOC_SPEED = 11 };
+enum { SPEED_SLOW = 1, SPEED_NORMAL, SPEED_FAST };
 /* Navigate menu entries. */
 enum { NAV_CONTENTS = 5 };
 enum { VIEW_DARK = 1, VIEW_SEPIA, VIEW_ZOOM_IN, VIEW_ZOOM_OUT, VIEW_ZOOM_100, VIEW_FIT_WIDTH,
@@ -44,7 +47,7 @@ typedef struct {
 	tbx_idblock idb;
 	folio_ctx *fc;
 	ObjectId iconbar, iconbar_menu, proginfo;
-	ObjectId doc_menu, edit_menu, view_menu, nav_menu;
+	ObjectId doc_menu, edit_menu, view_menu, nav_menu, speed_menu;
 	int task;                   /* our Wimp task handle */
 	ObjectId menu_window;       /* the window the document menu was opened from */
 	int xeig, yeig, log2bpp;
@@ -95,6 +98,10 @@ void docwin_go_to(docwin *w, int page);
 void docwin_show_hit(docwin *w, int page, const folio_quad *q, int n);
 
 docwin *docwin_from_toolbar(ObjectId id);
+int docwin_pages(docwin *w);
+void docwin_refresh_toolbar(docwin *w);
+int docwin_read_start(docwin *w, int *page, folio_point *a, folio_point *b);
+void docwin_set_spoken(docwin *w, const int *pages, const folio_quad *q, int n);
 const char *docwin_path(docwin *w);
 int docwin_save(docwin *w, const char *path);            /* 0 if saved */
 void docwin_note_done(docwin *w, int page, int index, folio_point at, const char *utf8);
@@ -110,7 +117,7 @@ void toolbar_attach(ObjectId win, ObjectId tb, int on);
 void toolbar_fit(ObjectId tb, int parent_wimp);
 void docwin_open_request(docwin *w, int *block);
 void toolbar_update(ObjectId tb, int page, int pages, int exact, float zoom,
-		int dark, int thumbs, int two, int has_selection, int can_annotate);
+		int dark, int thumbs, int two, int has_selection, int can_annotate, int speaking);
 int toolbar_event_for(int component);
 void toolbar_forget(ObjectId tb);   /* it's being deleted */
 int toolbar_typed_page(ObjectId tb);
@@ -174,6 +181,18 @@ void passui_ask_open(const char *path, int wrong);
 void passui_security(docwin *w);
 int passui_event(int code);              /* 1 if it was theirs */
 void passui_forget(docwin *w);
+
+/* speech.c: reading aloud (with the Speech plugin) */
+int speech_init(void);                   /* finds the plugin: 1 if there */
+int speech_available(void);
+void speech_read(docwin *w, int selection_only);
+void speech_stop(void);
+docwin *speech_window(void);             /* the window being read, or NULL */
+void speech_forget(docwin *w);           /* w is closing */
+int speech_background(void);             /* 1 while reading */
+void speech_set_speed(int speed);        /* SPEED_* */
+int speech_speed(void);
+void speech_quit(void);
 
 /* bookshelf.c */
 #include "worker.h"

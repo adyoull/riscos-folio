@@ -163,12 +163,21 @@ def twopages():
     return im
 
 
+def speak():
+    im, d = canvas()
+    d.polygon([(u(3), u(9)), (u(7), u(9)), (u(12), u(4)), (u(12), u(20)), (u(7), u(15)), (u(3), u(15))],
+              fill=INK)
+    for r in (4, 7.5):
+        d.arc([u(12) - u(r), u(12) - u(r), u(12) + u(r), u(12) + u(r)], -50, 50, fill=ACC, width=LW)
+    return im
+
+
 ICONS = [
     ('tb_thumbs', thumbs), ('tb_contents', contents), ('tb_prev', lambda: arrow(True)),
     ('tb_next', lambda: arrow(False)), ('tb_zoomout', lambda: zoom(False)),
     ('tb_zoomin', lambda: zoom(True)), ('tb_fitw', fitwidth), ('tb_twoup', twopages), ('tb_dark', dark),
     ('tb_find', find), ('tb_define', define), ('tb_hilite', highlight),
-    ('tb_uline', underline), ('tb_strike', strikeout), ('tb_note', note),
+    ('tb_uline', underline), ('tb_strike', strikeout), ('tb_note', note), ('tb_speak', speak),
 ]
 
 
