@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test23 (12-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test24 (12-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -66,6 +66,7 @@ void app_read_mode(void);
 /* docwin.c */
 typedef struct docwin docwin;
 docwin *docwin_open(const char *path);
+void docwin_open_page(docwin *w, int page);   /* 0-based */
 /* The same with a password (UTF-8; NULL for none). If the document needs
  * one, the password box asks for it and opens it (returning NULL now). */
 docwin *docwin_open_password(const char *path, const char *password);

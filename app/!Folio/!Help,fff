@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test23)
+Folio (test build 0.0.1-test24)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -109,6 +109,15 @@ Passwords (PDFs)
   Setting a password needs the CryptRandom module, which Folio loads from
   !System; saving with a new password, or without one, also undoes any
   digital signatures in the file.
+
+Opening at a page
+  To open a document at a given page, from an Obey file, a program or the
+  command line, set Folio$OpenPage first:
+      Set Folio$OpenPage 12
+      Filer_Run SDFS::Disc.$.Docs.Manual/pdf
+  This works whether or not Folio is running; the variable is unset once
+  used. Starting Folio with Run <Folio$Dir>.!Run -page 12 <file> does the
+  same. (A book's later pages are counted first, so it may take a moment.)
 
 Links, Contents and Find
   Click a link to follow it: a link to another part of the document goes

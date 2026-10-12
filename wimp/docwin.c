@@ -50,6 +50,7 @@ struct docwin {
 	int last_page;
 	int fail_page, fail_gen;  /* a page that failed, not to be retried */
 	int pending_mark;         /* mark to go to once its chapter is counted */
+	int goto_page;            /* page asked for on opening, once counted; -1 none */
 	folio_mark mark;
 	char place[256];          /* where the reading position is kept */
 	/* Selection (one page). */
@@ -736,6 +737,7 @@ docwin *docwin_open_password(const char *path, const char *password)
 	w->mode = FOLIO_PAGE_NORMAL;
 	w->cols = 1;
 	w->cover = 1;
+	w->goto_page = -1;
 
 	_swix(Hourglass_On, 0);
 	make_accel_path(w);
@@ -1096,7 +1098,14 @@ int docwin_background(void)
 			contents_page_changed(w);
 			tb_update(w);
 		}
-		busy |= w->counting || w->pending_mark;
+		/* A page asked for on opening that wasn't counted yet. */
+		if (w->goto_page >= 0 && (w->goto_page < w->pages || !w->counting)) {
+			int t = w->goto_page < w->pages ? w->goto_page : w->pages - 1;
+			w->goto_page = -1;
+			docwin_go_to(w, t);
+			app_log("%s: opened at page %d", w->title, t + 1);
+		}
+		busy |= w->counting || w->pending_mark || w->goto_page >= 0;
 	}
 
 	/* Give the worker a page if it has none. */
@@ -1881,6 +1890,23 @@ void docwin_go_to(docwin *w, int page)
 {
 	extend_to(w, page);
 	go_to_page(w, page);
+}
+
+/* Opened with a page asked for (Folio$OpenPage, or -page): that page,
+ * instead of where the reader left off; a book's later pages once they're
+ * counted. */
+void docwin_open_page(docwin *w, int page)
+{
+	w->pending_mark = 0;
+	if (page < w->pages) {
+		w->goto_page = -1;
+		docwin_go_to(w, page);
+		app_log("%s: opened at page %d", w->title, page + 1);
+	} else if (w->counting) {
+		w->goto_page = page;
+	} else if (w->pages > 0) {
+		docwin_go_to(w, w->pages - 1);
+	}
 }
 
 void docwin_show_hit(docwin *w, int page, const folio_quad *q, int n)

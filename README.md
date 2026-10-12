@@ -5,7 +5,7 @@ It's built on [MuPDF](https://mupdf.com) with a native front end that follows
 the RISC OS Style Guide, and takes its ideas for markup and reading from
 Flexcil. "Folio" is a working name.
 
-Status: **test builds** (0.0.1-test23). It's used day to day on a Raspberry Pi
+Status: **test builds** (0.0.1-test24). It's used day to day on a Raspberry Pi
 running RISC OS 5, but expect rough edges. The design is in
 [`docs/DESIGN.md`](docs/DESIGN.md).
 
@@ -21,7 +21,8 @@ running RISC OS 5, but expect rough edges. The design is in
   documents, for anyone who reads better larger.
 - **Navigating:** **links** (to other pages, with Back; web links open in the
   browser), a **Contents** window, **Find** (F4), page keys, a page number to
-  type into on the toolbar.
+  type into on the toolbar; open a document at a given page from a script
+  (`Set Folio$OpenPage 12`, then `Filer_Run` the file).
 - **Printing** through the printer drivers (pages, copies, scale, sideways,
   draft), in the background, with the window's title showing the page.
 - **Text:** select by dragging, double-click a word, Copy to the global

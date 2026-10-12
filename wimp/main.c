@@ -204,6 +204,26 @@ static void ack_load(int *b)
 	_swix(Wimp_SendMessage, _INR(0, 2), Wimp_EUserMessage, b, b[1]);
 }
 
+/* Opens a document. The page to open it at, if any: page (1-based, from
+ * -page on the command line), or the system variable Folio$OpenPage, which
+ * is then unset. So, from an Obey file or a program:
+ *     Set Folio$OpenPage 12
+ *     Filer_Run SDFS::Disc.$.Docs.Manual/pdf
+ * opens the manual at page 12, whether Folio is running yet or not. */
+static void open_file(const char *path, int page)
+{
+	const char *v = getenv("Folio$OpenPage");
+	docwin *w;
+	if (v && *v) {
+		if (page <= 0)
+			page = atoi(v);
+		_swix(OS_SetVarVal, _INR(0, 4), "Folio$OpenPage", 0, -1, 0, 0);
+	}
+	w = docwin_open(path);
+	if (w && page > 0)
+		docwin_open_page(w, page - 1);
+}
+
 static int message(int *b)
 {
 	if (clip_message(b))
@@ -220,13 +240,13 @@ static int message(int *b)
 		}
 		/* Dropped on the icon bar or a document window: open it. */
 		ack_load(b);
-		docwin_open((const char *)(b + 11));
+		open_file((const char *)(b + 11), 0);
 		break;
 	case Message_DataOpen:
 		/* Double-click on a file: only types Folio reads. */
 		if (accepts_type(b[10])) {
 			ack_load(b);
-			docwin_open((const char *)(b + 11));
+			open_file((const char *)(b + 11), 0);
 		}
 		break;
 	case Message_PreQuit: {
@@ -396,8 +416,16 @@ int main(int argc, char **argv)
 	speech_init();
 	create_objects();
 	bookshelf_init();
-	if (argc > 1)
-		docwin_open(argv[1]);
+	/* !Folio [-page N] [file] */
+	{
+		int i, page = 0;
+		for (i = 1; i < argc; i++) {
+			if (!strcmp(argv[i], "-page") && i + 1 < argc)
+				page = atoi(argv[++i]);
+			else
+				open_file(argv[i], page);
+		}
+	}
 
 	while (!quit) {
 		int event;
