@@ -508,8 +508,10 @@ int main(int argc, char **argv)
 		busy |= find_background();
 		busy |= toolbar_background();
 		busy |= bookshelf_background();
+		busy |= print_background();
 		busy |= speech_background(&wake);
 	}
+	print_quit();
 	speech_quit();
 	dict_quit();
 	bookshelf_quit();

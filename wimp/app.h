@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test22 (12-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test23 (12-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -94,6 +94,8 @@ void docwin_doc_menu_shown(docwin *w);
 /* For the Contents and Find windows (go_to and show_hit: not with the core lock held). */
 folio_doc *docwin_doc(docwin *w);
 const char *docwin_title(docwin *w);
+/* Text after the title (e.g. " (printing page 2 of 9)"); "" for none. */
+void docwin_set_note(docwin *w, const char *note);
 int docwin_wimp(docwin *w);
 int docwin_current_page(docwin *w);
 int docwin_is_counting(docwin *w);
@@ -194,6 +196,8 @@ int passui_event(int code);              /* 1 if it was theirs */
 void print_open(docwin *w);
 int print_event(int *block);             /* 1 if it was the Print dialogue's */
 void print_forget(docwin *w);
+int print_background(void);              /* 1 while a job is running */
+void print_quit(void);
 void passui_forget(docwin *w);
 
 /* speech.c: reading aloud (with the Speech plugin) */

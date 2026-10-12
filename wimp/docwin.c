@@ -79,6 +79,7 @@ struct docwin {
 	/* PDF passwords: the one it was opened with (UTF-8), for opening it again
 	 * after saving, and a new one waiting to be saved. */
 	char password[128], new_password[128];
+	char note[48];            /* after the title, e.g. while printing */
 	/* Links: the one Select went down on (followed when the button comes up
 	 * without a drag), and the places to go Back to. */
 	int link_down;
@@ -2096,6 +2097,8 @@ void docwin_open_request(docwin *w, int *b)
 
 /* The title: the file's name, with " *" while there are unsaved changes
  * (Style Guide p84). */
+static void set_title(docwin *w);
+
 static void update_title(docwin *w)
 {
 	int modified = 0;
@@ -2108,8 +2111,21 @@ static void update_title(docwin *w)
 	if (modified == w->modified && w->title[0])
 		return;
 	w->modified = modified;
-	snprintf(w->title, sizeof w->title, "%.250s%s", leafname(w->path), modified ? " *" : "");
+	set_title(w);
+}
+
+static void set_title(docwin *w)
+{
+	snprintf(w->title, sizeof w->title, "%.200s%s%s", leafname(w->path), w->modified ? " *" : "", w->note);
 	window_set_title(w->obj, w->title);
+}
+
+void docwin_set_note(docwin *w, const char *note)
+{
+	if (!strcmp(w->note, note))
+		return;
+	snprintf(w->note, sizeof w->note, "%s", note);
+	set_title(w);
 }
 
 /* A page's annotations changed: draw it (and its thumbnail) again. */

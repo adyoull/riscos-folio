@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test22)
+Folio (test build 0.0.1-test23)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -93,8 +93,10 @@ Printing
   needs !Printers loaded with a printer chosen. Each page is made as big as
   it really is at 100% (smaller if it wouldn't fit the paper), in the
   middle of the paper; pages are always printed white, with your notes and
-  markings. Printing takes a few seconds a page, with the hourglass
-  showing how far it's got.
+  markings. Printing goes on in the background while you carry on: the
+  window's title shows which page it's on. The machine only pauses while
+  the printer driver takes each finished page. Choose Print... again (or
+  close the window) to stop it.
 
 Passwords (PDFs)
   Password... on a PDF's menu shows whether it has a password, and puts

@@ -4,19 +4,24 @@
  *
  * Print... (or the Print key) shows the Toolbox's Print dialogue
  * (PrintDbox: pages, copies, scale, upright or sideways, draft). Clicking
- * Print prints there and then, with the hourglass showing how far it's got:
+ * Print starts the job, which then runs in the background, a step per null
+ * poll, so the desktop carries on (test21 printed in one go and held the
+ * machine until it finished):
  *
- *   open printer:, PDriver_SelectJob
- *   each page: PDriver_GiveRectangle (the page as a rectangle of OS units,
- *     placed and turned on the paper: printlay.c), then PDriver_DrawPage and
- *     PDriver_GetRectangle until the driver has had all of it
- *   PDriver_EndJob, close printer:
+ *   start: open printer:, PDriver_SelectJob, then suspend it (select the
+ *     previous job) whenever Folio goes back to the Wimp
+ *   count: a book's chapters, a step a poll (every page has to be known)
+ *   each page: draw its bands (MuPDF, 32bpp sprites), one a poll; then, the
+ *     job selected again, PDriver_GiveRectangle (the page placed and turned
+ *     on the paper: printlay.c), PDriver_DrawPage and PDriver_GetRectangle
+ *     until the driver has had all of it (only plotting: the bands are
+ *     ready), and suspend
+ *   end: PDriver_EndJob, close printer:
  *
- * Pages are drawn by MuPDF into 32bpp sprites a band at a time, only the
- * bands each rectangle the driver asks for needs, kept until the page is
- * done (a bitmap driver asks for a strip at a time; PostScript for the
- * whole page once). Always a white page, whatever the window shows (dark
- * or sepia is for the screen), with the notes and markings. */
+ * The window's title shows how far it's got; Print... again (or closing the
+ * window) stops it. Always a white page, whatever the window shows (dark or
+ * sepia is for the screen), with the notes and markings. FolioLog has each
+ * page's times: drawing (MuPDF) and plotting (the driver). */
 #include "app.h"
 #include "worker.h"
 #include "printlay.h"
@@ -32,15 +37,20 @@
 #define DRAFT_DPI   150
 #define BEST_DPI    300
 #define PAGE_BYTES  (48u << 20)   /* most a page's pixels may take */
-#define BAND_ROWS   256
+#define BAND_ROWS   128           /* about 4 cs to draw at 300 dpi on a Pi 4 */
 
 static struct {
 	ObjectId obj;
 	docwin *w;
 } pr;
 
+static void job_stop(const char *why);
+static int job_running(docwin *w);
+
 void print_forget(docwin *w)
 {
+	if (job_running(w))
+		job_stop(NULL);
 	if (pr.w == w) {
 		if (pr.obj)
 			tbx_hide(pr.obj);
@@ -66,6 +76,11 @@ void print_open(docwin *w)
 	} t;
 	char name[64];
 	int pages, exact = 0;
+	if (job_running(NULL)) {
+		/* One job at a time: Print... while printing stops it. */
+		job_stop("Printing stopped.");
+		return;
+	}
 	if (!have_printer(name, sizeof name)) {
 		tbx_report("There's no printer driver loaded: run !Printers, choose your printer, then try again.");
 		return;
@@ -128,45 +143,83 @@ static int *band_area(int px_w, int rows)
 	return area;
 }
 
-/* Plots the bands that cross user rectangle r (x0, y0, x1, y1), drawing
- * them first if need be. -1 on an error (message in err). */
-static int plot_rect(folio_doc *doc, folio_loc loc, const print_place *pl, band *b, int nb,
+/* Time spent, for the log: drawing (MuPDF) and plotting (the driver). */
+static unsigned t_draw, t_plot;
+static int n_rects, n_plots;
+
+static unsigned cs_now(void)
+{
+	unsigned t;
+	_swix(OS_ReadMonotonicTime, _OUT(0), &t);
+	return t;
+}
+
+/* A sprite of some rows of a band, for plotting just those (reused). */
+static int *part;
+static size_t part_bytes;
+
+static int *rows_area(const int *band, int px_w, int r_from, int rows)
+{
+	size_t img = (size_t)px_w * 4 * rows, bytes = 16 + 44 + img;
+	int *spr;
+	if (bytes > part_bytes) {
+		int *n = realloc(part, bytes);
+		if (!n)
+			return NULL;
+		part = n;
+		part_bytes = bytes;
+	}
+	memcpy(part, band, 16 + 44);          /* the area and sprite headers */
+	part[0] = part[3] = (int)bytes;
+	spr = part + 4;
+	spr[0] = (int)(44 + img);
+	spr[5] = rows - 1;
+	memcpy((char *)spr + 44, (const char *)(band + 4) + 44 + (size_t)r_from * px_w * 4, img);
+	return part;
+}
+
+/* Plots the parts of the bands that cross user rectangle r (x0, y0, x1, y1),
+ * (drawn already). A bitmap driver asks for the page a strip
+ * at a time, so only the strip's rows go to it: plotting a whole band
+ * for each strip made it work through every row of the band, clipped or not.
+ * -1 on an error (message in err). */
+static int plot_rect(const print_place *pl, band *b, int nb,
 		const int *r, char *err, size_t err_size)
 {
 	int i;
+	/* The page's pixel rows the rectangle covers (a row's margin each side). */
+	int row_a = (int)((long long)(pl->h_os - r[3]) * pl->px_h / pl->h_os) - 1;
+	int row_b = (int)((long long)(pl->h_os - r[1]) * pl->px_h / pl->h_os) + 2;
+	n_rects++;
 	for (i = 0; i < nb; i++) {
-		/* The band's OS y range, page top at h_os. */
-		int top = pl->h_os - (int)((long long)b[i].r0 * pl->h_os / pl->px_h);
-		int bottom = pl->h_os - (int)((long long)b[i].r1 * pl->h_os / pl->px_h);
-		int scale[4];
+		int ra = b[i].r0 > row_a ? b[i].r0 : row_a, rb = b[i].r1 < row_b ? b[i].r1 : row_b;
+		int top, bottom, scale[4], *area;
+		unsigned t0;
 		_kernel_oserror *e;
-		if (top <= r[1] || bottom >= r[3])
+		if (ra >= rb)
 			continue;
-		if (!b[i].area) {
-			folio_irect tile;
-			b[i].area = band_area(pl->px_w, b[i].r1 - b[i].r0);
-			if (!b[i].area) {
-				snprintf(err, err_size, "There isn't enough memory to print this page.");
-				return -1;
-			}
-			tile.x0 = 0;
-			tile.x1 = pl->px_w;
-			tile.y0 = b[i].r0;
-			tile.y1 = b[i].r1;
-			if (folio_render_tile(doc, loc, pl->zoom, tile, FOLIO_PAGE_NORMAL, 1,
-					(uint32_t *)((char *)(b[i].area + 4) + 44), pl->px_w * 4)) {
-				snprintf(err, err_size, "%s", folio_error(app.fc));
-				return -1;
-			}
+		if (!b[i].area)
+			continue;            /* (all drawn before the page is sent) */
+		/* Rows ra..rb of the page, from this band. */
+		area = ra == b[i].r0 && rb == b[i].r1 ? b[i].area :
+			rows_area(b[i].area, pl->px_w, ra - b[i].r0, rb - ra);
+		if (!area) {
+			snprintf(err, err_size, "There isn't enough memory to print this page.");
+			return -1;
 		}
+		top = pl->h_os - (int)((long long)ra * pl->h_os / pl->px_h);
+		bottom = pl->h_os - (int)((long long)rb * pl->h_os / pl->px_h);
 		/* Scaled from its natural size (2 OS units a pixel) to its place;
-		 * a unit taller, so no gap shows between bands. */
+		 * a unit taller (unless it's the page's last row), so no gap shows. */
 		scale[0] = pl->w_os;
-		scale[1] = top - bottom + (i < nb - 1 ? 1 : 0);
+		scale[1] = top - bottom + (rb < pl->px_h ? 1 : 0);
 		scale[2] = pl->px_w * 2;
-		scale[3] = (b[i].r1 - b[i].r0) * 2;
-		e = _swix(OS_SpriteOp, _INR(0, 7), 52 + 512, b[i].area, b[i].area + 4, 0,
-			bottom - (i < nb - 1 ? 1 : 0), 0, scale, 0);
+		scale[3] = (rb - ra) * 2;
+		t0 = cs_now();
+		e = _swix(OS_SpriteOp, _INR(0, 7), 52 + 512, area, area + 4, 0,
+			bottom - (rb < pl->px_h ? 1 : 0), 0, scale, 0);
+		t_plot += cs_now() - t0;
+		n_plots++;
 		if (e) {
 			snprintf(err, err_size, "%s", e->errmess);
 			return -1;
@@ -184,138 +237,299 @@ static void free_bands(band *b, int nb)
 	}
 }
 
-/* ---- The job --------------------------------------------------------------- */
+/* ---- The job, in the background ------------------------------------------- */
 
-static void print_doc(docwin *w, int first, int last, int copies, int scale_pc, int sideways,
+enum { J_IDLE, J_COUNT, J_SETUP, J_DRAW, J_SEND, J_END };
+
+static struct {
+	int stage;
+	docwin *w;
+	int file, old;            /* printer: and the job that was current before ours */
+	int first, last, cur, copies, scale_pc, sideways, draft, xres, printable[4], done;
+	folio_loc loc;
+	print_place pl;
+	band *bands;
+	int nb, next_band;
+	unsigned t_page;
+} J;
+
+static int job_running(docwin *w)
+{
+	return J.stage != J_IDLE && (!w || J.w == w);
+}
+
+static void set_note(void)
+{
+	char note[48];
+	if (J.stage == J_COUNT)
+		snprintf(note, sizeof note, " (printing: counting pages)");
+	else
+		snprintf(note, sizeof note, " (printing page %d of %d)", J.cur + 1, J.last + 1);
+	docwin_set_note(J.w, note);
+}
+
+static void drop_bands(void)
+{
+	if (J.bands) {
+		free_bands(J.bands, J.nb);
+		free(J.bands);
+		J.bands = NULL;
+	}
+	J.nb = 0;
+}
+
+/* Ends the job: aborted with a message (why), or quietly (NULL: the window
+ * closed). */
+static void job_stop(const char *why)
+{
+	if (J.stage == J_IDLE)
+		return;
+	drop_bands();
+	_swix(PDriver_AbortJob, _IN(0), J.file);
+	_swix(OS_Find, _INR(0, 1), 0, J.file);
+	if (J.w && why)
+		docwin_set_note(J.w, "");       /* (not as the window closes) */
+	J.stage = J_IDLE;
+	free(part);
+	part = NULL;
+	part_bytes = 0;
+	app_log("print: stopped%s%s", why ? ": " : "", why ? why : "");
+	if (why)
+		tbx_report(why);
+}
+
+static void job_fail(const char *msg)
+{
+	char m[300];
+	snprintf(m, sizeof m, "Printing failed: %s", msg);
+	job_stop(m);
+}
+
+/* Our job current again (between polls it's suspended). */
+static _kernel_oserror *resume(void)
+{
+	int prev;
+	return _swix(PDriver_SelectJob, _INR(0, 1) | _OUT(0), J.file, 0, &prev);
+}
+
+static void suspend(void)
+{
+	_swix(PDriver_SelectJob, _INR(0, 1), J.old, 0);
+}
+
+static void print_start(docwin *w, int first, int last, int copies, int scale_pc, int sideways,
 		int draft)
 {
-	folio_doc *doc = docwin_doc(w);
-	int file = 0, old = 0, job = 0, printable[4], xres = 300, i, done = 0;
-	char err[256], pagestr[16];
 	_kernel_oserror *e;
-	band *bands = NULL;
-	int nb = 0;
-	err[0] = 0;
-
-	if ((e = _swix(PDriver_Info, _OUT(1), &xres)) ||
-			(e = _swix(PDriver_PageSize, _OUTR(3, 6), &printable[0], &printable[1],
-				&printable[2], &printable[3]))) {
+	memset(&J, 0, sizeof J);
+	J.xres = 300;
+	if ((e = _swix(PDriver_Info, _OUT(1), &J.xres)) ||
+			(e = _swix(PDriver_PageSize, _OUTR(3, 6), &J.printable[0], &J.printable[1],
+				&J.printable[2], &J.printable[3]))) {
 		tbx_report_error(e);
 		return;
 	}
-	if (_swix(OS_Find, _INR(0, 1) | _OUT(0), 0x80, "printer:", &file) || !file) {
+	if (_swix(OS_Find, _INR(0, 1) | _OUT(0), 0x80, "printer:", &J.file) || !J.file) {
 		tbx_report("Folio couldn't open the printer (printer:). Is !Printers running?");
 		return;
 	}
-	_swix(Hourglass_On, 0);
-	core_now();
-	/* Every page has to be known (a book's chapters may still be counting). */
-	while (folio_count_step(doc, 1) == 0)
-		;
-	{
-		int exact = 0, pages = folio_page_count(doc, &exact);
-		if (last < 0 || last >= pages)
-			last = pages - 1;
-		if (first < 0)
-			first = 0;
-	}
-	e = _swix(PDriver_SelectJob, _INR(0, 1) | _OUT(0), file, docwin_title(w), &old);
+	e = _swix(PDriver_SelectJob, _INR(0, 1) | _OUT(0), J.file, docwin_title(w), &J.old);
 	if (e) {
-		snprintf(err, sizeof err, "%s", e->errmess);
-		goto fail;
+		_swix(OS_Find, _INR(0, 1), 0, J.file);
+		tbx_report_error(e);
+		return;
 	}
-	job = 1;
+	suspend();
+	J.w = w;
+	J.first = first;
+	J.last = last;
+	J.copies = copies > 0 ? copies : 1;
+	J.scale_pc = scale_pc;
+	J.sideways = sideways;
+	J.draft = draft;
+	J.stage = J_COUNT;
 	app_log("print: pages %d-%d, %d copies, %d%%%s%s, printable %d,%d-%d,%d mp, %d dpi",
-		first + 1, last + 1, copies, scale_pc, sideways ? ", sideways" : "", draft ? ", draft" : "",
-		printable[0], printable[1], printable[2], printable[3], xres);
+		first + 1, last + 1, J.copies, scale_pc, sideways ? ", sideways" : "", draft ? ", draft" : "",
+		J.printable[0], J.printable[1], J.printable[2], J.printable[3], J.xres);
+	set_note();
+}
 
-	for (i = first; i <= last; i++) {
-		folio_loc loc;
-		folio_rect bounds;
-		print_place pl;
-		int r[4], more = 0, id = 0, k, dpi = draft ? DRAFT_DPI : BEST_DPI;
-		if (xres > 0 && xres < dpi)
-			dpi = xres;
-		if (folio_loc_from_number(doc, i, &loc) || folio_page_bounds(doc, loc, &bounds)) {
-			snprintf(err, sizeof err, "Page %d can't be read: %s", i + 1, folio_error(app.fc));
-			goto fail;
-		}
-		if (print_layout(bounds.x1 - bounds.x0, bounds.y1 - bounds.y0, printable, sideways,
-				scale_pc, dpi, PAGE_BYTES, &pl))
-			continue;
-		nb = (pl.px_h + BAND_ROWS - 1) / BAND_ROWS;
-		bands = calloc(nb, sizeof *bands);
-		if (!bands) {
-			snprintf(err, sizeof err, "There isn't enough memory to print.");
-			goto fail;
-		}
-		for (k = 0; k < nb; k++) {
-			bands[k].r0 = k * BAND_ROWS;
-			bands[k].r1 = k == nb - 1 ? pl.px_h : (k + 1) * BAND_ROWS;
-		}
+/* Sends page J.cur, its bands all drawn: the only part that has the
+ * machine for long (the driver's work). */
+static void send_page(void)
+{
+	char pagestr[16];
+	int r[4], more = 0, id = 0;
+	char err[256];
+	_kernel_oserror *e;
+	err[0] = 0;
+	t_plot = 0;
+	n_rects = n_plots = 0;
+	_swix(Hourglass_On, 0);
+	e = resume();
+	if (!e) {
 		r[0] = 0;
 		r[1] = 0;
-		r[2] = pl.w_os;
-		r[3] = pl.h_os;
-		e = _swix(PDriver_GiveRectangle, _INR(0, 4), i + 1, r, pl.matrix, pl.pos, 0xffffff00u);
-		if (!e) {
-			snprintf(pagestr, sizeof pagestr, "%d", i + 1);
-			e = _swix(PDriver_DrawPage, _INR(0, 3) | _OUT(0) | _OUT(2), copies > 0 ? copies : 1, r,
-				++done, pagestr, &more, &id);
-		}
-		while (!e && more) {
-			if (plot_rect(doc, loc, &pl, bands, nb, r, err, sizeof err))
-				goto fail;
-			e = _swix(PDriver_GetRectangle, _IN(1) | _OUT(0) | _OUT(2), r, &more, &id);
-		}
-		if (e) {
-			snprintf(err, sizeof err, "%s", e->errmess);
-			goto fail;
-		}
-		free_bands(bands, nb);
-		free(bands);
-		bands = NULL;
-		_swix(Hourglass_Percentage, _IN(0), (i - first + 1) * 100 / (last - first + 1));
+		r[2] = J.pl.w_os;
+		r[3] = J.pl.h_os;
+		e = _swix(PDriver_GiveRectangle, _INR(0, 4), J.cur + 1, r, J.pl.matrix, J.pl.pos, 0xffffff00u);
 	}
-	e = _swix(PDriver_EndJob, _IN(0), file);
-	if (e) {
+	if (!e) {
+		snprintf(pagestr, sizeof pagestr, "%d", J.cur + 1);
+		e = _swix(PDriver_DrawPage, _INR(0, 3) | _OUT(0) | _OUT(2), J.copies, r, ++J.done, pagestr,
+			&more, &id);
+	}
+	while (!e && more) {
+		if (plot_rect(&J.pl, J.bands, J.nb, r, err, sizeof err))
+			break;
+		e = _swix(PDriver_GetRectangle, _IN(1) | _OUT(0) | _OUT(2), r, &more, &id);
+	}
+	suspend();
+	_swix(Hourglass_Off, 0);
+	if (e)
 		snprintf(err, sizeof err, "%s", e->errmess);
-		goto fail;
+	if (err[0]) {
+		job_fail(err);
+		return;
 	}
-	if (old)
-		_swix(PDriver_SelectJob, _INR(0, 1), old, 0);
-	core_unlock();
-	_swix(OS_Find, _INR(0, 1), 0, file);
-	_swix(Hourglass_Off, 0);
-	app_log("print: %d page(s) sent", done);
-	return;
+	app_log("print: page %d: %dx%d px, drawing %u cs; %d rectangle(s), %d plot(s), plotting %u cs; "
+		"in all %u cs", J.cur + 1, J.pl.px_w, J.pl.px_h, t_draw, n_rects, n_plots, t_plot,
+		cs_now() - J.t_page);
+	drop_bands();
+	J.cur++;
+	J.stage = J.cur > J.last ? J_END : J_SETUP;
+}
 
-fail:
-	if (bands) {
-		free_bands(bands, nb);
-		free(bands);
+/* A step of the job (null polls). 1 while there's more to do. */
+int print_background(void)
+{
+	folio_doc *doc;
+	if (J.stage == J_IDLE)
+		return 0;
+	doc = docwin_doc(J.w);
+	switch (J.stage) {
+	case J_COUNT: {
+		int done, exact = 0, pages;
+		core_now();
+		done = folio_count_step(doc, 1);
+		pages = folio_page_count(doc, &exact);
+		core_unlock();
+		if (done < 0) {
+			job_fail("the document's pages couldn't be counted.");
+			return 0;
+		}
+		if (done) {
+			if (J.last < 0 || J.last >= pages)
+				J.last = pages - 1;
+			if (J.first < 0)
+				J.first = 0;
+			J.cur = J.first;
+			J.stage = J.cur > J.last ? J_END : J_SETUP;
+		}
+		break;
 	}
-	if (job) {
-		_swix(PDriver_AbortJob, _IN(0), file);
-		if (old)
-			_swix(PDriver_SelectJob, _INR(0, 1), old, 0);
+	case J_SETUP: {
+		folio_rect bounds;
+		int dpi = J.draft ? DRAFT_DPI : BEST_DPI, k, rc;
+		if (J.xres > 0 && J.xres < dpi)
+			dpi = J.xres;
+		core_now();
+		rc = folio_loc_from_number(doc, J.cur, &J.loc) || folio_page_bounds(doc, J.loc, &bounds);
+		core_unlock();
+		if (rc) {
+			char m[200];
+			snprintf(m, sizeof m, "page %d can't be read.", J.cur + 1);
+			job_fail(m);
+			return 0;
+		}
+		J.t_page = cs_now();
+		t_draw = 0;
+		if (print_layout(bounds.x1 - bounds.x0, bounds.y1 - bounds.y0, J.printable, J.sideways,
+				J.scale_pc, dpi, PAGE_BYTES, &J.pl)) {
+			J.cur++;
+			J.stage = J.cur > J.last ? J_END : J_SETUP;
+			break;
+		}
+		J.nb = (J.pl.px_h + BAND_ROWS - 1) / BAND_ROWS;
+		J.bands = calloc(J.nb, sizeof *J.bands);
+		if (!J.bands) {
+			job_fail("there isn't enough memory.");
+			return 0;
+		}
+		for (k = 0; k < J.nb; k++) {
+			J.bands[k].r0 = k * BAND_ROWS;
+			J.bands[k].r1 = k == J.nb - 1 ? J.pl.px_h : (k + 1) * BAND_ROWS;
+		}
+		J.next_band = 0;
+		J.stage = J_DRAW;
+		set_note();
+		break;
 	}
-	core_unlock();
-	_swix(OS_Find, _INR(0, 1), 0, file);
-	_swix(Hourglass_Off, 0);
-	app_log("print: failed: %s", err);
-	tbx_report(err[0] ? err : "Printing failed.");
+	case J_DRAW: {
+		band *b = &J.bands[J.next_band];
+		folio_irect tile;
+		unsigned t0 = cs_now();
+		int rc;
+		b->area = band_area(J.pl.px_w, b->r1 - b->r0);
+		if (!b->area) {
+			job_fail("there isn't enough memory to print this page.");
+			return 0;
+		}
+		tile.x0 = 0;
+		tile.x1 = J.pl.px_w;
+		tile.y0 = b->r0;
+		tile.y1 = b->r1;
+		core_now();
+		rc = folio_render_tile(doc, J.loc, J.pl.zoom, tile, FOLIO_PAGE_NORMAL, 1,
+			(uint32_t *)((char *)(b->area + 4) + 44), J.pl.px_w * 4);
+		core_unlock();
+		t_draw += cs_now() - t0;
+		if (rc) {
+			job_fail(folio_error(app.fc));
+			return 0;
+		}
+		if (++J.next_band == J.nb)
+			J.stage = J_SEND;
+		break;
+	}
+	case J_SEND:
+		send_page();
+		break;
+	case J_END: {
+		_kernel_oserror *e = resume();
+		if (!e)
+			e = _swix(PDriver_EndJob, _IN(0), J.file);
+		suspend();
+		if (e) {
+			job_fail(e->errmess);
+			return 0;
+		}
+		_swix(OS_Find, _INR(0, 1), 0, J.file);
+		docwin_set_note(J.w, "");
+		app_log("print: %d page(s) sent", J.done);
+		J.stage = J_IDLE;
+		free(part);
+		part = NULL;
+		part_bytes = 0;
+		return 0;
+	}
+	}
+	return J.stage != J_IDLE;
 }
 
 int print_event(int *b)
 {
 	if (b[2] != PrintDbox_Print)
 		return 0;
-	if (pr.w) {
-		docwin *w = pr.w;
+	if (pr.w && !job_running(NULL)) {
 		int from = b[4], to = b[5];
-		print_doc(w, from < 0 ? -1 : from - 1, from < 0 ? -1 : to - 1, b[6], b[7],
+		print_start(pr.w, from < 0 ? -1 : from - 1, from < 0 ? -1 : to - 1, b[6], b[7],
 			(b[3] & 1) != 0, (b[3] & 2) != 0);
 	}
 	return 1;
+}
+
+void print_quit(void)
+{
+	job_stop(NULL);
 }
