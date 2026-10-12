@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test18 (12-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test19 (12-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -112,6 +112,11 @@ int docwin_toolbar_key(docwin *w, int key);   /* 1 if taken */
 
 /* toolbar.c */
 int toolbar_height(void);
+int toolbar_width(void);           /* all the buttons, side by side */
+int toolbar_scroller_owns(int wimp_handle);
+void toolbar_scroller_click(int *block);
+void toolbar_scroller_redraw(int *block);
+int toolbar_scroll_request(int *block);   /* 1 if it was a toolbar's */
 ObjectId toolbar_create(docwin *w);
 void toolbar_attach(ObjectId win, ObjectId tb, int on);
 void toolbar_fit(ObjectId tb, int parent_wimp);

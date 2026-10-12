@@ -11,6 +11,11 @@
  * Read aloud is there only with the Speech plugin (it's the last gadget, so
  * the template simply has one fewer without it).
  *
+ * Document windows open at least as wide as all the buttons. If the reader
+ * makes one narrower, a pair of scroll arrows appears at the toolbar's right
+ * end (a small Wimp child window of the toolbar) and the toolbar scrolls
+ * sideways; the mouse wheel over the toolbar scrolls it too.
+ *
  * The annotation tools are shaded until annotations are written. Button
  * gadgets report clicks as Wimp mouse clicks with the id block's component
  * set (p366); Return in the page field arrives as a key press. */
@@ -22,6 +27,8 @@
 #define TB_H     76
 #define BTN      60
 #define TB_W     1500
+#define SCR_W    80        /* the scroll arrows at the right, when it doesn't fit */
+#define SCR_STEP 192       /* how far one click on an arrow scrolls */
 
 enum {
 	T_THUMBS = 1, T_CONTENTS, T_PREV, T_PAGE, T_OF, T_NEXT, T_ZOOMOUT, T_ZOOM, T_ZOOMIN,
@@ -101,6 +108,9 @@ static const char *const tips[T_COUNT] = {
 	"Underline the selection", "Strike out the selection", "Add a note", "Read aloud (click again to stop)"
 };
 
+/* How wide the buttons are, all together. */
+static int content_w = TB_W;
+
 static void build_template(void)
 {
 	int x = 8;
@@ -144,6 +154,8 @@ static void build_template(void)
 	button(&g.strike, T_STRIKE, x, "R5;Stb_strike", "Click to strike out the selected text (PDFs)."); x += BTN + 4;
 	button(&g.note, T_NOTE, x, "R5;Stb_note", "Click to add a note at the selection, or at the top of the page (PDFs)."); x += BTN + 20;
 	button(&g.speak, T_SPEAK, x, "R5;Stb_speak", "Click to hear the document read aloud from here (or from the selection); click again to stop.");
+	/* The last gadget's right edge (Note's without the plugin), and a margin. */
+	content_w = (speech_available() ? g.speak.h.x1 : g.note.h.x1) + 8;
 	gadgets[T_THUMBS] = &g.thumbs.h; gadgets[T_CONTENTS] = &g.contents.h;
 	gadgets[T_PREV] = &g.prev.h; gadgets[T_PAGE] = &g.page.h; gadgets[T_OF] = &g.of.h;
 	gadgets[T_NEXT] = &g.next.h; gadgets[T_ZOOMOUT] = &g.zoomout.h; gadgets[T_ZOOM] = &g.zoom.h;
@@ -159,6 +171,13 @@ static void build_template(void)
 int toolbar_height(void)
 {
 	return TB_H;
+}
+
+int toolbar_width(void)
+{
+	if (content_w == TB_W)
+		build_template();
+	return content_w;
 }
 
 ObjectId toolbar_create(docwin *w)
@@ -183,8 +202,9 @@ ObjectId toolbar_create(docwin *w)
 	t.window.vis_x1 = TB_W;    /* toolbar_fit() makes it as wide as its window */
 	t.window.vis_y1 = TB_H;
 	t.window.behind = -1;
-	/* No furniture; auto-redraw; new format. */
-	t.window.window_flags = 0x80000000u | (1u << 4);
+	/* No furniture; auto-redraw; Scroll_Requests (bit 8: the mouse wheel
+	 * over it scrolls it sideways); new format. */
+	t.window.window_flags = 0x80000000u | (1u << 4) | (1u << 8);
 	t.window.title_fore = 7;
 	t.window.title_back = 2;
 	t.window.work_fore = 7;
@@ -193,7 +213,9 @@ ObjectId toolbar_create(docwin *w)
 	t.window.scroll_inner = 1;
 	t.window.title_focus = 12;
 	t.window.work_y0 = -TB_H;
-	t.window.work_x1 = app.screen_w > TB_W ? app.screen_w : TB_W;
+	/* Wide enough to span any window, and to scroll the last button clear
+	 * of the arrows. */
+	t.window.work_x1 = app.screen_w > content_w + SCR_W ? app.screen_w : content_w + SCR_W;
 	t.window.title_flags = 0;
 	t.window.work_flags = 0;
 	t.window.sprite_area = app.sprites;     /* the toolbar's icons: <Folio$Dir>.Sprites */
@@ -233,6 +255,9 @@ typedef struct {
 	ObjectId tb;
 	char page[24], of[24], zoom[24];
 	int dark, thumbs, two, define, markup, note, speak;
+	int tb_wimp;            /* the toolbar's Wimp window (once fitted) */
+	int scroller;           /* the arrows' Wimp window, or 0 */
+	int scx;                /* how far it's scrolled */
 } shown_state;
 
 static shown_state shown[16];
@@ -257,8 +282,14 @@ void toolbar_forget(ObjectId tb)
 {
 	int i;
 	for (i = 0; i < 16; i++)
-		if (shown[i].tb == tb)
+		if (shown[i].tb == tb) {
+			if (shown[i].scroller) {
+				int b[1];
+				b[0] = shown[i].scroller;
+				_swix(Wimp_DeleteWindow, _IN(1), b);
+			}
 			memset(&shown[i], 0, sizeof shown[i]);
+		}
 }
 
 static void set_if(ObjectId tb, int comp, int method, char *was, size_t size, const char *now)
@@ -440,8 +471,12 @@ static int gadget_at(int wh, int x, int y, int *gx0, int *gy0)
 	return -1;
 }
 
+static int is_scroller(int wh);
+
 void toolbar_pointer(int wimp_handle, int entering)
 {
+	if (is_scroller(wimp_handle))
+		return;             /* the arrows: no tooltips there */
 	if (entering) {
 		tip.tb_wimp = wimp_handle;
 		tip.comp = -1;
@@ -528,38 +563,256 @@ void toolbar_tip_redraw(int *b)
 	}
 }
 
+/* ---- Width and scrolling -------------------------------------------------- */
+
+#define TASK 0x4b534154
+
+/* How far the toolbar can scroll when it's vis_w wide. */
+static int max_scroll(int vis_w)
+{
+	return vis_w < content_w ? content_w + SCR_W - vis_w : 0;
+}
+
+static shown_state *state_for_wimp(int wh)
+{
+	int i;
+	for (i = 0; wh && i < 16; i++)
+		if (shown[i].tb && shown[i].tb_wimp == wh)
+			return &shown[i];
+	return NULL;
+}
+
+static shown_state *state_for_scroller(int wh)
+{
+	int i;
+	for (i = 0; wh && i < 16; i++)
+		if (shown[i].tb && shown[i].scroller == wh)
+			return &shown[i];
+	return NULL;
+}
+
+static int create_scroller(void)
+{
+	int b[23], h = 0;
+	memset(b, 0, sizeof b);
+	b[2] = SCR_W; b[3] = TB_H;
+	b[6] = -1;
+	/* No furniture, not moveable; new format. */
+	b[7] = (int)0x80000000u;
+	b[8] = 7 | (2 << 8) | (7 << 16) | (255u << 24);   /* we draw it all */
+	b[9] = 3 | (1 << 8) | (12 << 16);
+	b[10] = 0; b[11] = -TB_H; b[12] = SCR_W; b[13] = 0;
+	b[15] = 2 << 12;            /* clicks, repeating while held */
+	b[16] = 1;
+	if (_swix(Wimp_CreateWindow, _IN(1) | _OUT(0), b, &h))
+		return 0;
+	return h;
+}
+
+/* Reads a toolbar's state; *parent is -1 for a top-level pane. */
+static int tb_state(int wh, int *st, int *parent, unsigned *nest)
+{
+	st[0] = wh;
+	*parent = -1;
+	*nest = 0;
+	if (_swix(Wimp_GetWindowState, _INR(1, 2) | _OUTR(3, 4), st, TASK, parent, nest)) {
+		*parent = -1;
+		if (_swix(Wimp_GetWindowState, _IN(1), st))
+			return -1;
+	}
+	return 0;
+}
+
+static void tb_reopen(int *st, int parent, unsigned nest)
+{
+	if (parent != -1)
+		_swix(Wimp_OpenWindow, _INR(1, 4), st, TASK, parent, nest & ~1u);
+	else
+		_swix(Wimp_OpenWindow, _IN(1), st);
+}
+
+/* The arrows: open at the toolbar's right end (a child of the toolbar,
+ * linked to its right edge) while it's narrower than its buttons, else
+ * closed. st is the toolbar's state. */
+static void place_scroller(shown_state *s, const int *st)
+{
+	int b[9], open = 0;
+	int clipped = st[3] - st[1] < content_w;
+	if (s->scroller) {
+		b[0] = s->scroller;
+		if (!_swix(Wimp_GetWindowState, _IN(1), b))
+			open = (b[8] & (1 << 16)) != 0;
+	}
+	if (!clipped) {
+		if (open) {
+			b[0] = s->scroller;
+			_swix(Wimp_CloseWindow, _IN(1), b);
+		}
+		return;
+	}
+	if (!s->scroller && !(s->scroller = create_scroller()))
+		return;
+	if (open && b[3] == st[3] && b[1] == st[3] - SCR_W && b[4] == st[4] && b[2] == st[2])
+		return;
+	b[0] = s->scroller;
+	b[1] = st[3] - SCR_W;
+	b[2] = st[2];
+	b[3] = st[3];
+	b[4] = st[4];
+	b[5] = 0;
+	b[6] = 0;
+	b[7] = -1;
+	/* Left and right edges to the parent's right; bottom to its bottom,
+	 * top to its top; scroll offsets likewise. */
+	if (_swix(Wimp_OpenWindow, _INR(1, 4), b, TASK, s->tb_wimp,
+			(2u << 16) | (1u << 18) | (2u << 20) | (2u << 22) | (2u << 24) | (2u << 26)))
+		app_log("toolbar: can't open the scroll arrows (needs the nested Window Manager)");
+	else
+		_swix(Wimp_ForceRedraw, _INR(0, 4), s->scroller, 0, -TB_H, SCR_W, 0);
+}
+
 /* Makes the toolbar exactly as wide as its window's visible area. The
  * Toolbox keeps a toolbar at its template's size and doesn't trim it to the
  * window (test9: it ran past the right edge), so after each open it's
- * reopened at the window's width. Read with the nested form of
- * Wimp_GetWindowState: as a Wimp child it's reopened with the same parent
- * and edge links; as a top-level pane, in place. */
+ * reopened at the window's width, scrolled to where the reader left it.
+ * Read with the nested form of Wimp_GetWindowState: as a Wimp child it's
+ * reopened with the same parent and edge links; as a top-level pane, in
+ * place. */
 void toolbar_fit(ObjectId tb, int parent_wimp)
 {
-	int st[9], ps[9], wh = 0, parent = -1, want;
+	int st[9], ps[9], wh = 0, parent = -1, want, scx;
 	unsigned nest = 0;
+	shown_state *s;
 	if (!tb || window_get_wimp_handle(tb, &wh) || !wh)
 		return;
-	st[0] = wh;
-	if (_swix(Wimp_GetWindowState, _INR(1, 2) | _OUTR(3, 4), st, 0x4b534154, &parent, &nest)) {
-		parent = -1;
-		if (_swix(Wimp_GetWindowState, _IN(1), st))
-			return;
-	}
+	if (tb_state(wh, st, &parent, &nest))
+		return;
 	if (!(st[8] & (1 << 16)))
 		return;                   /* not showing */
 	ps[0] = parent_wimp;
 	if (_swix(Wimp_GetWindowState, _IN(1), ps))
 		return;
+	s = state_for(tb);
+	s->tb_wimp = wh;
 	want = ps[3] - ps[1];
-	if (want < 64 || (st[1] == ps[1] && st[3] - st[1] == want))
+	if (want < 64)
 		return;
-	st[1] = ps[1];
-	st[3] = ps[1] + want;
-	st[5] = 0;
-	if (parent != -1)
-		_swix(Wimp_OpenWindow, _INR(1, 4), st, 0x4b534154, parent, nest & ~1u);
-	else
-		_swix(Wimp_OpenWindow, _IN(1), st);
-	app_log("toolbar: %d wide (%s)", want, parent != -1 ? "child" : "pane");
+	scx = s->scx;
+	if (scx > max_scroll(want))
+		scx = max_scroll(want);
+	if (scx < 0)
+		scx = 0;
+	if (st[1] != ps[1] || st[3] - st[1] != want || st[5] != scx) {
+		if (st[3] - st[1] != want)
+			app_log("toolbar: %d wide (%s)%s", want, parent != -1 ? "child" : "pane",
+				want < content_w ? ", scrolls" : "");
+		st[1] = ps[1];
+		st[3] = ps[1] + want;
+		st[5] = scx;
+		s->scx = scx;
+		tb_reopen(st, parent, nest);
+		if (tb_state(wh, st, &parent, &nest))
+			return;
+	}
+	place_scroller(s, st);
+}
+
+/* Scrolls a toolbar sideways by dx (clamped). */
+static void scroll_by(shown_state *s, int dx)
+{
+	int st[9], parent, max;
+	unsigned nest;
+	if (tb_state(s->tb_wimp, st, &parent, &nest))
+		return;
+	max = max_scroll(st[3] - st[1]);
+	dx += st[5];
+	if (dx > max)
+		dx = max;
+	if (dx < 0)
+		dx = 0;
+	if (dx == st[5])
+		return;
+	toolbar_tip_hide();
+	st[5] = s->scx = dx;
+	tb_reopen(st, parent, nest);
+	if (s->scroller)
+		_swix(Wimp_ForceRedraw, _INR(0, 4), s->scroller, 0, -TB_H, SCR_W, 0);
+}
+
+int toolbar_scroller_owns(int wimp_handle)
+{
+	return state_for_scroller(wimp_handle) != NULL;
+}
+
+static int is_scroller(int wh)
+{
+	return toolbar_scroller_owns(wh);
+}
+
+/* Left half scrolls left, right half right; Adjust the other way (as on a
+ * scroll bar's arrows). */
+void toolbar_scroller_click(int *b)
+{
+	shown_state *s = state_for_scroller(b[3]);
+	int st[9], dir;
+	if (!s || !(b[2] & 5))
+		return;
+	st[0] = s->scroller;
+	if (_swix(Wimp_GetWindowState, _IN(1), st))
+		return;
+	dir = b[0] - st[1] < SCR_W / 2 ? -1 : 1;
+	if (b[2] & 1)
+		dir = -dir;
+	scroll_by(s, dir * SCR_STEP);
+}
+
+/* The mouse wheel over a toolbar (a Scroll_Request): 1 if it was one. */
+int toolbar_scroll_request(int *b)
+{
+	shown_state *s = state_for_wimp(b[0]);
+	int dx;
+	if (!s)
+		return 0;
+	/* Sideways if the wheel says so; otherwise up is left, down is right. */
+	dx = b[8] ? b[8] : -b[9];
+	if (dx)
+		scroll_by(s, (dx > 0 ? 1 : -1) * SCR_STEP / 2);
+	return 1;
+}
+
+void toolbar_scroller_redraw(int *b)
+{
+	shown_state *s = state_for_scroller(b[0]);
+	int more = 0, st[9], scx = 0, max = 0;
+	if (s) {
+		st[0] = s->tb_wimp;
+		if (!_swix(Wimp_GetWindowState, _IN(1), st)) {
+			scx = st[5];
+			max = max_scroll(st[3] - st[1]);
+		}
+	}
+	_swix(Wimp_RedrawWindow, _IN(1) | _OUT(0), b, &more);
+	while (more) {
+		int ox = b[1] - b[5], oy = b[4] - b[6], half = SCR_W / 2, mid = oy - TB_H / 2, i;
+		/* The toolbar's grey, a shadow line at the left, and two arrows,
+		 * greyed out at the ends. */
+		_swix(Wimp_SetColour, _IN(0), 1);
+		_swix(OS_Plot, _INR(0, 2), 4, ox, oy - TB_H);
+		_swix(OS_Plot, _INR(0, 2), 96 + 5, ox + SCR_W - 1, oy - 1);
+		_swix(Wimp_SetColour, _IN(0), 4);
+		_swix(OS_Plot, _INR(0, 2), 4, ox, oy - TB_H);
+		_swix(OS_Plot, _INR(0, 2), 5, ox, oy - 1);
+		_swix(Wimp_SetColour, _IN(0), 0);
+		_swix(OS_Plot, _INR(0, 2), 4, ox + 2, oy - TB_H);
+		_swix(OS_Plot, _INR(0, 2), 5, ox + 2, oy - 1);
+		for (i = 0; i < 2; i++) {
+			int cx = ox + 4 + half * i + (half - 4) / 2;
+			int dir = i ? 1 : -1;
+			_swix(Wimp_SetColour, _IN(0), (i ? scx < max : scx > 0) ? 7 : 3);
+			_swix(OS_Plot, _INR(0, 2), 4, cx - dir * 10, mid + 16);
+			_swix(OS_Plot, _INR(0, 2), 4, cx - dir * 10, mid - 16);
+			_swix(OS_Plot, _INR(0, 2), 80 + 5, cx + dir * 10, mid);
+		}
+		_swix(Wimp_GetRectangle, _IN(1) | _OUT(0), b, &more);
+	}
 }

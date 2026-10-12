@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test18)
+Folio (test build 0.0.1-test19)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -41,8 +41,12 @@ The toolbar and thumbnails
   thumbnails on/off, Contents, previous page, the page number (type a
   number and press Return to go there), next page, zoom out, the scale,
   zoom in, fit width, two pages, dark page, Find, Define, Highlight, Underline,
-  Strike out and Note. Rest the pointer on a button for a moment to see its
-  name. View > Toolbar hides or shows it.
+  Strike out and Note (and Read aloud, with the Speech plugin). Rest the
+  pointer on a button for a moment to see its name. View > Toolbar hides
+  or shows it.
+  Windows open wide enough for every button. If you make one narrower,
+  arrows appear at the toolbar's right end: click them (Adjust goes the
+  other way), or use the mouse wheel over the toolbar, to scroll it.
   The thumbnails drawer (View > Thumbnails, or the first toolbar button)
   shows small pages down the left of the window, which widens to make room
   for it (and narrows again when it closes); the page you're reading

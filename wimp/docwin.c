@@ -744,6 +744,14 @@ docwin *docwin_open_password(const char *path, const char *password)
 	vis_w = w->ext_w + 40;
 	if (vis_w > app.screen_w / 2)
 		vis_w = app.screen_w / 2;
+	/* But never narrower than the toolbar's buttons, so all of them show
+	 * (Read aloud too, with the plugin); narrower still if the screen is,
+	 * leaving room for the scroll bar. If the reader makes it narrower,
+	 * the toolbar scrolls. */
+	if (w->show_toolbar && vis_w < toolbar_width())
+		vis_w = toolbar_width();
+	if (vis_w > app.screen_w - 48)
+		vis_w = app.screen_w - 48;
 	vis_h = app.screen_h / 2;
 	x0 = (app.screen_w - vis_w) / 2;
 	y1 = (app.screen_h + vis_h) / 2 - 48 * (open_count % 6);

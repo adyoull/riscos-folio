@@ -425,6 +425,8 @@ int main(int argc, char **argv)
 				thumbs_redraw(thumbs_from_wimp(block[0]), block);
 			else if (toolbar_tip_owns(block[0]))
 				toolbar_tip_redraw(block);
+			else if (toolbar_scroller_owns(block[0]))
+				toolbar_scroller_redraw(block);
 			else if (bookshelf_owns(block[0]))
 				bookshelf_redraw(block);
 			break;
@@ -447,6 +449,10 @@ int main(int argc, char **argv)
 				bookshelf_close(block[0]);
 			break;
 		}
+		case Wimp_EScrollRequest:
+			/* The mouse wheel over a toolbar. */
+			toolbar_scroll_request(block);
+			break;
 		case Wimp_EPointerEntering:
 		case Wimp_EPointerLeaving:
 			if (docwin_from_toolbar(app.idb.self_id))
@@ -465,6 +471,8 @@ int main(int argc, char **argv)
 				thumbs_click(thumbs_from_wimp(block[3]), block);
 			else if (bookshelf_owns(block[3]))
 				bookshelf_click(block);
+			else if (toolbar_scroller_owns(block[3]))
+				toolbar_scroller_click(block);
 			else if ((w = docwin_from_toolbar(app.idb.self_id)) != NULL)
 				docwin_toolbar_click(w, app.idb.self_component, block);
 			break;
