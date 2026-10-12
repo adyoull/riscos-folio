@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test17 (12-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test18 (12-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -189,7 +189,9 @@ void speech_read(docwin *w, int selection_only);
 void speech_stop(void);
 docwin *speech_window(void);             /* the window being read, or NULL */
 void speech_forget(docwin *w);           /* w is closing */
-int speech_background(void);             /* 1 while reading */
+/* 1 while it needs null events now (the voice being made); else 0, with
+ * *wake set to when it wants one (0: never) while the sound plays. */
+int speech_background(unsigned *wake);
 void speech_set_speed(int speed);        /* SPEED_* */
 int speech_speed(void);
 void speech_quit(void);

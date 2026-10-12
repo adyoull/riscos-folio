@@ -17,9 +17,13 @@ typedef struct sp_audio {
 	int paragraph;          /* a paragraph ends here (a longer pause after) */
 	short *pcm;
 	int n;
+	int cs;                 /* how long making it took (centiseconds) */
 } sp_audio;
 
 enum { SP_OFF, SP_LOADING, SP_READY, SP_FAILED };
+
+/* The clock the thread times sentences with (centiseconds); set it first. */
+extern unsigned (*speaker_clock)(void);
 
 /* Starts the thread, which loads the voice and eSpeak's data. 0 or -1. */
 int speaker_start(const char *voice_path, const char *espeak_dir);

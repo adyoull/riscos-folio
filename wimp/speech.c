@@ -71,6 +71,13 @@ static struct {
 	int loading_said;
 } sp;
 
+static unsigned now_cs(void)
+{
+	unsigned t;
+	_swix(OS_ReadMonotonicTime, _OUT(0), &t);
+	return t;
+}
+
 /* ---- The plugin ----------------------------------------------------------- */
 
 static int object_type(const char *path)
@@ -401,6 +408,7 @@ void speech_read(docwin *w, int selection_only)
 		}
 		sp.sound_loaded = 1;
 	}
+	speaker_clock = now_cs;
 	if (speaker_start(sp.voice, sp.data))
 		return;
 	sel = docwin_read_start(w, &page, &a, &b);
@@ -499,6 +507,8 @@ static void feed(void)
 				speaker_free(a);
 				break;
 			}
+			app_log("speech: %.2f s of speech made in %.2f s (x%.2f)", (double)a->n / rate,
+				a->cs / 100.0, a->n ? a->cs / 100.0 / ((double)a->n / rate) : 0.0);
 			f->a = a;
 			f->pause = rate * (a->paragraph ? 55 : 20) / 100;
 			f->stream_start = sp.added + sp.block_fill * 4;
@@ -572,10 +582,11 @@ static void follow(void)
 	speaker_set_unplayed((sp.added + sp.block_fill * 4 - played) / 4);
 }
 
-int speech_background(void)
+int speech_background(unsigned *wake)
 {
 	char err[200];
 	int st;
+	*wake = 0;
 	if (!sp.w)
 		return 0;
 	st = speaker_state(err, sizeof err);
@@ -605,16 +616,19 @@ int speech_background(void)
 			return 0;
 		}
 	}
-	/* Time for the speech thread (it only runs while Folio has the machine). */
-	if (speaker_busy()) {
-		unsigned t0, t;
-		_swix(OS_ReadMonotonicTime, _OUT(0), &t0);
-		do {
+	/* Time for the speech thread (it only runs while Folio has the machine):
+	 * null events while it's making a sentence. Otherwise (it's ahead, and
+	 * waiting) just a look every tenth of a second, to keep the sound
+	 * topped up and show each sentence as it starts. */
+	if (speaker_busy() || st == SP_LOADING) {
+		unsigned t0 = now_cs();
+		do
 			pthread_yield();
-			_swix(OS_ReadMonotonicTime, _OUT(0), &t);
-		} while (speaker_busy() && t - t0 < SLICE_CS);
+		while (speaker_busy() && now_cs() - t0 < SLICE_CS);
+		return 1;
 	}
-	return 1;
+	*wake = now_cs() + 10;
+	return 0;
 }
 
 void speech_quit(void)

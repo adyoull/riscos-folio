@@ -350,6 +350,7 @@ int main(int argc, char **argv)
 	};
 	int block[64];
 	int quit = 0, busy = 0;
+	unsigned wake = 0;
 	_kernel_oserror *e;
 	const char *scrap = getenv("Wimp$ScrapDir");
 
@@ -393,7 +394,18 @@ int main(int argc, char **argv)
 	while (!quit) {
 		int event;
 		/* Null events only while there is background work. */
-		e = _swix(Wimp_Poll, _INR(0, 1) | _OUT(0), busy ? 0 : 1, block, &event);
+		/* Null events only while there is background work; reading aloud
+		 * that's only waiting for the sound to play asks for one later
+		 * (Wimp_PollIdle), so other tasks get the machine meanwhile. */
+		if (!busy && wake) {
+			unsigned now;
+			_swix(OS_ReadMonotonicTime, _OUT(0), &now);
+			if ((int)(wake - now) <= 0)
+				wake = now + 1;
+			e = _swix(Wimp_PollIdle, _INR(0, 2) | _OUT(0), 0, block, wake, &event);
+		} else {
+			e = _swix(Wimp_Poll, _INR(0, 1) | _OUT(0), busy ? 0 : 1, block, &event);
+		}
 		if (e) {
 			tbx_report_error(e);
 			continue;
@@ -480,7 +492,7 @@ int main(int argc, char **argv)
 		busy |= find_background();
 		busy |= toolbar_background();
 		busy |= bookshelf_background();
-		busy |= speech_background();
+		busy |= speech_background(&wake);
 	}
 	speech_quit();
 	dict_quit();

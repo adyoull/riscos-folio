@@ -26,6 +26,14 @@ Using it
   Speak selection reads just the selected text. Reading speed has Slower,
   Normal and Faster.
   The first time, the voice takes a few seconds to load.
+  It works up to three sentences ahead of what you're hearing, then rests,
+  so it doesn't take the machine's time while it waits.
+
+If there are gaps between sentences
+  Each sentence is logged ("speech: 3.20 s of speech made in 1.90 s"), in
+  <Wimp$ScrapDir>.FolioLog. If the time to make one is
+  longer than the speech itself, the machine can't keep up: close other
+  busy tasks, or try Faster.
 
 Licences
   The voice (Voices) is Piper's "southern_english_female", trained on the

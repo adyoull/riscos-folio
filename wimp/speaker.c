@@ -13,7 +13,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define AHEAD_SECONDS 8
+/* How far ahead of the listener it works: up to AHEAD_SENTENCES made and
+ * waiting (in a burst, then it sleeps), and never more than AHEAD_SECONDS
+ * of sound not yet heard. */
+#define AHEAD_SENTENCES 3
+#define AHEAD_SECONDS 20
 
 typedef struct sp_chunk {
 	struct sp_chunk *next;
@@ -31,8 +35,17 @@ static volatile int stop_now;
 static char voice_path[256], espeak_dir[256], error[200];
 static sp_chunk *in_head, *in_tail;
 static sp_audio *out_head, *out_tail;
-static int out_samples, unplayed, working_chunks;
+static int out_samples, out_count, unplayed, working_chunks, waiting_room;
+
+/* Enough made for now? (with mu held) */
+static int ahead_enough(void)
+{
+	return out_count >= AHEAD_SENTENCES || out_samples + unplayed > AHEAD_SECONDS * rate;
+}
 static pv_voice *voice;
+
+static unsigned no_clock(void) { return 0; }
+unsigned (*speaker_clock)(void) = no_clock;
 
 static void free_chunk(sp_chunk *c)
 {
@@ -72,14 +85,17 @@ static void speak_chunk(sp_chunk *c, int mygen)
 	o.stop = &stop_now;
 	for (i = 0; i < n; i++) {
 		int ids[4096], k, ns = 0;
+		unsigned t0;
 		float *f, peak = 0.01f, gain;
 		sp_audio *a;
 		/* Not too far ahead of the listener. */
 		pthread_mutex_lock(&mu);
-		while (!quitting && gen == mygen && out_samples + unplayed > AHEAD_SECONDS * rate) {
+		while (!quitting && gen == mygen && ahead_enough()) {
 			busy = 0;          /* waiting isn't work: no need to give it time */
+			waiting_room = 1;
 			pthread_cond_wait(&cv, &mu);
 		}
+		waiting_room = 0;
 		busy = 1;
 		if (quitting || gen != mygen) {
 			pthread_mutex_unlock(&mu);
@@ -88,6 +104,7 @@ static void speak_chunk(sp_chunk *c, int mygen)
 		pthread_mutex_unlock(&mu);
 
 		k = pv_phonemes_to_ids(voice, s[i].ph, s[i].n, ids, 4096);
+		t0 = speaker_clock();
 		f = pv_synthesize(voice, ids, k, &o, &ns, NULL);
 		if (!f)
 			continue;           /* stopped, or out of memory */
@@ -108,6 +125,7 @@ static void speak_chunk(sp_chunk *c, int mygen)
 			a->pcm[k] = (short)lrintf(f[k] * gain);
 		free(f);
 		a->n = ns;
+		a->cs = (int)(speaker_clock() - t0);
 		a->chunk = c->id;
 		a->start = s[i].start;
 		a->end = s[i].end;
@@ -120,6 +138,7 @@ static void speak_chunk(sp_chunk *c, int mygen)
 				out_head = a;
 			out_tail = a;
 			out_samples += ns;
+			out_count++;
 			a = NULL;
 		}
 		pthread_mutex_unlock(&mu);
@@ -268,6 +287,9 @@ sp_audio *speaker_take(void)
 		if (!out_head)
 			out_tail = NULL;
 		out_samples -= a->n;
+		out_count--;
+		if (waiting_room && !ahead_enough())
+			busy = 1;
 		a->next = NULL;
 		pthread_cond_broadcast(&cv);
 	}
@@ -288,6 +310,10 @@ void speaker_set_unplayed(int samples)
 	pthread_mutex_lock(&mu);
 	if (samples != unplayed) {
 		unplayed = samples;
+		/* Room again: it has work, so the main thread should give it time
+		 * (it only runs while Folio has the machine). */
+		if (waiting_room && !ahead_enough())
+			busy = 1;
 		pthread_cond_broadcast(&cv);
 	}
 	pthread_mutex_unlock(&mu);
@@ -309,6 +335,7 @@ void speaker_stop(void)
 	a = out_head;
 	out_head = out_tail = NULL;
 	out_samples = 0;
+	out_count = 0;
 	unplayed = 0;
 	pthread_cond_broadcast(&cv);
 	pthread_mutex_unlock(&mu);
