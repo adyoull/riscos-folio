@@ -319,6 +319,15 @@ void speaker_set_unplayed(int samples)
 	pthread_mutex_unlock(&mu);
 }
 
+int speaker_ready(void)
+{
+	int n;
+	pthread_mutex_lock(&mu);
+	n = out_samples + unplayed;
+	pthread_mutex_unlock(&mu);
+	return n;
+}
+
 void speaker_stop(void)
 {
 	sp_audio *a;

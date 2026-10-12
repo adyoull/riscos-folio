@@ -40,6 +40,9 @@ void speaker_free(sp_audio *a);
 /* How much is waiting to be heard (samples handed to the sound system but
  * not yet played); the thread keeps at most a few seconds ahead. */
 void speaker_set_unplayed(int samples);
+/* Sound made but not yet heard (samples): what's queued here plus what the
+ * sound system still has. */
+int speaker_ready(void);
 /* Forgets everything queued and stops the sentence being made, at once. */
 void speaker_stop(void);
 /* The thread is working (worth giving it time). */

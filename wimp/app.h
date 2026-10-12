@@ -9,13 +9,13 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test21 (12-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test22 (12-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
 	EV_QUIT = 0x100, EV_HELP, EV_BOOKSHELF,
 	EV_DARK = 0x110, EV_SEPIA, EV_ZOOM_IN, EV_ZOOM_OUT, EV_ZOOM_100, EV_FIT_WIDTH,
-	EV_TOOLBAR, EV_THUMBS, EV_TWO_PAGES, EV_COVER_ALONE,
+	EV_TOOLBAR, EV_THUMBS, EV_TWO_PAGES, EV_COVER_ALONE, EV_DEFAULT_ZOOM,
 	EV_NEXT = 0x120, EV_PREV, EV_FIRST, EV_LAST, EV_LINE_DOWN, EV_LINE_UP, EV_BACK,
 	EV_CLOSE = 0x130,
 	EV_VIEW_SHOWN = 0x140, EV_DOCMENU_SHOWN, EV_EDIT_SHOWN, EV_NAV_SHOWN,
@@ -41,7 +41,7 @@ enum { SPEED_SLOW = 1, SPEED_NORMAL, SPEED_FAST };
 /* Navigate menu entries. */
 enum { NAV_CONTENTS = 5, NAV_BACK = 6 };
 enum { VIEW_DARK = 1, VIEW_SEPIA, VIEW_ZOOM_IN, VIEW_ZOOM_OUT, VIEW_ZOOM_100, VIEW_FIT_WIDTH,
-	VIEW_TOOLBAR, VIEW_THUMBS, VIEW_TWO_PAGES, VIEW_COVER_ALONE };
+	VIEW_TOOLBAR, VIEW_THUMBS, VIEW_TWO_PAGES, VIEW_COVER_ALONE, VIEW_DEFAULT_ZOOM };
 
 typedef struct {
 	tbx_idblock idb;
@@ -55,6 +55,7 @@ typedef struct {
 	int epub_type;              /* RISC OS filetype for EPUB, or -1 */
 	FILE *log;
 	void *sprites;              /* <Folio$Dir>.Sprites, loaded by the Toolbox (1 = none) */
+	float default_zoom;         /* new documents open at this scale (Choices) */
 } app_state;
 
 extern app_state app;
@@ -79,6 +80,8 @@ ObjectId docwin_object(docwin *w);
 void docwin_redraw(docwin *w, int *block);
 void docwin_event(docwin *w, int code);
 void docwin_view_menu_shown(docwin *w);
+/* Choices: the default scale (<Choices$Write>.Folio.Choices). */
+void choices_load(void);
 void docwin_edit_menu_shown(docwin *w);
 void docwin_nav_menu_shown(docwin *w);
 /* Background work for every window; returns 1 if more remains. */

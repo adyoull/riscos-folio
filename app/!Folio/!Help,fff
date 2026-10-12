@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test21)
+Folio (test build 0.0.1-test22)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -36,6 +36,9 @@ In a document window
                  Actual size, Fit width, Two pages. Navigate: the page
                  moves above, Contents and Back. Find... and Define "word".
   Close with Adjust also opens the document's directory.
+  Default scale: zoom a window to the scale you like, then choose View >
+  Use this scale for new documents. Every document opens at that scale
+  from then on (kept in <Choices$Write>.Folio.Choices).
 
 The toolbar and thumbnails
   The toolbar along the top of each document window has, from the left:

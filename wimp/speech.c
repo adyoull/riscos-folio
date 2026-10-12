@@ -38,6 +38,8 @@
 #define CHUNKS 8                             /* chunks kept for their boxes */
 #define MAX_BOXES 64
 #define SLICE_CS 8                           /* time given to the speech thread per poll */
+#define SLICE_BEHIND_CS 20                   /* ... when there's little left to hear */
+#define BEHIND_SECONDS 4
 
 typedef struct inflight {
 	struct inflight *next;
@@ -268,7 +270,7 @@ static void push_chunk(rt_chunk *c)
 	sp.chunk[slot].c = *c;
 	memset(c, 0, sizeof *c);
 	speaker_push(id, sp.chunk[slot].c.text, sp.chunk[slot].c.len,
-		sp.speed == SPEED_SLOW ? 1.2f : sp.speed == SPEED_FAST ? 0.85f : 1.0f);
+		sp.speed == SPEED_SLOW ? 1.4f : sp.speed == SPEED_FAST ? 1.0f : 1.2f);
 }
 
 /* Page 'page''s text, from character 'from_ch' (and to 'to_ch', or -1),
@@ -621,10 +623,16 @@ int speech_background(unsigned *wake)
 	 * waiting) just a look every tenth of a second, to keep the sound
 	 * topped up and show each sentence as it starts. */
 	if (speaker_busy() || st == SP_LOADING) {
-		unsigned t0 = now_cs();
+		/* Longer turns when the listener is about to catch up with it
+		 * (a gap would come next); the desktop is a little slower then. */
+		int ready = speaker_ready();
+		unsigned t0 = now_cs(), slice;
+		if (sp.fly_tail && sp.fly_tail->pos < sp.fly_tail->a->n + sp.fly_tail->pause)
+			ready += sp.fly_tail->a->n + sp.fly_tail->pause - sp.fly_tail->pos;
+		slice = st == SP_READY && ready < BEHIND_SECONDS * speaker_rate() ? SLICE_BEHIND_CS : SLICE_CS;
 		do
 			pthread_yield();
-		while (speaker_busy() && now_cs() - t0 < SLICE_CS);
+		while (speaker_busy() && now_cs() - t0 < slice);
 		return 1;
 	}
 	*wake = now_cs() + 10;

@@ -116,12 +116,13 @@ static void create_objects(void)
 	entry(&vm, 2, VIEW_ZOOM_IN, "Zoom in", 0, EV_ZOOM_IN, "Click to make the pages bigger.");
 	entry(&vm, 3, VIEW_ZOOM_OUT, "Zoom out", 0, EV_ZOOM_OUT, "Click to make the pages smaller.");
 	entry(&vm, 4, VIEW_ZOOM_100, "Actual size", 0, EV_ZOOM_100, "Click to show the pages at their real size.");
-	entry(&vm, 5, VIEW_FIT_WIDTH, "Fit width", MENU_DOTTED, EV_FIT_WIDTH, "Click to fit the pages to the window's width.");
-	entry(&vm, 6, VIEW_TWO_PAGES, "Two pages", 0, EV_TWO_PAGES, "Click to show the pages two side by side, or one at a time.");
-	entry(&vm, 7, VIEW_COVER_ALONE, "First page alone", MENU_DOTTED, EV_COVER_ALONE, "Click to show the first page on its own, so facing pages pair up as in a book.");
-	entry(&vm, 8, VIEW_TOOLBAR, "Toolbar", 0, EV_TOOLBAR, "Click to show or hide the toolbar.");
-	entry(&vm, 9, VIEW_THUMBS, "Thumbnails", 0, EV_THUMBS, "Click to show or hide the page thumbnails at the left.");
-	app.view_menu = make_menu(&vm, "View", 10, EV_VIEW_SHOWN);
+	entry(&vm, 5, VIEW_FIT_WIDTH, "Fit width", 0, EV_FIT_WIDTH, "Click to fit the pages to the window's width.");
+	entry(&vm, 6, VIEW_DEFAULT_ZOOM, "Use this scale for new documents", MENU_DOTTED, EV_DEFAULT_ZOOM, "Click to open documents at this window's scale from now on (ticked when this is that scale).");
+	entry(&vm, 7, VIEW_TWO_PAGES, "Two pages", 0, EV_TWO_PAGES, "Click to show the pages two side by side, or one at a time.");
+	entry(&vm, 8, VIEW_COVER_ALONE, "First page alone", MENU_DOTTED, EV_COVER_ALONE, "Click to show the first page on its own, so facing pages pair up as in a book.");
+	entry(&vm, 9, VIEW_TOOLBAR, "Toolbar", 0, EV_TOOLBAR, "Click to show or hide the toolbar.");
+	entry(&vm, 10, VIEW_THUMBS, "Thumbnails", 0, EV_THUMBS, "Click to show or hide the page thumbnails at the left.");
+	app.view_menu = make_menu(&vm, "View", 11, EV_VIEW_SHOWN);
 
 	entry(&nm, 0, 1, "Next page    PageDown", 0, EV_NEXT, "Click to go to the next page.");
 	entry(&nm, 1, 2, "Previous page  PageUp", 0, EV_PREV, "Click to go to the previous page.");
@@ -164,8 +165,8 @@ static void create_objects(void)
 		entry(&dm, 11, DOC_SPEED, "Reading speed", MENU_SUBMENU, 0, "Move right to choose how fast it reads.");
 		ndm = 12;
 		entry(&sm, 0, SPEED_SLOW, "Slower", 0, EV_SPEED_SLOW, "Click to read more slowly.");
-		entry(&sm, 1, SPEED_NORMAL, "Normal", 0, EV_SPEED_NORMAL, "Click to read at the voice's own speed.");
-		entry(&sm, 2, SPEED_FAST, "Faster", 0, EV_SPEED_FAST, "Click to read more quickly.");
+		entry(&sm, 1, SPEED_NORMAL, "Normal", 0, EV_SPEED_NORMAL, "Click to read at a comfortable pace for listening.");
+		entry(&sm, 2, SPEED_FAST, "Faster", 0, EV_SPEED_FAST, "Click to read more quickly (the voice's own speed).");
 		app.speed_menu = make_menu(&sm, "Speed", 3, EV_SPEED_SHOWN);
 	}
 	app.doc_menu = make_menu(&dm, "Folio", ndm, EV_DOCMENU_SHOWN);
@@ -374,6 +375,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	app_read_mode();
+	choices_load();
 	app_log("mode: eig %d,%d, %d bpp, screen %dx%d OS units", app.xeig, app.yeig,
 		1 << app.log2bpp, app.screen_w, app.screen_h);
 	if (app.log2bpp < 4)

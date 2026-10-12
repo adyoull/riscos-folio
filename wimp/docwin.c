@@ -13,6 +13,7 @@
 #include "app.h"
 #include "worker.h"
 #include "dict.h"
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <swis.h>
@@ -498,6 +499,48 @@ static unsigned hash_string(const char *s)
 	return h;
 }
 
+/* ---- Choices ------------------------------------------------------------ */
+/* <Choices$Write>.Folio.Choices: "folio-choices 1", then "zoom <percent>".
+ * Read back through Choices: (Style Guide p92). */
+
+void choices_load(void)
+{
+	FILE *f = fopen("Choices:Folio.Choices", "r");
+	char line[80];
+	app.default_zoom = 1.0f;
+	if (!f)
+		return;
+	if (fgets(line, sizeof line, f) && !strncmp(line, "folio-choices 1", 15))
+		while (fgets(line, sizeof line, f)) {
+			int pc;
+			if (sscanf(line, "zoom %d", &pc) == 1 && pc >= (int)(MIN_ZOOM * 100) && pc <= (int)(MAX_ZOOM * 100))
+				app.default_zoom = pc / 100.0f;
+		}
+	fclose(f);
+	app_log("choices: new documents at %d%%", (int)(app.default_zoom * 100 + 0.5f));
+}
+
+static void choices_set_zoom(float z)
+{
+	const char *cw = getenv("Choices$Write");
+	char path[220];
+	FILE *f;
+	app.default_zoom = z;
+	if (!cw || !*cw)
+		return;
+	snprintf(path, sizeof path, "%s.Folio", cw);
+	_swix(OS_File, _INR(0, 1) | _IN(4), 8, path, 0);
+	snprintf(path, sizeof path, "%s.Folio.Choices", cw);
+	f = fopen(path, "w");
+	if (!f) {
+		tbx_report("Folio couldn't save its choices.");
+		return;
+	}
+	fprintf(f, "folio-choices 1\nzoom %d\n", (int)(z * 100 + 0.5f));
+	fclose(f);
+	app_log("choices: new documents at %d%%", (int)(z * 100 + 0.5f));
+}
+
 static void make_accel_path(docwin *w)
 {
 	const char *cw = getenv("Choices$Write");
@@ -688,7 +731,7 @@ docwin *docwin_open_password(const char *path, const char *password)
 	}
 	snprintf(w->path, sizeof w->path, "%s", path);
 	snprintf(w->title, sizeof w->title, "%s", leafname(path));
-	w->zoom = 1.0f;
+	w->zoom = app.default_zoom > 0 ? app.default_zoom : 1.0f;
 	w->mode = FOLIO_PAGE_NORMAL;
 	w->cols = 1;
 	w->cover = 1;
@@ -1647,6 +1690,7 @@ void docwin_event(docwin *w, int code)
 	case EV_ZOOM_IN: set_zoom(w, w->zoom * 1.25f); break;
 	case EV_ZOOM_OUT: set_zoom(w, w->zoom / 1.25f); break;
 	case EV_ZOOM_100: set_zoom(w, 1.0f); break;
+	case EV_DEFAULT_ZOOM: choices_set_zoom(w->zoom); break;
 	case EV_FIT_WIDTH:
 		get_state(w, st);
 		set_zoom(w, (float)(st[3] - st[1] - w->left - (w->cols + 1) * GAP) /
@@ -1708,6 +1752,7 @@ void docwin_view_menu_shown(docwin *w)
 	menu_set_tick(app.view_menu, VIEW_ZOOM_100, w->zoom > 0.999f && w->zoom < 1.001f);
 	menu_set_tick(app.view_menu, VIEW_TOOLBAR, w->show_toolbar);
 	menu_set_tick(app.view_menu, VIEW_THUMBS, w->show_thumbs);
+	menu_set_tick(app.view_menu, VIEW_DEFAULT_ZOOM, fabsf(w->zoom - app.default_zoom) < 0.005f);
 	menu_set_tick(app.view_menu, VIEW_TWO_PAGES, w->cols == 2);
 	menu_set_tick(app.view_menu, VIEW_COVER_ALONE, w->cover);
 	menu_set_fade(app.view_menu, VIEW_COVER_ALONE, w->cols != 2);
