@@ -17,12 +17,13 @@ running RISC OS 5, but expect rough edges. The design is in
 - **View:** zoom, fit width, **two pages side by side** (with the first
   page alone, as in a book, or not), **dark page** (black page, light text,
   pictures kept) and sepia, each with a toolbar button; a **thumbnail
-  drawer** down the left of the window.
+  drawer** down the left of the window; a **default scale** for new
+  documents, for anyone who reads better larger.
 - **Navigating:** **links** (to other pages, with Back; web links open in the
   browser), a **Contents** window, **Find** (F4), page keys, a page number to
   type into on the toolbar.
 - **Printing** through the printer drivers (pages, copies, scale, sideways,
-  draft).
+  draft), in the background, with the window's title showing the page.
 - **Text:** select by dragging, double-click a word, Copy to the global
   clipboard, and **Define**: a word's meanings from Wiktionary (with the
   Free Dictionary API as a fallback), fetched through URL_Fetcher and kept
@@ -37,6 +38,8 @@ running RISC OS 5, but expect rough edges. The design is in
   [riscos-pvoice](https://github.com/adyoull/riscos-pvoice), with eSpeak NG
   for the phonemes; the sentence being read is shown and the pages turn.
   Without the plugin Folio has no speech button and loads nothing for it.
+  Speech needs NEON (a Raspberry Pi 2 or later; it keeps up on a Pi 4) and
+  John Duffell's SharedSoundBuffer and StreamManager modules.
 - **Bookshelf:** Select on the icon bar icon. Covers, progress, sorting by
   recent, title or author; drag books to it, or drag directories to have
   Folio watch them for new documents when it starts and on Refresh.
