@@ -225,6 +225,13 @@ typedef struct {
 /* Link at p on the page, if any (returns 1 and fills *link), else 0. */
 int folio_link_at(folio_doc *doc, folio_loc loc, folio_point p, folio_link *link);
 
+/* ---- Draw files ---------------------------------------------------------- */
+
+/* Writes the page (with its annotations) to path as a RISC OS Draw file:
+ * paths, text as outlines, each picture as a sprite of its own (core/drawfile.c).
+ * The caller sets the file's type (&AFF). 0, or -1 (folio_error). */
+int folio_export_draw(folio_doc *doc, folio_loc loc, const char *path);
+
 /* ---- Annotations (PDFs) ------------------------------------------------ */
 
 typedef enum {

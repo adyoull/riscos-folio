@@ -849,6 +849,7 @@ void docwin_close(docwin *w)
 	annotui_forget(w);
 	passui_forget(w);
 	print_forget(w);
+	export_forget(w);
 	speech_forget(w);
 	worker_stop_for(w);
 	core_lock();
@@ -1714,6 +1715,7 @@ void docwin_event(docwin *w, int code)
 	case EV_LAST: go_to_page(w, w->pages - 1); break;
 	case EV_BACK: go_back(w); break;
 	case EV_PRINT: print_open(w); break;
+	case EV_EXPORT_DRAW: export_open(w); break;
 	case EV_LINE_DOWN:
 		get_state(w, st);
 		scroll_to(w, st[6] - 40);

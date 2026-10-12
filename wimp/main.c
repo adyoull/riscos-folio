@@ -57,7 +57,7 @@ static void check(_kernel_oserror *e)
 /* A menu template: header fields then entries, in one block. */
 typedef struct {
 	tbx_menu m;
-	tbx_menu_entry e[12];
+	tbx_menu_entry e[16];
 } menu_block;
 
 static ObjectId make_menu(menu_block *b, const char *title, int n, int show_event)
@@ -147,23 +147,24 @@ static void create_objects(void)
 
 	entry(&dm, 0, DOC_SAVE, "Save...        F3", 0, EV_SAVE, "Click to save the document with its notes and markings (PDFs).");
 	entry(&dm, 1, DOC_PRINT, "Print...    Print", 0, EV_PRINT, "Click to print the document (with !Printers loaded).");
-	entry(&dm, 2, DOC_PASSWORD, "Password...", MENU_DOTTED, EV_PASSWORD, "Click to put a password on the document, or take one off (PDFs).");
-	entry(&dm, 3, 3, "Edit", MENU_SUBMENU, 0, "Move right for undo, copying, highlighting and notes.");
-	entry(&dm, 4, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
-	entry(&dm, 5, 2, "Navigate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right for moving through the document.");
+	entry(&dm, 2, DOC_EXPORT_DRAW, "Export page as Draw...", 0, EV_EXPORT_DRAW, "Click to save the page you're reading as a Draw file: its text as outlines, each picture as a sprite of its own.");
+	entry(&dm, 3, DOC_PASSWORD, "Password...", MENU_DOTTED, EV_PASSWORD, "Click to put a password on the document, or take one off (PDFs).");
+	entry(&dm, 4, 3, "Edit", MENU_SUBMENU, 0, "Move right for undo, copying, highlighting and notes.");
+	entry(&dm, 5, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
+	entry(&dm, 6, 2, "Navigate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right for moving through the document.");
 	/* The context item (DESIGN §3.4): its text names the word when it's shown. */
-	entry(&dm, 6, DOC_FIND, "Find...        F4", 0, EV_FIND, "Click to find text in the document.");
-	entry(&dm, 7, DOC_DEFINE, "Define", MENU_FADED | MENU_DOTTED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
-	dm.e[7].max_text = 80;
-	entry(&dm, 8, DOC_SHELF, "On bookshelf", 0, EV_ADD_SHELF, "Click to put this document on the bookshelf, or take it off.");
-	ndm = 9;
+	entry(&dm, 7, DOC_FIND, "Find...        F4", 0, EV_FIND, "Click to find text in the document.");
+	entry(&dm, 8, DOC_DEFINE, "Define", MENU_FADED | MENU_DOTTED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
+	dm.e[8].max_text = 80;
+	entry(&dm, 9, DOC_SHELF, "On bookshelf", 0, EV_ADD_SHELF, "Click to put this document on the bookshelf, or take it off.");
+	ndm = 10;
 	/* Reading aloud: only with the Speech plugin. */
 	if (speech_available()) {
-		dm.e[8].flags |= MENU_DOTTED;
-		entry(&dm, 9, DOC_READ, "Read aloud", 0, EV_READ_ALOUD, "Click to hear the document read aloud from here (or from the selection); click again to stop.");
-		entry(&dm, 10, DOC_SPEAKSEL, "Speak selection", 0, EV_SPEAK_SEL, "Click to hear just the selected text.");
-		entry(&dm, 11, DOC_SPEED, "Reading speed", MENU_SUBMENU, 0, "Move right to choose how fast it reads.");
-		ndm = 12;
+		dm.e[9].flags |= MENU_DOTTED;
+		entry(&dm, 10, DOC_READ, "Read aloud", 0, EV_READ_ALOUD, "Click to hear the document read aloud from here (or from the selection); click again to stop.");
+		entry(&dm, 11, DOC_SPEAKSEL, "Speak selection", 0, EV_SPEAK_SEL, "Click to hear just the selected text.");
+		entry(&dm, 12, DOC_SPEED, "Reading speed", MENU_SUBMENU, 0, "Move right to choose how fast it reads.");
+		ndm = 13;
 		entry(&sm, 0, SPEED_SLOW, "Slower", 0, EV_SPEED_SLOW, "Click to read more slowly.");
 		entry(&sm, 1, SPEED_NORMAL, "Normal", 0, EV_SPEED_NORMAL, "Click to read at a comfortable pace for listening.");
 		entry(&sm, 2, SPEED_FAST, "Faster", 0, EV_SPEED_FAST, "Click to read more quickly (the voice's own speed).");
@@ -289,7 +290,7 @@ static int toolbox_event(int *b)
 	app_log("event &%x: self &%x/%d parent &%x/%d ancestor &%x/%d", code,
 		app.idb.self_id, app.idb.self_component, app.idb.parent_id,
 		app.idb.parent_component, app.idb.ancestor_id, app.idb.ancestor_component);
-	if (annotui_event(b) || passui_event(code) || print_event(b))
+	if (export_event(b) || annotui_event(b) || passui_event(code) || print_event(b))
 		return 0;
 	switch (code) {
 	case Toolbox_Error:
