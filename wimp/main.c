@@ -127,8 +127,9 @@ static void create_objects(void)
 	entry(&nm, 1, 2, "Previous page  PageUp", 0, EV_PREV, "Click to go to the previous page.");
 	entry(&nm, 2, 3, "First page       Home", 0, EV_FIRST, "Click to go to the first page.");
 	entry(&nm, 3, 4, "Last page         End", MENU_DOTTED, EV_LAST, "Click to go to the last page.");
-	entry(&nm, 4, NAV_CONTENTS, "Contents...", 0, EV_CONTENTS, "Click to see the document's contents list, and go to any part of it.");
-	app.nav_menu = make_menu(&nm, "Navigate", 5, 0);
+	entry(&nm, 4, NAV_CONTENTS, "Contents...", MENU_DOTTED, EV_CONTENTS, "Click to see the document's contents list, and go to any part of it.");
+	entry(&nm, 5, NAV_BACK, "Back          ^Left", 0, EV_BACK, "Click to go back to where you were before following a link.");
+	app.nav_menu = make_menu(&nm, "Navigate", 6, EV_NAV_SHOWN);
 
 	/* Undo and Redo first (Style Guide p40; DESIGN §3.8). */
 	entry(&em, 0, EDIT_UNDO, "Undo              ^Z", 0, EV_UNDO, "Click to undo the last change to the notes and markings.");
@@ -327,6 +328,10 @@ static int toolbox_event(int *b)
 	case EV_VIEW_SHOWN:
 		if ((w = window_for_event()) != NULL)
 			docwin_view_menu_shown(w);
+		break;
+	case EV_NAV_SHOWN:
+		if ((w = window_for_event()) != NULL)
+			docwin_nav_menu_shown(w);
 		break;
 	default:
 		if (code >= EV_DARK && code < 0x200) {

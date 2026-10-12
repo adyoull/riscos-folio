@@ -380,6 +380,13 @@ static void test_pdf(folio_ctx *fc, const char *dir)
 		int rc = folio_link_at(d, (folio_loc){ 0, 0 }, (folio_point){ 100, 70 }, &link);
 		CHECK(rc == 1 && link.dest.chapter == 0 && link.dest.page == 2,
 			"link to page 3 (%d: %d/%d) %s", rc, link.dest.chapter, link.dest.page, folio_error(fc));
+		CHECK(rc == 1 && link.dest_y < 0, "a page with no position: top (%g)", rc == 1 ? link.dest_y : 0);
+		rc = folio_link_at(d, (folio_loc){ 0, 0 }, (folio_point){ 100, 100 }, &link);
+		CHECK(rc == 1 && link.dest.page == 1 && link.dest_y > 299 && link.dest_y < 301,
+			"link to page 2 at y 300 (%d: page %d, y %g)", rc, link.dest.page, rc == 1 ? link.dest_y : 0);
+		rc = folio_link_at(d, (folio_loc){ 0, 0 }, (folio_point){ 100, 130 }, &link);
+		CHECK(rc == 1 && link.dest.page < 0 && link.uri && !strcmp(link.uri, "https://example.org/"),
+			"web link (%d: %s)", rc, rc == 1 && link.uri ? link.uri : "");
 	}
 
 	{

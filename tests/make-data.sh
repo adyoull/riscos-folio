@@ -41,6 +41,8 @@ info.put("Title", doc.newString("Folio Test PDF"));
 info.put("Author", doc.newString("A. Tester"));
 var p = doc.loadPage(0);
 p.createLink([72, 60, 300, 82], "#page=3");
+p.createLink([72, 90, 300, 110], "#page=2&zoom=nan,72,300");
+p.createLink([72, 120, 300, 140], "https://example.org/");
 var h = p.createAnnotation("Highlight");
 h.setColor([1, 1, 0]);
 h.setQuadPoints(p.toStructuredText().search("serendipity")[0]);

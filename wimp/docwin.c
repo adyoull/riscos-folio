@@ -23,6 +23,7 @@
 #define MIN_ZOOM 0.25f
 #define MAX_ZOOM 4.0f
 #define SEL_QUADS 256
+#define BACK_MAX  32        /* places remembered for Back */
 #define SPK_BOXES 64
 
 struct docwin {
@@ -77,6 +78,14 @@ struct docwin {
 	/* PDF passwords: the one it was opened with (UTF-8), for opening it again
 	 * after saving, and a new one waiting to be saved. */
 	char password[128], new_password[128];
+	/* Links: the one Select went down on (followed when the button comes up
+	 * without a drag), and the places to go Back to. */
+	int link_down;
+	folio_loc link_dest;
+	float link_y;
+	char link_uri[512];
+	struct { int page, y, cols; float zoom; } back[BACK_MAX];
+	int back_n;
 };
 
 typedef struct {
@@ -327,6 +336,9 @@ static void undo_redo(docwin *w, int redo);
 static int sel_drag_tick(docwin *w);
 static int current_page(docwin *w);
 static void go_to_page(docwin *w, int i);
+static void link_press(docwin *w, int *b);
+static int link_tick(docwin *w);
+static void go_back(docwin *w);
 
 /* A finished page from the worker: into the cache, and onto the screen. */
 static void take_result(render_job *r)
@@ -591,6 +603,7 @@ static tbx_shortcut shortcuts[] = {
 	{ 0, 25, EV_REDO, 0 },          /* ^Y: redo */
 	{ 0, 0x7f, EV_DEL_ANNOT, 0 },   /* Delete: the selected annotation */
 	{ 0, 0x183, EV_SAVE, 0 },       /* F3: Save (SG p84) */
+	{ 0, 0x1ac, EV_BACK, 0 },       /* Ctrl-Left: back from a link */
 };
 
 static ObjectId create_window(docwin *w)
@@ -1074,6 +1087,7 @@ int docwin_background(void)
 	}
 	for (w = windows; w; w = w->next) {
 		busy |= sel_drag_tick(w);
+		busy |= link_tick(w);
 		busy |= w->want_render;
 		/* The toolbar's width: after every event, since the Toolbox shows
 		 * and places it on its own schedule (after the window opens, and
@@ -1270,9 +1284,13 @@ void docwin_click(docwin *w, int *b)
 	 * work (Style Guide p69). Button type 10: click = x256, drag = x16,
 	 * double-click = x1; Select = 4, Adjust = 1. */
 	_swix(Wimp_SetCaretPosition, _INR(0, 5), w->wimp, -1, 0, 0, 1 << 25, -1);
-	if (buttons == 0x400) {                  /* Select click: an annotation, or deselect */
+	if (buttons != 0x400)
+		w->link_down = 0;                     /* a drag or double-click: not a link */
+	if (buttons == 0x400) {                  /* Select click: an annotation, a link, or deselect */
 		sel_clear(w);
 		asel_click(w, b);
+		if (w->asel_page < 0)
+			link_press(w, b);
 	} else if (buttons == 0x40) {            /* Select drag: start a selection */
 		page = point_at(w, b[0], b[1], &pt, -1);
 		if (page < 0)
@@ -1638,6 +1656,7 @@ void docwin_event(docwin *w, int code)
 	case EV_PREV: go_to_page(w, row_step(w, -1)); break;
 	case EV_FIRST: go_to_page(w, 0); break;
 	case EV_LAST: go_to_page(w, w->pages - 1); break;
+	case EV_BACK: go_back(w); break;
 	case EV_LINE_DOWN:
 		get_state(w, st);
 		scroll_to(w, st[6] - 40);
@@ -1846,6 +1865,128 @@ void docwin_show_hit(docwin *w, int page, const folio_quad *q, int n)
 		y = 0;
 	scroll_to(w, y);
 	redraw_page(w, page);
+}
+
+/* ---- Links ------------------------------------------------------------- */
+/* A Select click on a link follows it when the button comes up, unless the
+ * click turns into a drag (selecting text) or a double-click (a word):
+ * button type 10 reports the click first. Links inside the document go to
+ * their page (and the place on it, if the link says); web and mail links
+ * go to the browser or mail program (URI_Dispatch). Navigate > Back
+ * (Ctrl-Left) returns to where the link was followed from. */
+
+#define URI_Dispatch 0x4e381
+
+static void link_press(docwin *w, int *b)
+{
+	folio_point pt;
+	folio_loc loc;
+	folio_link link;
+	int page, rc;
+	w->link_down = 0;
+	page = point_at(w, b[0], b[1], &pt, -1);
+	if (page < 0 || folio_loc_from_number(w->doc, page, &loc))
+		return;
+	core_now();
+	rc = folio_link_at(w->doc, loc, pt, &link);
+	if (rc == 1) {
+		w->link_dest = link.dest;
+		w->link_y = link.dest_y;
+		snprintf(w->link_uri, sizeof w->link_uri, "%s", link.uri ? link.uri : "");
+		w->link_down = link.dest.chapter >= 0 || w->link_uri[0];
+	}
+	core_unlock();
+}
+
+/* Remembers where the reader is, for Back. */
+static void push_back(docwin *w)
+{
+	int st[9];
+	get_state(w, st);
+	if (w->back_n == BACK_MAX) {
+		memmove(&w->back[0], &w->back[1], (BACK_MAX - 1) * sizeof w->back[0]);
+		w->back_n--;
+	}
+	w->back[w->back_n].page = current_page(w);
+	w->back[w->back_n].y = st[6];
+	w->back[w->back_n].cols = w->cols;
+	w->back[w->back_n].zoom = w->zoom;
+	w->back_n++;
+}
+
+static void go_back(docwin *w)
+{
+	if (w->back_n <= 0)
+		return;
+	w->back_n--;
+	/* The same place, if the layout hasn't changed since; else its page. */
+	if (w->back[w->back_n].cols == w->cols && w->back[w->back_n].zoom == w->zoom)
+		scroll_to(w, w->back[w->back_n].y);
+	else
+		go_to_page(w, w->back[w->back_n].page);
+	app_log("link: back to page %d", w->back[w->back_n].page + 1);
+}
+
+static void follow_link(docwin *w)
+{
+	int page = -1;
+	if (w->link_dest.chapter >= 0) {
+		core_now();
+		page = folio_page_number(w->doc, w->link_dest);
+		if (page < 0) {
+			/* Its chapter isn't counted yet: count up to it now. */
+			_swix(Hourglass_On, 0);
+			while ((page = folio_page_number(w->doc, w->link_dest)) < 0 &&
+					folio_count_step(w->doc, 1) == 0)
+				;
+			_swix(Hourglass_Off, 0);
+		}
+		core_unlock();
+		if (page < 0) {
+			app_log("link: %s: page not found", w->link_uri);
+			return;
+		}
+		push_back(w);
+		extend_to(w, page);
+		if (w->link_y < 0) {
+			go_to_page(w, page);
+		} else {
+			/* The place a little below the top of the window. */
+			int y = page_top(w, page) + w->top + GAP / 2 - (int)(w->link_y * 2.5f * w->zoom) + 24;
+			scroll_to(w, y > 0 ? 0 : y);
+		}
+		app_log("link: %s -> page %d, y %g", w->link_uri, page + 1, (double)w->link_y);
+		return;
+	}
+	if (!strncmp(w->link_uri, "http://", 7) || !strncmp(w->link_uri, "https://", 8) ||
+			!strncmp(w->link_uri, "mailto:", 7)) {
+		_kernel_oserror *e = _swix(URI_Dispatch, _INR(0, 2), 0, w->link_uri, app.task);
+		app_log("link: open %s%s%s", w->link_uri, e ? ": " : "", e ? e->errmess : "");
+		if (e)
+			tbx_report("Folio couldn't open the link: no web browser has been seen by the Filer yet.");
+	} else {
+		app_log("link: not followed: %s", w->link_uri);
+		tbx_report("Folio can't follow links to other files yet.");
+	}
+}
+
+/* Null polls while Select is down on a link: follow it on release. */
+static int link_tick(docwin *w)
+{
+	int ptr[5];
+	if (!w->link_down)
+		return 0;
+	_swix(Wimp_GetPointerInfo, _IN(1), ptr);
+	if (ptr[2] & 5)
+		return 1;
+	w->link_down = 0;
+	follow_link(w);
+	return 0;
+}
+
+void docwin_nav_menu_shown(docwin *w)
+{
+	menu_set_fade(app.nav_menu, NAV_BACK, w->back_n == 0);
 }
 
 /* ---- Toolbar ------------------------------------------------------------ */

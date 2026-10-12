@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test19)
+Folio (test build 0.0.1-test20)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -30,10 +30,10 @@ In a document window
   Scroll as usual. Page Down / Page Up    next / previous page
   Home / End     first / last page        Up / Down   scroll a little
   Ctrl-N         dark page on and off     Ctrl-F2     close the window
-  F4             Find
+  F4             Find                     Ctrl-Left   back from a link
   Menu           View: Dark page, Sepia page, Zoom in, Zoom out,
                  Actual size, Fit width, Two pages. Navigate: the page
-                 moves above, and Contents. Find... and Define "word".
+                 moves above, Contents and Back. Find... and Define "word".
   Close with Adjust also opens the document's directory.
 
 The toolbar and thumbnails
@@ -95,7 +95,11 @@ Passwords (PDFs)
   !System; saving with a new password, or without one, also undoes any
   digital signatures in the file.
 
-Contents and Find
+Links, Contents and Find
+  Click a link to follow it: a link to another part of the document goes
+  there; a web or email link opens in your browser or mail program.
+  Dragging from a link selects text as usual. Navigate > Back (Ctrl-Left)
+  returns to where you were, link after link.
   Navigate > Contents... lists the document's chapters and sections, with
   their page numbers; the part you're reading is highlighted. Click on one
   to go there.

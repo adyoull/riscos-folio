@@ -9,16 +9,16 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test19 (12-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test20 (12-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
 	EV_QUIT = 0x100, EV_HELP, EV_BOOKSHELF,
 	EV_DARK = 0x110, EV_SEPIA, EV_ZOOM_IN, EV_ZOOM_OUT, EV_ZOOM_100, EV_FIT_WIDTH,
 	EV_TOOLBAR, EV_THUMBS, EV_TWO_PAGES, EV_COVER_ALONE,
-	EV_NEXT = 0x120, EV_PREV, EV_FIRST, EV_LAST, EV_LINE_DOWN, EV_LINE_UP,
+	EV_NEXT = 0x120, EV_PREV, EV_FIRST, EV_LAST, EV_LINE_DOWN, EV_LINE_UP, EV_BACK,
 	EV_CLOSE = 0x130,
-	EV_VIEW_SHOWN = 0x140, EV_DOCMENU_SHOWN, EV_EDIT_SHOWN,
+	EV_VIEW_SHOWN = 0x140, EV_DOCMENU_SHOWN, EV_EDIT_SHOWN, EV_NAV_SHOWN,
 	EV_COPY = 0x150, EV_SELECT_ALL, EV_CLEAR_SEL, EV_DEFINE, EV_FIND, EV_CONTENTS,
 	EV_HIGHLIGHT = 0x160, EV_UNDERLINE, EV_STRIKE, EV_NOTE, EV_UNDO, EV_REDO, EV_DEL_ANNOT, EV_SAVE,
 	EV_ADD_SHELF, EV_PASSWORD, EV_READ_ALOUD, EV_SPEAK_SEL,
@@ -39,7 +39,7 @@ enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6, DOC_SHELF = 7, DOC_PASSWORD =
 	DOC_READ = 9, DOC_SPEAKSEL = 10, DOC_SPEED = 11 };
 enum { SPEED_SLOW = 1, SPEED_NORMAL, SPEED_FAST };
 /* Navigate menu entries. */
-enum { NAV_CONTENTS = 5 };
+enum { NAV_CONTENTS = 5, NAV_BACK = 6 };
 enum { VIEW_DARK = 1, VIEW_SEPIA, VIEW_ZOOM_IN, VIEW_ZOOM_OUT, VIEW_ZOOM_100, VIEW_FIT_WIDTH,
 	VIEW_TOOLBAR, VIEW_THUMBS, VIEW_TWO_PAGES, VIEW_COVER_ALONE };
 
@@ -80,6 +80,7 @@ void docwin_redraw(docwin *w, int *block);
 void docwin_event(docwin *w, int code);
 void docwin_view_menu_shown(docwin *w);
 void docwin_edit_menu_shown(docwin *w);
+void docwin_nav_menu_shown(docwin *w);
 /* Background work for every window; returns 1 if more remains. */
 int docwin_background(void);
 void docwin_mode_changed(void);

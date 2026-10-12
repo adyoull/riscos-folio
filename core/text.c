@@ -265,7 +265,8 @@ int folio_link_at(folio_doc *doc, folio_loc loc, folio_point p, folio_link *link
 				fz_location d = fz_resolve_link(ctx, doc->doc, l->uri, &x, &y);
 				link->dest.chapter = d.chapter;
 				link->dest.page = d.page;
-				link->dest_y = y;
+				/* No position (NaN: just the page), or above the page. */
+				link->dest_y = y == y ? (y > 0 ? y : 0) : -1;
 			}
 			break;
 		}
