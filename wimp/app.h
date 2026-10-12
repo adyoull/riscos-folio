@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test20 (12-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test21 (12-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -21,7 +21,7 @@ enum {
 	EV_VIEW_SHOWN = 0x140, EV_DOCMENU_SHOWN, EV_EDIT_SHOWN, EV_NAV_SHOWN,
 	EV_COPY = 0x150, EV_SELECT_ALL, EV_CLEAR_SEL, EV_DEFINE, EV_FIND, EV_CONTENTS,
 	EV_HIGHLIGHT = 0x160, EV_UNDERLINE, EV_STRIKE, EV_NOTE, EV_UNDO, EV_REDO, EV_DEL_ANNOT, EV_SAVE,
-	EV_ADD_SHELF, EV_PASSWORD, EV_READ_ALOUD, EV_SPEAK_SEL,
+	EV_ADD_SHELF, EV_PASSWORD, EV_READ_ALOUD, EV_SPEAK_SEL, EV_PRINT,
 	EV_DICT_COPY = 0x200,  /* the pop-up's, not a window's */
 	EV_FIND_NEXT = 0x210, EV_FIND_PREV, EV_FIND_CANCEL,
 	EV_NOTE_OK = 0x220, EV_NOTE_DELETE, EV_NOTE_CANCEL,
@@ -36,7 +36,7 @@ enum { EDIT_COPY = 1, EDIT_SELECT_ALL, EDIT_CLEAR, EDIT_UNDO, EDIT_REDO, EDIT_HI
 	EDIT_ULINE, EDIT_STRIKE, EDIT_NOTE, EDIT_DELANNOT };
 /* Document menu entries. */
 enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6, DOC_SHELF = 7, DOC_PASSWORD = 8,
-	DOC_READ = 9, DOC_SPEAKSEL = 10, DOC_SPEED = 11 };
+	DOC_READ = 9, DOC_SPEAKSEL = 10, DOC_SPEED = 11, DOC_PRINT = 12 };
 enum { SPEED_SLOW = 1, SPEED_NORMAL, SPEED_FAST };
 /* Navigate menu entries. */
 enum { NAV_CONTENTS = 5, NAV_BACK = 6 };
@@ -186,6 +186,11 @@ char *app_utf8_text(const char *desktop);
 void passui_ask_open(const char *path, int wrong);
 void passui_security(docwin *w);
 int passui_event(int code);              /* 1 if it was theirs */
+
+/* print.c: the Print dialogue and printing. */
+void print_open(docwin *w);
+int print_event(int *block);             /* 1 if it was the Print dialogue's */
+void print_forget(docwin *w);
 void passui_forget(docwin *w);
 
 /* speech.c: reading aloud (with the Speech plugin) */

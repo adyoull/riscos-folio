@@ -40,10 +40,10 @@ CORE_HDR := core/folio.h core/folio_int.h core/dict.h
 CORE_OBJ = $(CORE_SRC:core/%.c=build/$(1)/%.o) build/$(1)/cJSON.o
 
 WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c wimp/clip.c wimp/dict.c wimp/contents.c wimp/find.c wimp/toolbar.c wimp/thumbs.c wimp/annotui.c wimp/passui.c wimp/bookshelf.c wimp/shelfdata.c \
-	wimp/readtext.c wimp/speaker.c wimp/speech.c
+	wimp/readtext.c wimp/speaker.c wimp/speech.c wimp/print.c wimp/printlay.c
 WIMP_HDR := wimp/app.h wimp/tbx.h wimp/worker.h wimp/shelfdata.h wimp/readtext.h wimp/speaker.h \
 	core/folio.h core/dict.h
-VERSION ?= 0.0.1-test20
+VERSION ?= 0.0.1-test21
 
 all: build/ro/libfolio.a build/al/libfolio.a build/al/core_test build/ro/core_test.elf build/ro/folio.elf
 
@@ -136,6 +136,8 @@ build/al/annot_test: tests/annot_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
 		-L$(MU_AL) -lmupdf -lmupdf-third -lm -lpthread -o $@
 
+build/al/printlay_test: tests/printlay_test.c wimp/printlay.c wimp/printlay.h
+	$(AL_CC) $(AL_CFLAGS) $(WARN) -Iwimp -no-pie tests/printlay_test.c wimp/printlay.c -lm -o $@
 build/al/readtext_test: tests/readtext_test.c wimp/readtext.c wimp/readtext.h
 	$(AL_CC) $(AL_CFLAGS) $(WARN) -Icore -Iwimp -no-pie tests/readtext_test.c wimp/readtext.c -o $@
 
@@ -160,7 +162,7 @@ build/al/find_test: tests/find_test.c wimp/find.c wimp/worker.c $(WIMP_HDR) buil
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -Iwimp -Itests/stub-wimp -no-pie tests/find_test.c wimp/find.c \
 		wimp/worker.c build/al/libfolio.a -L$(MU_AL) -lmupdf -lmupdf-third -lm -lpthread -o $@
 
-test: build/al/core_test build/al/worker_test build/al/dict_test build/al/find_test build/al/annot_test build/al/password_test build/al/pagetext_test build/al/readtext_test build/al/speaker_test build/al/shelf_test tests/data/stamp
+test: build/al/core_test build/al/worker_test build/al/dict_test build/al/find_test build/al/annot_test build/al/password_test build/al/pagetext_test build/al/readtext_test build/al/printlay_test build/al/speaker_test build/al/shelf_test tests/data/stamp
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/core_test tests/data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/worker_test tests/data/doc.pdf
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/dict_test tests/dict
@@ -169,6 +171,7 @@ test: build/al/core_test build/al/worker_test build/al/dict_test build/al/find_t
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/password_test tests/data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/pagetext_test tests/data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/readtext_test
+	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/printlay_test
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/speaker_test \
 		$(PVOICE_DIR)/voices/en_GB-southern_english_female-low.voice $(PVOICE_DIR)/build/espeak-ng-data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/shelf_test

@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test20)
+Folio (test build 0.0.1-test21)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -31,6 +31,7 @@ In a document window
   Home / End     first / last page        Up / Down   scroll a little
   Ctrl-N         dark page on and off     Ctrl-F2     close the window
   F4             Find                     Ctrl-Left   back from a link
+  Print          Print...
   Menu           View: Dark page, Sepia page, Zoom in, Zoom out,
                  Actual size, Fit width, Two pages. Navigate: the page
                  moves above, Contents and Back. Find... and Define "word".
@@ -82,6 +83,15 @@ Reading aloud (with the Speech plugin)
   sentence being read is shown with a tinted band, and the pages turn as it
   goes. Click the button (or Read aloud) again to stop. Speak selection
   reads just the selected text.
+
+Printing
+  Print... on the document's menu (or the Print key) opens the Print box:
+  all pages or some, copies, scale, upright or sideways, and draft. It
+  needs !Printers loaded with a printer chosen. Each page is made as big as
+  it really is at 100% (smaller if it wouldn't fit the paper), in the
+  middle of the paper; pages are always printed white, with your notes and
+  markings. Printing takes a few seconds a page, with the hourglass
+  showing how far it's got.
 
 Passwords (PDFs)
   Password... on a PDF's menu shows whether it has a password, and puts

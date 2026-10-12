@@ -25,6 +25,8 @@ RMEnsure Iconbar 0 RMLoad System:Modules.Toolbox.Iconbar
 RMEnsure Iconbar 0 Error Folio needs the Toolbox module Iconbar (in the RISC OS 5 ROM).
 RMEnsure ProgInfo 0 RMLoad System:Modules.Toolbox.ProgInfo
 RMEnsure ProgInfo 0 Error Folio needs the Toolbox module ProgInfo (in the RISC OS 5 ROM).
+| Only for Print... (Folio says so then if it's missing).
+RMEnsure PrintDbox 0 IfThere System:Modules.Toolbox.PrintDbox Then RMLoad System:Modules.Toolbox.PrintDbox
 
 | --- Memory ---------------------------------------------------------
 | MuPDF's cache and the page pictures go in a dynamic area, "Folio Heap",

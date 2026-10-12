@@ -604,6 +604,7 @@ static tbx_shortcut shortcuts[] = {
 	{ 0, 0x7f, EV_DEL_ANNOT, 0 },   /* Delete: the selected annotation */
 	{ 0, 0x183, EV_SAVE, 0 },       /* F3: Save (SG p84) */
 	{ 0, 0x1ac, EV_BACK, 0 },       /* Ctrl-Left: back from a link */
+	{ 0, 0x180, EV_PRINT, 0 },      /* Print (SG p84) */
 };
 
 static ObjectId create_window(docwin *w)
@@ -801,6 +802,7 @@ void docwin_close(docwin *w)
 	contents_forget(w);
 	annotui_forget(w);
 	passui_forget(w);
+	print_forget(w);
 	speech_forget(w);
 	worker_stop_for(w);
 	core_lock();
@@ -1657,6 +1659,7 @@ void docwin_event(docwin *w, int code)
 	case EV_FIRST: go_to_page(w, 0); break;
 	case EV_LAST: go_to_page(w, w->pages - 1); break;
 	case EV_BACK: go_back(w); break;
+	case EV_PRINT: print_open(w); break;
 	case EV_LINE_DOWN:
 		get_state(w, st);
 		scroll_to(w, st[6] - 40);
