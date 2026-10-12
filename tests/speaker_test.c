@@ -42,7 +42,7 @@ int main(int argc, char **argv)
 	CHECK(st == SP_READY, "state %d: %s", st, st == SP_FAILED ? err : "");
 	if (st != SP_READY)
 		return 1;
-	CHECK(speaker_rate() == 16000, "rate %d", speaker_rate());
+	CHECK(speaker_rate() == 48000, "rate %d (16 kHz voice, up-sampled x3)", speaker_rate());
 
 	speaker_push(1, t1, (int)strlen(t1), 1.0f);
 	speaker_push(2, t2, (int)strlen(t2), 1.0f);

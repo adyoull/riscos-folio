@@ -7,6 +7,7 @@
 #include "speaker.h"
 #include "pvoice.h"
 #include "pv_espeak.h"
+#include "pv_math.h"
 #include <math.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -30,7 +31,7 @@ typedef struct sp_chunk {
 static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t cv = PTHREAD_COND_INITIALIZER;
 static pthread_t thread;
-static int started, quitting, state = SP_OFF, busy, gen, rate = 16000;
+static int started, quitting, state = SP_OFF, busy, gen, rate = 48000, up_factor = 1;
 static volatile int stop_now;
 static char voice_path[256], espeak_dir[256], error[200];
 static sp_chunk *in_head, *in_tail;
@@ -108,6 +109,17 @@ static void speak_chunk(sp_chunk *c, int mygen)
 		f = pv_synthesize(voice, ids, k, &o, &ns, NULL);
 		if (!f)
 			continue;           /* stopped, or out of memory */
+		/* Up to a rate the sound system plays as it is (16 kHz x 3 = 48 kHz)
+		 * with a proper filter: its own rate conversion left a tinny edge. */
+		if (up_factor > 1) {
+			int nu = 0;
+			float *u = pv_upsample(f, ns, up_factor, &nu);
+			if (u) {
+				free(f);
+				f = u;
+				ns = nu;
+			}
+		}
 		a = calloc(1, sizeof *a);
 		if (a)
 			a->pcm = malloc((ns ? ns : 1) * sizeof *a->pcm);
@@ -160,7 +172,8 @@ static void *main_loop(void *arg)
 	pthread_mutex_lock(&mu);
 	if (voice) {
 		state = SP_READY;
-		rate = pv_sample_rate(voice);
+		up_factor = pv_upsample_factor(pv_sample_rate(voice));
+		rate = pv_sample_rate(voice) * up_factor;
 	} else {
 		state = SP_FAILED;
 		snprintf(error, sizeof error, "%s", err[0] ? err : "the voice couldn't be loaded");
