@@ -8,8 +8,10 @@
  *
  * Work area: x from 0 to ext_w, y from 0 down to -ext_h (OS units). Pages
  * are laid out in rows of one, or two side by side (View > Two pages), the
- * first page optionally alone on the right as in a book; page i occupies
- * [left(i), left(i) + slot_w] x [top(i) - slot_h, top(i)]. */
+ * first page optionally alone on the right as in a book. Each page has its
+ * own size (measured in the background: sizes_next; until then page 1's),
+ * a row is as tall as its tallest page, and page i occupies
+ * [left(i), left(i) + slot_w(i)] x [top(i) - slot_h(i), top(i)]. */
 #include "app.h"
 #include "worker.h"
 #include "dict.h"
@@ -40,8 +42,12 @@ struct docwin {
 	float zoom;               /* 1.0 = actual size */
 	int gen;                  /* bumped when zoom or mode changes */
 	folio_rect page;          /* first page's size in points */
-	int px_w, px_h;           /* page size in pixels at this zoom */
-	int slot_w, slot_h;       /* the same in OS units */
+	/* Page sizes in points (0: not measured yet, page 1's is used), and
+	 * where each row starts below the first (OS units; rows + 1 entries). */
+	float *pw, *ph;
+	int nsize, sizes_next;
+	int *row_y, nrow_y;
+	float max_pw;             /* the widest page measured */
 	int ext_w, ext_h;
 	int pages;                /* pages in the extent */
 	int counting;             /* 1 until every chapter is counted */
@@ -146,15 +152,74 @@ static int last_in_row(const docwin *w, int r)
 	return i >= w->pages ? w->pages - 1 : i;
 }
 
+/* Page i's size in points, and in pixels and OS units at the zoom. */
+static float pt_w(const docwin *w, int i)
+{
+	return i >= 0 && i < w->nsize && w->pw[i] > 0 ? w->pw[i] : w->page.x1;
+}
+
+static float pt_h(const docwin *w, int i)
+{
+	return i >= 0 && i < w->nsize && w->ph[i] > 0 ? w->ph[i] : w->page.y1;
+}
+
+static int px_w(const docwin *w, int i)
+{
+	int v = (int)(pt_w(w, i) * px_per_pt(w) + 0.5f);
+	return v < 1 ? 1 : v;
+}
+
+static int px_h(const docwin *w, int i)
+{
+	int v = (int)(pt_h(w, i) * px_per_pt(w) + 0.5f);
+	return v < 1 ? 1 : v;
+}
+
+static int slot_w(const docwin *w, int i) { return px_w(w, i) << app.xeig; }
+static int slot_h(const docwin *w, int i) { return px_h(w, i) << app.xeig; }
+
+/* Where row r starts, below the top of the first row. */
+static int row_start(const docwin *w, int r)
+{
+	if (r < 0)
+		return 0;
+	if (r >= w->nrow_y)
+		r = w->nrow_y - 1;
+	return r >= 0 ? w->row_y[r] : 0;
+}
+
+/* The row at distance off below the top of the first row (the last row
+ * starting at or above it). */
+static int row_at(const docwin *w, int off)
+{
+	int lo = 0, hi = rows(w) - 1;
+	if (hi < 0 || !w->row_y)
+		return 0;
+	if (off <= 0)
+		return 0;
+	while (lo < hi) {
+		int mid = (lo + hi + 1) / 2;
+		if (w->row_y[mid] <= off)
+			lo = mid;
+		else
+			hi = mid - 1;
+	}
+	return lo;
+}
+
 static int page_top(const docwin *w, int i)
 {
-	return -(w->top + GAP + row_of(w, i) * (w->slot_h + GAP));
+	return -(w->top + GAP + row_start(w, row_of(w, i)));
 }
 
 static int page_left(const docwin *w, int i)
 {
-	int spread = w->cols * w->slot_w + (w->cols - 1) * GAP;
-	return w->left + (w->ext_w - w->left - spread) / 2 + ((i + lead(w)) % w->cols) * (w->slot_w + GAP);
+	int middle = w->left + (w->ext_w - w->left) / 2;
+	if (w->cols == 1)
+		return middle - slot_w(w, i) / 2;
+	/* Two across: the left-hand page ends, and the right-hand one starts,
+	 * half a gap from the middle. */
+	return (i + lead(w)) % 2 == 0 ? middle - GAP / 2 - slot_w(w, i) : middle + GAP / 2;
 }
 
 static const char *leafname(const char *path)
@@ -206,14 +271,20 @@ static cache_entry *cache_find(docwin *w, int page)
 {
 	int i;
 	for (i = 0; i < CACHE_SLOTS; i++)
-		if (cache[i].w == w && cache[i].page == page && cache[i].gen == w->gen && cache[i].mode == w->mode && cache[i].area) {
+		if (cache[i].w == w && cache[i].page == page && cache[i].gen == w->gen && cache[i].mode == w->mode && cache[i].area &&
+				cache[i].w_px == px_w(w, page) && cache[i].h_px == px_h(w, page)) {
 			cache[i].age = ++cache_clock;
 			return &cache[i];
 		}
 	return NULL;
 }
 
-/* Makes room for 'bytes' more and returns a free slot. */
+static int on_screen(cache_entry *c);
+
+/* Makes room for 'bytes' more and returns a free slot. Pages on screen are
+ * never thrown out to make room: when they alone are more than the budget,
+ * it goes over it, rather than drawing them in turn for ever (each new one
+ * pushing out another that's showing: the flicker of test26). */
 static cache_entry *cache_slot(size_t bytes)
 {
 	int i;
@@ -224,7 +295,7 @@ static cache_entry *cache_slot(size_t bytes)
 			if (!cache[i].area) {
 				if (!free_slot)
 					free_slot = &cache[i];
-			} else if (!oldest || cache[i].age < oldest->age)
+			} else if ((!oldest || cache[i].age < oldest->age) && !on_screen(&cache[i]))
 				oldest = &cache[i];
 		}
 		if (free_slot && cache_bytes + bytes <= CACHE_BYTES)
@@ -267,9 +338,9 @@ static int *new_area(int px_w, int px_h, size_t *bytes_out)
 	return area;
 }
 
-static int *new_page_area(docwin *w, size_t *bytes_out)
+static int *new_page_area(docwin *w, int page, size_t *bytes_out)
 {
-	return new_area(w->px_w, w->px_h, bytes_out);
+	return new_area(px_w(w, page), px_h(w, page), bytes_out);
 }
 
 /* Hands thumbnail 'page' of w to the worker. */
@@ -306,9 +377,14 @@ static int submit_page(docwin *w, int page)
 	memset(&j, 0, sizeof j);
 	if (folio_loc_from_number(w->doc, page, &j.loc))
 		return 0;      /* not counted yet */
-	j.area = new_page_area(w, &j.bytes);
-	if (!j.area)
+	j.area = new_page_area(w, page, &j.bytes);
+	if (!j.area) {
+		/* Too big to draw whole: don't keep trying. */
+		app_log("page %d: no memory for a %dx%d sprite", page + 1, px_w(w, page), px_h(w, page));
+		w->fail_page = page;
+		w->fail_gen = w->gen;
 		return 0;
+	}
 	j.owner = w;
 	j.fc = app.fc;
 	j.doc = w->doc;
@@ -316,8 +392,8 @@ static int submit_page(docwin *w, int page)
 	j.gen = w->gen;
 	j.mode = w->mode;
 	j.ppp = px_per_pt(w);
-	j.px_w = w->px_w;
-	j.px_h = w->px_h;
+	j.px_w = px_w(w, page);
+	j.px_h = px_h(w, page);
 	if (worker_submit(&j)) {
 		free(j.area);
 		return 0;
@@ -393,7 +469,7 @@ static void take_result(render_job *r)
 	cache_bytes += r->bytes;
 	{
 		int y1 = page_top(w, r->page), x0 = page_left(w, r->page);
-		_swix(Wimp_ForceRedraw, _INR(0, 4), w->wimp, x0, y1 - w->slot_h, x0 + w->slot_w, y1);
+		_swix(Wimp_ForceRedraw, _INR(0, 4), w->wimp, x0, y1 - slot_h(w, r->page), x0 + slot_w(w, r->page), y1);
 	}
 }
 
@@ -406,7 +482,28 @@ static void set_extent(docwin *w)
 	w->pages = folio_page_count(w->doc, &exact);
 	if (w->pages < 1)
 		w->pages = 1;
-	w->ext_h = w->top + GAP + rows(w) * (w->slot_h + GAP);
+	/* Each row as tall as its tallest page. */
+	{
+		int r, n = rows(w), y = 0;
+		if (w->nrow_y < n + 1) {
+			int *p = realloc(w->row_y, (n + 1 + 64) * sizeof *p);
+			if (p) {
+				w->row_y = p;
+				w->nrow_y = n + 1 + 64;
+			}
+		}
+		for (r = 0; r < n && r + 1 < w->nrow_y; r++) {
+			int i, h = 0;
+			w->row_y[r] = y;
+			for (i = first_in_row(w, r); i <= last_in_row(w, r); i++)
+				if (slot_h(w, i) > h)
+					h = slot_h(w, i);
+			y += h + GAP;
+		}
+		if (r < w->nrow_y)
+			w->row_y[r] = y;
+		w->ext_h = w->top + GAP + y;
+	}
 	thumbs_layout(w->thumbs, w->page.x1, w->page.y1, w->pages, w->mode);
 	box[0] = 0;
 	box[1] = -w->ext_h;
@@ -417,14 +514,9 @@ static void set_extent(docwin *w)
 
 static void layout(docwin *w)
 {
-	float ppp = px_per_pt(w);
-	w->px_w = (int)(w->page.x1 * ppp + 0.5f);
-	w->px_h = (int)(w->page.y1 * ppp + 0.5f);
-	if (w->px_w < 1) w->px_w = 1;
-	if (w->px_h < 1) w->px_h = 1;
-	w->slot_w = w->px_w << app.xeig;
-	w->slot_h = w->px_h << app.xeig;
-	w->ext_w = w->cols * w->slot_w + (w->cols + 1) * GAP;
+	float widest = w->max_pw > w->page.x1 ? w->max_pw : w->page.x1;
+	int sw = (int)(widest * px_per_pt(w) + 0.5f) << app.xeig;
+	w->ext_w = w->cols * sw + (w->cols + 1) * GAP;
 	if (w->ext_w < 640)
 		w->ext_w = 640;
 	w->ext_w += w->left;
@@ -444,8 +536,7 @@ static int current_page(docwin *w)
 {
 	int st[9], r;
 	get_state(w, st);
-	r = (-st[6] - GAP / 2) / (w->slot_h + GAP);
-	if (r < 0) r = 0;
+	r = row_at(w, -st[6] - GAP / 2);
 	if (r >= rows(w)) r = rows(w) - 1;
 	return first_in_row(w, r);
 }
@@ -672,6 +763,7 @@ static tbx_shortcut shortcuts[] = {
 	{ 0, 0x183, EV_SAVE, 0 },       /* F3: Save (SG p84) */
 	{ 0, 0x1ac, EV_BACK, 0 },       /* Ctrl-Left: back from a link */
 	{ 0, 0x180, EV_PRINT, 0 },      /* Print (SG p84) */
+	{ 0, 0x185, EV_GOTO, 0 },       /* F5: Go to page */
 };
 
 static ObjectId create_window(docwin *w)
@@ -870,6 +962,7 @@ void docwin_close(docwin *w)
 			break;
 		}
 	find_forget(w);
+	gotopage_forget(w);
 	contents_forget(w);
 	annotui_forget(w);
 	passui_forget(w);
@@ -895,6 +988,9 @@ void docwin_close(docwin *w)
 	cache_forget(w);
 	/* Not recursively: the document menu is shared by every window. */
 	thumbs_free(w->thumbs);
+	free(w->pw);
+	free(w->ph);
+	free(w->row_y);
 	tbx_delete(w->obj, 1);
 	if (w->toolbar) {
 		toolbar_forget(w->toolbar);
@@ -973,15 +1069,14 @@ void docwin_redraw(docwin *w, int *b)
 		int top_work = cy1 - oy, bottom_work = cy0 - oy;
 		int i0, i1, i;
 		fill_rect(gutter_colour(w), cx0, cy0, cx1, cy1);
-		i0 = (-top_work - w->top - GAP) / (w->slot_h + GAP);     /* rows */
-		i1 = (-bottom_work - w->top) / (w->slot_h + GAP);
-		if (i0 < 0) i0 = 0;
+		i0 = row_at(w, -top_work - w->top - GAP);                 /* rows */
+		i1 = row_at(w, -bottom_work - w->top - GAP);
 		if (i1 >= rows(w)) i1 = rows(w) - 1;
 		i0 = first_in_row(w, i0);                                 /* pages */
 		i1 = last_in_row(w, i1);
 		for (i = i0; i <= i1; i++) {
 			int x0 = ox + page_left(w, i), y1 = oy + page_top(w, i);
-			int x1 = x0 + w->slot_w, y0 = y1 - w->slot_h;
+			int x1 = x0 + slot_w(w, i), y0 = y1 - slot_h(w, i);
 			cache_entry *c;
 			if (x1 <= cx0 || x0 >= cx1 || y1 <= cy0 || y0 >= cy1)
 				continue;
@@ -1054,9 +1149,8 @@ static int wanted_page(docwin *w, int visible_only)
 	vis_h = st[4] - st[2];
 	top = st[6];
 	bottom = top - vis_h;
-	i0 = (-top - GAP) / (w->slot_h + GAP);     /* rows; the toolbar covers w->top of it */
-	i1 = (-bottom - w->top) / (w->slot_h + GAP);
-	if (i0 < 0) i0 = 0;
+	i0 = row_at(w, -top - GAP);                /* rows; the toolbar covers w->top of it */
+	i1 = row_at(w, -bottom - w->top - GAP);
 	if (i1 >= rows(w)) i1 = rows(w) - 1;
 	i0 = first_in_row(w, i0);
 	i1 = last_in_row(w, i1);
@@ -1080,6 +1174,97 @@ static int wanted_page(docwin *w, int visible_only)
 		return i;
 	}
 	return -1;
+}
+
+/* Whether a cached page is one its window is showing now. */
+static int on_screen(cache_entry *c)
+{
+	docwin *w = c->w;
+	int st[9], top, bottom, r0, r1;
+	if (!is_window(w) || c->gen != w->gen || c->mode != w->mode)
+		return 0;
+	get_state(w, st);
+	top = st[6];
+	bottom = top - (st[4] - st[2]);
+	r0 = row_at(w, -top - GAP);
+	r1 = row_at(w, -bottom - w->top - GAP);
+	return c->page >= first_in_row(w, r0) && c->page <= last_in_row(w, r1);
+}
+
+/* Moves the layout to what's known of the pages' sizes, keeping the place
+ * being read where it is on screen. */
+static void relayout_keep(docwin *w)
+{
+	int st[9], page = current_page(w), off, gen = w->gen;
+	get_state(w, st);
+	off = st[6] - (page_top(w, page) + GAP / 2 + w->top);
+	layout(w);
+	w->gen = gen;           /* the sprites of pages that kept their size are good */
+	scroll_to(w, page_top(w, page) + GAP / 2 + w->top + off);
+	redraw_all(w);
+	w->want_render = 1;
+}
+
+/* Measures page i (core lock held). 1 if its size isn't what was assumed. */
+static int measure(docwin *w, int i)
+{
+	folio_loc loc;
+	float pw, ph, was_w = pt_w(w, i), was_h = pt_h(w, i);
+	if (i >= w->nsize) {
+		int n = w->pages + 64;
+		float *a = realloc(w->pw, n * sizeof *a), *b;
+		if (!a)
+			return 0;
+		w->pw = a;
+		b = realloc(w->ph, n * sizeof *b);
+		if (!b)
+			return 0;
+		w->ph = b;
+		memset(w->pw + w->nsize, 0, (n - w->nsize) * sizeof *a);
+		memset(w->ph + w->nsize, 0, (n - w->nsize) * sizeof *b);
+		w->nsize = n;
+	}
+	if (w->pw[i] > 0)
+		return 0;
+	if (folio_loc_from_number(w->doc, i, &loc) || folio_page_size(w->doc, loc, &pw, &ph) ||
+			pw < 1 || ph < 1) {
+		pw = w->page.x1;
+		ph = w->page.y1;
+	}
+	w->pw[i] = pw;
+	w->ph[i] = ph;
+	if (pw > w->max_pw)
+		w->max_pw = pw;
+	return (int)(pw * 4) != (int)(was_w * 4) || (int)(ph * 4) != (int)(was_h * 4);
+}
+
+/* Page sizes, a few centiseconds at a time: those near the page being read
+ * first, then the rest in order. 1 while there are more to measure. */
+static int measure_step(docwin *w)
+{
+	unsigned t0, t;
+	int changed = 0, cur, k;
+	if (w->reflow || w->counting || w->sizes_next >= w->pages)
+		return 0;
+	if (!core_trylock())
+		return 1;
+	_swix(OS_ReadMonotonicTime, _OUT(0), &t0);
+	cur = current_page(w);
+	for (k = -1; k <= 4; k++)
+		if (cur + k >= 0 && cur + k < w->pages)
+			changed |= measure(w, cur + k);
+	do {
+		changed |= measure(w, w->sizes_next);
+		w->sizes_next++;
+		_swix(OS_ReadMonotonicTime, _OUT(0), &t);
+	} while (w->sizes_next < w->pages && t - t0 < 3);
+	core_unlock();
+	if (changed)
+		relayout_keep(w);
+	if (w->sizes_next >= w->pages)
+		app_log("%s: %d page sizes measured%s", w->title, w->pages,
+			w->max_pw > w->page.x1 + 0.5f ? " (some pages wider than the first)" : "");
+	return w->sizes_next < w->pages;
 }
 
 int docwin_background(void)
@@ -1134,6 +1319,7 @@ int docwin_background(void)
 			app_log("%s: opened at page %d", w->title, t + 1);
 		}
 		busy |= w->counting || w->pending_mark || w->goto_page >= 0;
+		busy |= measure_step(w);
 	}
 
 	/* Recognising text takes seconds: a page that needs drawing now comes
@@ -1235,12 +1421,12 @@ static int point_at(docwin *w, int sx, int sy, folio_point *pt, int clamp_page)
 		i = clamp_page;
 	} else {
 		/* The row, then the page in it nearest across. */
-		int r = (-wy - w->top - GAP / 2) / (w->slot_h + GAP), j, best = -1;
+		int r = row_at(w, -wy - w->top - GAP / 2), j, best = -1;
 		if (-wy - w->top - GAP / 2 < 0 || r >= rows(w))
 			return -1;
 		i = -1;
 		for (j = first_in_row(w, r); j <= last_in_row(w, r); j++) {
-			int d = wx - (page_left(w, j) + w->slot_w / 2);
+			int d = wx - (page_left(w, j) + slot_w(w, j) / 2);
 			if (d < 0)
 				d = -d;
 			if (i < 0 || d < best) {
@@ -1257,9 +1443,9 @@ static int point_at(docwin *w, int sx, int sy, folio_point *pt, int clamp_page)
 		/* Dragging off the page: hold to its edges. */
 		if (pt->x < 0) pt->x = 0;
 		if (pt->y < 0) pt->y = 0;
-		if (pt->x > w->page.x1) pt->x = w->page.x1;
-		if (pt->y > w->page.y1) pt->y = w->page.y1;
-	} else if (pt->x < 0 || pt->y < 0 || pt->x > w->page.x1 || pt->y > w->page.y1) {
+		if (pt->x > pt_w(w, i)) pt->x = pt_w(w, i);
+		if (pt->y > pt_h(w, i)) pt->y = pt_h(w, i);
+	} else if (pt->x < 0 || pt->y < 0 || pt->x > pt_w(w, i) || pt->y > pt_h(w, i)) {
 		return -1;
 	}
 	return i;
@@ -1268,7 +1454,7 @@ static int point_at(docwin *w, int sx, int sy, folio_point *pt, int clamp_page)
 static void redraw_page(docwin *w, int i)
 {
 	int y1 = page_top(w, i), x0 = page_left(w, i);
-	_swix(Wimp_ForceRedraw, _INR(0, 4), w->wimp, x0, y1 - w->slot_h, x0 + w->slot_w, y1);
+	_swix(Wimp_ForceRedraw, _INR(0, 4), w->wimp, x0, y1 - slot_h(w, i), x0 + slot_w(w, i), y1);
 }
 
 /* Recompute the selection's quads (snapping to 'mode') and redraw. */
@@ -1361,8 +1547,8 @@ static void sel_eor_change(docwin *w, int page, const folio_quad *oldq, int n_ol
 		return;
 	b[0] = w->wimp;
 	b[1] = page_left(w, page);
-	b[2] = page_top(w, page) - w->slot_h;
-	b[3] = page_left(w, page) + w->slot_w;
+	b[2] = page_top(w, page) - slot_h(w, page);
+	b[3] = page_left(w, page) + slot_w(w, page);
 	b[4] = page_top(w, page);
 	_swix(Wimp_UpdateWindow, _IN(1) | _OUT(0), b, &more);
 	while (more) {
@@ -1480,8 +1666,8 @@ static void sel_all(docwin *w)
 	w->sel_page = page;
 	w->sel_a.x = 0;
 	w->sel_a.y = 0;
-	w->sel_b.x = w->page.x1;
-	w->sel_b.y = w->page.y1;
+	w->sel_b.x = pt_w(w, page);
+	w->sel_b.y = pt_h(w, page);
 	sel_update(w, FOLIO_SELECT_CHARS);
 }
 
@@ -1688,8 +1874,9 @@ static void set_columns(docwin *w, int cols, int cover)
 		st[5] = 0;
 		if (cols == 2) {
 			/* Only as much as the two pages need beyond what's showing. */
-			int need = w->left + 2 * w->slot_w + 3 * GAP - (st[3] - st[1]);
-			int want = need < 0 ? 0 : need > w->slot_w + GAP ? w->slot_w + GAP : need;
+			int sw = slot_w(w, page);
+			int need = w->left + 2 * sw + 3 * GAP - (st[3] - st[1]);
+			int want = need < 0 ? 0 : need > sw + GAP ? sw + GAP : need;
 			int right = want, left = 0;
 			if (st[3] + right > app.screen_w) {
 				right = app.screen_w - st[3] > 0 ? app.screen_w - st[3] : 0;
@@ -1750,8 +1937,16 @@ void docwin_event(docwin *w, int code)
 	case EV_DEFAULT_ZOOM: choices_set_zoom(w->zoom); break;
 	case EV_FIT_WIDTH:
 		get_state(w, st);
-		set_zoom(w, (float)(st[3] - st[1] - w->left - (w->cols + 1) * GAP) /
-			(w->cols * w->page.x1 * 2.5f));
+		/* The row being read fits (the wider page of the two). */
+		{
+			int r = row_of(w, current_page(w)), i;
+			float pw = 0;
+			for (i = first_in_row(w, r); i <= last_in_row(w, r); i++)
+				if (pt_w(w, i) > pw)
+					pw = pt_w(w, i);
+			set_zoom(w, (float)(st[3] - st[1] - w->left - (w->cols + 1) * GAP) /
+				(w->cols * pw * 2.5f));
+		}
 		break;
 	case EV_TWO_PAGES: set_columns(w, w->cols == 2 ? 1 : 2, w->cover); break;
 	case EV_COVER_ALONE: set_columns(w, w->cols, !w->cover); break;
@@ -1762,6 +1957,7 @@ void docwin_event(docwin *w, int code)
 	case EV_BACK: go_back(w); break;
 	case EV_PRINT: print_open(w); break;
 	case EV_EXPORT_DRAW: export_open(w); break;
+	case EV_GOTO: gotopage_open(w); break;
 	case EV_OCR_PAGE: ocr_win_this_page(w->ocr); break;
 	case EV_OCR_ALL: ocr_win_all(w->ocr); break;
 	case EV_LINE_DOWN:
@@ -1832,6 +2028,7 @@ int docwin_current_page(docwin *w) { return current_page(w); }
 int docwin_is_counting(docwin *w) { return w->counting; }
 int docwin_pages(docwin *w) { return w->pages; }
 int docwin_reading_dir(docwin *w) { return w->dir < 0 ? -1 : 1; }
+void docwin_page_pt(docwin *w, int page, float *pw, float *ph) { *pw = pt_w(w, page); *ph = pt_h(w, page); }
 int docwin_ocr_wait(docwin *w, int page) { return is_window(w) && ocr_win_wait(w->ocr, page); }
 
 void docwin_text_changed(docwin *w, int page)
@@ -1915,8 +2112,8 @@ void docwin_set_spoken(docwin *w, const int *pages, const folio_quad *q, int n)
 			continue;          /* a placeholder: drawn with the page */
 		b[0] = w->wimp;
 		b[1] = page_left(w, page);
-		b[2] = page_top(w, page) - w->slot_h;
-		b[3] = page_left(w, page) + w->slot_w;
+		b[2] = page_top(w, page) - slot_h(w, page);
+		b[3] = page_left(w, page) + slot_w(w, page);
 		b[4] = page_top(w, page);
 		_swix(Wimp_UpdateWindow, _IN(1) | _OUT(0), b, &more);
 		while (more) {
@@ -1963,6 +2160,18 @@ void docwin_go_to(docwin *w, int page)
 {
 	extend_to(w, page);
 	go_to_page(w, page);
+}
+
+static void push_back(docwin *w);
+
+/* Go to page (F5): remembered for Back, as a link is. */
+void docwin_jump(docwin *w, int page)
+{
+	push_back(w);
+	if (page >= w->pages && w->counting)
+		docwin_open_page(w, page);
+	else
+		docwin_go_to(w, page < w->pages ? page : w->pages - 1);
 }
 
 /* Opened with a page asked for (Folio$OpenPage, or -page): that page,

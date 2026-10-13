@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test29 (13-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test30 (13-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -22,7 +22,7 @@ enum {
 	EV_COPY = 0x150, EV_SELECT_ALL, EV_CLEAR_SEL, EV_DEFINE, EV_FIND, EV_CONTENTS,
 	EV_HIGHLIGHT = 0x160, EV_UNDERLINE, EV_STRIKE, EV_NOTE, EV_UNDO, EV_REDO, EV_DEL_ANNOT, EV_SAVE,
 	EV_ADD_SHELF, EV_PASSWORD, EV_READ_ALOUD, EV_SPEAK_SEL, EV_PRINT, EV_EXPORT_DRAW,
-	EV_OCR_PAGE = 0x170, EV_OCR_ALL,
+	EV_OCR_PAGE = 0x170, EV_OCR_ALL, EV_GOTO,
 	EV_DICT_COPY = 0x200,  /* the pop-up's, not a window's */
 	EV_FIND_NEXT = 0x210, EV_FIND_PREV, EV_FIND_CANCEL,
 	EV_NOTE_OK = 0x220, EV_NOTE_DELETE, EV_NOTE_CANCEL,
@@ -30,7 +30,8 @@ enum {
 	EV_SH_FOLDERS, EV_SH_REFRESH, EV_SH_MISSING,
 	EV_PWOPEN_OK = 0x240, EV_PWOPEN_CANCEL, EV_PWSET, EV_PWREMOVE, EV_PWCANCEL,
 	EV_SPEED_SLOW = 0x250, EV_SPEED_NORMAL, EV_SPEED_FAST, EV_SPEED_SHOWN,
-	EV_OCR_AUTO = 0x260, EV_OCR_ACCURATE, EV_OCR_FAST, EV_OCR_SHOWN
+	EV_OCR_AUTO = 0x260, EV_OCR_ACCURATE, EV_OCR_FAST, EV_OCR_SHOWN,
+	EV_GOTO_OK = 0x270, EV_GOTO_CANCEL
 };
 
 /* View menu entries (component ids). */
@@ -44,7 +45,7 @@ enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6, DOC_SHELF = 7, DOC_PASSWORD =
 enum { OCR_PAGE = 1, OCR_ALL, OCR_AUTO, OCR_ACCURATE, OCR_FAST };
 enum { SPEED_SLOW = 1, SPEED_NORMAL, SPEED_FAST };
 /* Navigate menu entries. */
-enum { NAV_CONTENTS = 5, NAV_BACK = 6 };
+enum { NAV_CONTENTS = 5, NAV_BACK = 6, NAV_GOTO = 7 };
 enum { VIEW_DARK = 1, VIEW_SEPIA, VIEW_ZOOM_IN, VIEW_ZOOM_OUT, VIEW_ZOOM_100, VIEW_FIT_WIDTH,
 	VIEW_TOOLBAR, VIEW_THUMBS, VIEW_TWO_PAGES, VIEW_COVER_ALONE, VIEW_DEFAULT_ZOOM };
 
@@ -114,7 +115,8 @@ void docwin_show_hit(docwin *w, int page, const folio_quad *q, int n);
 
 docwin *docwin_from_toolbar(ObjectId id);
 int docwin_pages(docwin *w);
-int docwin_reading_dir(docwin *w);        /* +1 forwards, -1 backwards */
+int docwin_reading_dir(docwin *w);
+void docwin_page_pt(docwin *w, int page, float *pw, float *ph);   /* size in points */        /* +1 forwards, -1 backwards */
 void docwin_text_changed(docwin *w, int page);   /* recognised */
 int docwin_ocr_wait(docwin *w, int page);  /* reading aloud: wait for OCR */
 void docwin_ocr_menu_shown(docwin *w);   /* w may be NULL */
@@ -184,6 +186,12 @@ void contents_click(int *block);
 void find_open(docwin *w);
 void find_forget(docwin *w);
 void find_event(int code);
+
+/* gotopage.c: Go to page (F5) */
+void gotopage_open(docwin *w);
+void gotopage_forget(docwin *w);
+void gotopage_event(int code);
+void docwin_jump(docwin *w, int page);   /* remembered for Back */
 int find_background(void);             /* 1 while searching */
 
 /* dict.c: Define "word" */

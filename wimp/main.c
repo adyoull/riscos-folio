@@ -127,10 +127,11 @@ static void create_objects(void)
 	entry(&nm, 0, 1, "Next page    PageDown", 0, EV_NEXT, "Click to go to the next page.");
 	entry(&nm, 1, 2, "Previous page  PageUp", 0, EV_PREV, "Click to go to the previous page.");
 	entry(&nm, 2, 3, "First page       Home", 0, EV_FIRST, "Click to go to the first page.");
-	entry(&nm, 3, 4, "Last page         End", MENU_DOTTED, EV_LAST, "Click to go to the last page.");
-	entry(&nm, 4, NAV_CONTENTS, "Contents...", MENU_DOTTED, EV_CONTENTS, "Click to see the document's contents list, and go to any part of it.");
-	entry(&nm, 5, NAV_BACK, "Back          ^Left", 0, EV_BACK, "Click to go back to where you were before following a link.");
-	app.nav_menu = make_menu(&nm, "Navigate", 6, EV_NAV_SHOWN);
+	entry(&nm, 3, 4, "Last page         End", 0, EV_LAST, "Click to go to the last page.");
+	entry(&nm, 4, NAV_GOTO, "Go to page...      F5", MENU_DOTTED, EV_GOTO, "Click to type a page number to go to.");
+	entry(&nm, 5, NAV_CONTENTS, "Contents...", MENU_DOTTED, EV_CONTENTS, "Click to see the document's contents list, and go to any part of it.");
+	entry(&nm, 6, NAV_BACK, "Back          ^Left", 0, EV_BACK, "Click to go back to where you were before following a link or going to a page.");
+	app.nav_menu = make_menu(&nm, "Navigate", 7, EV_NAV_SHOWN);
 
 	/* Undo and Redo first (Style Guide p40; DESIGN §3.8). */
 	entry(&em, 0, EDIT_UNDO, "Undo              ^Z", 0, EV_UNDO, "Click to undo the last change to the notes and markings.");
@@ -347,6 +348,10 @@ static int toolbox_event(int *b)
 	case EV_FIND_PREV:
 	case EV_FIND_CANCEL:
 		find_event(code);
+		break;
+	case EV_GOTO_OK:
+	case EV_GOTO_CANCEL:
+		gotopage_event(code);
 		break;
 	case EV_SPEED_SLOW: speech_set_speed(SPEED_SLOW); break;
 	case EV_SPEED_NORMAL: speech_set_speed(SPEED_NORMAL); break;

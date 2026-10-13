@@ -827,6 +827,37 @@ int folio_outline(folio_doc *doc, const folio_outline_item **items, int *count)
 	return 0;
 }
 
+int folio_page_size(folio_doc *doc, folio_loc loc, float *w, float *h)
+{
+	fz_context *ctx = doc->ctx;
+	fz_page *page = NULL;
+	int i, rc = 0;
+	/* Already cached: no need to load it again. */
+	for (i = 0; i < FOLIO_PAGE_CACHE; i++) {
+		folio_cpage *cp = &doc->cache[i];
+		if (cp->used && cp->gen == doc->gen && cp->loc.chapter == loc.chapter && cp->loc.page == loc.page) {
+			*w = cp->bounds.x1 - cp->bounds.x0;
+			*h = cp->bounds.y1 - cp->bounds.y0;
+			return 0;
+		}
+	}
+	fz_var(page);
+	fz_try(ctx) {
+		fz_rect b;
+		page = fz_load_chapter_page(ctx, doc->doc, loc.chapter, loc.page);
+		b = fz_bound_page(ctx, page);
+		*w = b.x1 - b.x0;
+		*h = b.y1 - b.y0;
+	}
+	fz_always(ctx)
+		fz_drop_page(ctx, page);
+	fz_catch(ctx) {
+		folio_set_error(doc->fc);
+		rc = -1;
+	}
+	return rc;
+}
+
 int folio_page_bounds(folio_doc *doc, folio_loc loc, folio_rect *bounds)
 {
 	fz_context *ctx = doc->ctx;

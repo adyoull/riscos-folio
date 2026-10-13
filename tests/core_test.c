@@ -478,6 +478,23 @@ int main(int argc, char **argv)
 	test_pdf(fc, dir);
 	printf("Abort\n");
 	test_abort(fc, dir);
+	printf("Page sizes\n");
+	{
+		/* mixed.pdf: A5 (420 x 595), then A4 (595 x 842), then A4 landscape. */
+		folio_doc *m = folio_open(fc, data(dir, "mixed.pdf"), NULL);
+		float w0 = 0, h0 = 0, w1 = 0, h1 = 0, w2 = 0, h2 = 0;
+		CHECK(m != NULL, "open mixed.pdf: %s", folio_error(fc));
+		if (m) {
+			CHECK(folio_page_size(m, (folio_loc){ 0, 0 }, &w0, &h0) == 0 && (int)w0 == 420 && (int)h0 == 595,
+				"page 1 %gx%g", w0, h0);
+			CHECK(folio_page_size(m, (folio_loc){ 0, 1 }, &w1, &h1) == 0 && (int)w1 == 595 && (int)h1 == 842,
+				"page 2 %gx%g", w1, h1);
+			CHECK(folio_page_size(m, (folio_loc){ 0, 2 }, &w2, &h2) == 0 && (int)w2 == 842 && (int)h2 == 595,
+				"page 3 %gx%g", w2, h2);
+			CHECK(folio_page_size(m, (folio_loc){ 0, 3 }, &w2, &h2) == -1, "no page 4");
+			folio_close(m);
+		}
+	}
 	folio_drop(fc);
 	printf("%d checks, %d failed\n", checks, fails);
 	return fails != 0;

@@ -71,5 +71,11 @@ TXT
 "$AT" "$MUTOOL" convert -O compress -o scanp1.pdf scanp1.png
 "$AT" "$MUTOOL" merge -O compress -o scan.pdf scanp1.pdf 1 speech.pdf 2
 rm -f scanp1.png scanp1.pdf
+# Pages of different sizes: A5, A4, A4 landscape.
+for sz in "420 595" "595 842" "842 595"; do
+	printf '%%%%MediaBox 0 0 %s\n%%%%Font Helv Helvetica\nBT /Helv 24 Tf 40 40 Td (Page of %s) Tj ET\n' "$sz" "$sz" > "m${sz%% *}.txt"
+done
+"$AT" "$MUTOOL" create -o mixed.pdf m420.txt m595.txt m842.txt
+rm -f m420.txt m595.txt m842.txt
 rm -f p1.txt p2.txt p3.txt s1.txt s2.txt fix.js
 ls -l

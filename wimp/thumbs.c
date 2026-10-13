@@ -321,7 +321,14 @@ int thumbs_wanted(thumbs *t, int busy_page, int *px_w, int *px_h, float *ppp, in
 			continue;
 		*px_w = TW >> app.xeig;
 		*px_h = t->th >> app.xeig;
-		*ppp = (float)*px_w / t->page_w;
+		{
+			/* Pages of other sizes fit inside the first page's shape. */
+			float pw = t->page_w, ph = t->page_h, kw, kh;
+			docwin_page_pt(t->w, i, &pw, &ph);
+			kw = (float)*px_w / pw;
+			kh = (float)*px_h / ph;
+			*ppp = kw < kh ? kw : kh;
+		}
 		*gen = t->gen;
 		return i;
 	}

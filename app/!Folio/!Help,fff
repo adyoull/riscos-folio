@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test29)
+Folio (test build 0.0.1-test30)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -31,11 +31,15 @@ In a document window
   Home / End     first / last page        Up / Down   scroll a little
   Ctrl-N         dark page on and off     Ctrl-F2     close the window
   F4             Find                     Ctrl-Left   back from a link
-  Print          Print...
+  Print          Print...                 F5          Go to page
   Menu           View: Dark page, Sepia page, Zoom in, Zoom out,
                  Actual size, Fit width, Two pages. Navigate: the page
-                 moves above, Contents and Back. Find... and Define "word".
+                 moves above, Go to page, Contents and Back. Find... and
+                 Define "word".
   Close with Adjust also opens the document's directory.
+  Pages of different sizes are each shown at their own size (a book
+  whose cover is smaller than its pages, a landscape page among upright
+  ones). Folio measures the pages in the background after opening.
   Default scale: zoom a window to the scale you like, then choose View >
   Use this scale for new documents. Every document opens at that scale
   from then on (kept in <Choices$Write>.Folio.Choices).
@@ -149,6 +153,8 @@ Links, Contents and Find
   Navigate > Contents... lists the document's chapters and sections, with
   their page numbers; the part you're reading is highlighted. Click on one
   to go there.
+  F5 (or Navigate > Go to page...) asks for a page number and goes there;
+  Back returns from it as from a link.
   F4 (or Find... on the menu) opens the Find box. Type the text and press
   Return (Next) to find it; Previous goes back. Capitals don't matter.
   The search starts at the page you're reading and goes round the end of

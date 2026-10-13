@@ -145,6 +145,9 @@ int folio_outline(folio_doc *doc, const folio_outline_item **items, int *count);
 
 /* ---- Pages ------------------------------------------------------------ */
 
+/* A page's width and height in points, without drawing it or keeping it
+ * (cheap: for laying out documents whose pages differ in size). */
+int folio_page_size(folio_doc *doc, folio_loc loc, float *w, float *h);
 int folio_page_bounds(folio_doc *doc, folio_loc loc, folio_rect *bounds);
 
 typedef enum {
