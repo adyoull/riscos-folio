@@ -684,6 +684,8 @@ static void place_scroller(shown_state *s, const int *st)
  * Read with the nested form of Wimp_GetWindowState: as a Wimp child it's
  * reopened with the same parent and edge links; as a top-level pane, in
  * place. */
+static int s_nest_failed, logged_nest;
+
 void toolbar_fit(ObjectId tb, int parent_wimp)
 {
 	int st[9], ps[9], wh = 0, parent = -1, want, scx;
@@ -698,6 +700,30 @@ void toolbar_fit(ObjectId tb, int parent_wimp)
 	ps[0] = parent_wimp;
 	if (_swix(Wimp_GetWindowState, _IN(1), ps))
 		return;
+	/* The Toolbox shows it as a top-level pane, which Folio then has to
+	 * move with every step of a window drag (RDPServer saw the desktop
+	 * stop while a document window was dragged; test32). As a nested
+	 * child of the window instead, its left and right edges tied to the
+	 * window's and its top to the window's top, the Wimp moves and
+	 * widens it, as it does the thumbnail drawer. */
+	if (parent == -1 && !s_nest_failed) {
+		int b[9];
+		memcpy(b, st, sizeof b);
+		b[1] = ps[1];
+		b[3] = ps[3];
+		b[4] = ps[4];
+		b[2] = ps[4] - (st[4] - st[2]);
+		b[7] = -1;
+		if (_swix(Wimp_OpenWindow, _INR(1, 4), b, TASK, parent_wimp,
+				(1u << 16) | (2u << 18) | (2u << 20) | (2u << 22) | (1u << 24) | (2u << 26))) {
+			s_nest_failed = 1;
+			app_log("toolbar: stays a pane (no nested Window Manager)");
+		} else if (tb_state(wh, st, &parent, &nest)) {
+			return;
+		} else if (!logged_nest++) {
+			app_log("toolbar: now a child of its window");
+		}
+	}
 	s = state_for(tb);
 	s->tb_wimp = wh;
 	want = ps[3] - ps[1];
@@ -801,6 +827,7 @@ void toolbar_follow(ObjectId tb, int pane, int parent_wimp)
 }
 
 /* Scrolls a toolbar sideways by dx (clamped). */
+
 static void scroll_by(shown_state *s, int dx)
 {
 	int st[9], parent, max;

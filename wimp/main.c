@@ -498,6 +498,26 @@ int main(int argc, char **argv)
 			tbx_report_error(e);
 			continue;
 		}
+		/* A check on how often Folio is polled: more than 200 events in a
+		 * second (other than null events) means something keeps it busy,
+		 * e.g. a window being opened over and over. */
+		{
+			static unsigned t0, n_ev, n_open, n_redraw;
+			unsigned now;
+			_swix(OS_ReadMonotonicTime, _OUT(0), &now);
+			if (event != Wimp_ENull) {
+				n_ev++;
+				n_open += event == Wimp_EOpenWindow;
+				n_redraw += event == Wimp_ERedrawWindow;
+			}
+			if (now - t0 >= 100) {
+				if (n_ev > 200)
+					app_log("events: %u in %u cs (%u open requests, %u redraws)", n_ev, now - t0,
+						n_open, n_redraw);
+				t0 = now;
+				n_ev = n_open = n_redraw = 0;
+			}
+		}
 		switch (event) {
 		case Wimp_ENull:
 			break;
