@@ -101,6 +101,20 @@ static ObjectId make_window(tbx_window *t, char *title, int title_size, void *ga
 {
 	ObjectId id = 0;
 	_kernel_oserror *e;
+	/* Every gadget's id must be different (the Toolbox refuses the window
+	 * otherwise): checked here, so a slip shows in FolioLog at once. */
+	{
+		const char *g = gadgets;
+		int ids[16], i, j;
+		for (i = 0; i < n && i < 16; i++) {
+			const gadget_hdr *h = (const gadget_hdr *)g;
+			ids[i] = h->id;
+			for (j = 0; j < i; j++)
+				if (ids[j] == ids[i])
+					app_log("passui: gadget id %d used twice in '%s'", ids[i], title);
+			g += h->type >> 16;
+		}
+	}
 	memset(t, 0, sizeof *t);
 	t->flags = (1 << 1) | (1 << 2);   /* the Toolbox opens and closes it */
 	t->help_message = help;
@@ -461,7 +475,11 @@ static void security_event(int code)
 
 #define RES_W 900
 #define RES_H 300
-enum { R_MSG = 0x100, R_HINT = 0x101, R_LABEL = 1, R_PW = 2, R_CANCEL = 3, R_OK = 4 };
+/* Gadget ids must all differ: the display fields are 0 and 1 (their 0x100
+ * only tells set_text which method to use), so the rest start at 2. In
+ * test32-34 R_LABEL was 1 as well, and the box failed with "Component ID
+ * 0x1 has been duplicated" (reported printing a restricted PDF). */
+enum { R_MSG = 0x100, R_HINT = 0x101, R_LABEL = 2, R_PW = 3, R_CANCEL = 4, R_OK = 5 };
 
 static struct {
 	display_gadget msg, hint;
