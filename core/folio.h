@@ -245,6 +245,22 @@ int folio_ocr_changed(folio_doc *doc);    /* recognised since loaded or saved */
 int folio_ocr_save(folio_doc *doc, const char *path);
 int folio_ocr_load(folio_doc *doc, const char *path);
 
+/* ---- Document info ------------------------------------------------------ */
+
+#define FOLIO_INFO_MAX 32
+typedef struct {
+	char label[32];
+	char value[256];      /* UTF-8 */
+} folio_info_item;
+typedef struct {
+	int n;
+	folio_info_item item[FOLIO_INFO_MAX];
+} folio_info;
+/* The document's properties, in order, for showing (label: value). */
+int folio_get_info(folio_doc *doc, folio_info *in);
+/* A PDF date ("D:20230115093000+01'00'") for people: "15 Jan 2023, 09:30". */
+void folio_pdf_date(const char *d, char *out, size_t size);
+
 /* ---- Links ------------------------------------------------------------ */
 
 typedef struct {
@@ -314,6 +330,15 @@ typedef struct {
 } folio_security;
 
 int folio_get_security(folio_doc *doc, folio_security *sec);
+
+/* What the document's author allows (a PDF's permission flags; anything
+ * else allows everything). Opening with the owner password allows all. */
+typedef enum {
+	FOLIO_PERM_PRINT, FOLIO_PERM_COPY,
+	FOLIO_PERM_ACCESSIBILITY,   /* text for screen readers (reading aloud) */
+	FOLIO_PERM_ANNOTATE
+} folio_permission;
+int folio_permitted(folio_doc *doc, folio_permission what);
 /* Is this the document's owner password? 1 (and the document now has full
  * rights), 0, or -1 on error. */
 int folio_check_owner_password(folio_doc *doc, const char *password);

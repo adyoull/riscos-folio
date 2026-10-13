@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test31)
+Folio (test build 0.0.1-test32)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -113,6 +113,22 @@ Printing
   window's title shows which page it's on. The machine only pauses while
   the printer driver takes each finished page. Choose Print... again (or
   close the window) to stop it.
+
+Document info
+  Document info... on the document's menu shows the file's name, where it
+  is and its size, then what the document says about itself: title,
+  author, subject, keywords, the program that made it, when it was made
+  and changed, its PDF version, pages and page size, its security and what
+  its author allows (printing, copying, changing, notes...), and whether it
+  has a form, attached files or JavaScript.
+
+Restrictions (PDFs)
+  A PDF's author can say it mustn't be printed or copied from. Folio keeps
+  to that: Print, Copy, Export page as Draw and (if the author doesn't
+  allow text for screen readers either) Read aloud say so instead, and
+  offer to lift it with the document's owner password. To have Folio
+  ignore such restrictions, untick Choices > Obey document restrictions on
+  the icon bar menu (kept in <Choices$Write>.Folio.Choices).
 
 Passwords (PDFs)
   Password... on a PDF's menu shows whether it has a password, and puts

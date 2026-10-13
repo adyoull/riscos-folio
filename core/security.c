@@ -168,3 +168,23 @@ void folio_security_write_options(folio_doc *doc, pdf_write_options *opts)
 		opts->do_encrypt = PDF_ENCRYPT_NONE;
 	}
 }
+
+int folio_permitted(folio_doc *doc, folio_permission what)
+{
+	fz_context *ctx = doc->ctx;
+	fz_permission p;
+	int r = 1;
+	switch (what) {
+	case FOLIO_PERM_PRINT: p = FZ_PERMISSION_PRINT; break;
+	case FOLIO_PERM_COPY: p = FZ_PERMISSION_COPY; break;
+	case FOLIO_PERM_ACCESSIBILITY: p = FZ_PERMISSION_ACCESSIBILITY; break;
+	case FOLIO_PERM_ANNOTATE: p = FZ_PERMISSION_ANNOTATE; break;
+	default: return 1;
+	}
+	fz_var(r);
+	fz_try(ctx)
+		r = fz_has_permission(ctx, doc->doc, p) != 0;
+	fz_catch(ctx)
+		r = 1;
+	return r;
+}

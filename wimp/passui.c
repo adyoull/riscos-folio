@@ -4,6 +4,9 @@
  *
  *  - Open: asks for the password of a document that needs one, and tries
  *    again (saying so) if it isn't right.
+ *  - Restricted: a PDF whose author doesn't allow printing or copying
+ *    (Choices > Obey document restrictions): says so, and lifts it with the
+ *    owner password, then does what was asked.
  *  - Password (the document menu): shows whether the document has a password,
  *    and sets a new one or takes it off. The change is made by saving (a
  *    full save, AES-256), so the Save box opens straight after.
@@ -454,6 +457,89 @@ static void security_event(int code)
 	}
 }
 
+/* ---- Restricted ------------------------------------------------------------ */
+
+#define RES_W 900
+#define RES_H 300
+enum { R_MSG = 0x100, R_HINT = 0x101, R_LABEL = 1, R_PW = 2, R_CANCEL = 3, R_OK = 4 };
+
+static struct {
+	display_gadget msg, hint;
+	label_gadget label;
+	writable_gadget pw;
+	button_gadget cancel, ok;
+} rg;
+
+static struct {
+	ObjectId obj;
+	docwin *w;
+	int event;                 /* what to do once allowed */
+	char msg[140], hint[140];
+	char pw[PW_MAX];
+} rs;
+
+static ObjectId create_restricted(void)
+{
+	static tbx_window t;
+	static char title[40] = "Not allowed";
+	display(&rg.msg, R_MSG & 0xff, 16, -76, RES_W - 16, -24, rs.msg, sizeof rs.msg,
+		"This says what the document's author doesn't allow.");
+	display(&rg.hint, R_HINT & 0xff, 16, -140, RES_W - 16, -88, rs.hint, sizeof rs.hint,
+		"The owner password lifts the document's restrictions.");
+	label(&rg.label, R_LABEL, 16, -208, 300, -160, "Owner password");
+	writable(&rg.pw, R_PW, 316, -212, RES_W - 16, -156, rs.pw, -1, -1,
+		"Type the document's owner password.|MPress Return (or click Allow) to go ahead.");
+	button(&rg.cancel, R_CANCEL, 2 /* Cancel: Escape */, RES_W - 392, RES_W - 216, -284, -228,
+		"Cancel", EV_RESTRICT_CANCEL, "Click to close this box and do nothing.");
+	button(&rg.ok, R_OK, 1 | 4 /* default: Return; local */, RES_W - 200, RES_W - 16, -284, -228,
+		"Allow", EV_RESTRICT_OK, "Click to lift the restrictions with this owner password.");
+	return make_window(&t, title, sizeof title, &rg, 6, R_PW, RES_W, RES_H,
+		"The document's author doesn't allow this. Its owner password lifts that.");
+}
+
+void passui_restricted(docwin *w, const char *what, int event)
+{
+	if (!rs.obj && !(rs.obj = create_restricted()))
+		return;
+	rs.w = w;
+	rs.event = event;
+	snprintf(rs.msg, sizeof rs.msg, "The author of '%.50s' doesn't allow %s.", leaf(docwin_path(w)), what);
+	snprintf(rs.hint, sizeof rs.hint, "Type its owner password to allow it (or turn off Choices > Obey document restrictions).");
+	set_text(rs.obj, R_MSG, rs.msg);
+	set_text(rs.obj, R_HINT, rs.hint);
+	set_text(rs.obj, R_PW, "");
+	centre_show(rs.obj, RES_W, RES_H);
+}
+
+static void restricted_event(int code)
+{
+	char typed[PW_MAX];
+	char *utf8;
+	int r;
+	docwin *w = rs.w;
+	if (code != EV_RESTRICT_OK || !w) {
+		set_text(rs.obj, R_PW, "");
+		tbx_hide(rs.obj);
+		rs.w = NULL;
+		return;
+	}
+	get_field(rs.obj, R_PW, typed, sizeof typed);
+	set_text(rs.obj, R_PW, "");
+	utf8 = to_utf8(typed);
+	r = docwin_check_owner(w, utf8 ? utf8 : "");
+	free_secret(utf8);
+	wipe(typed, sizeof typed);
+	if (r != 1) {
+		snprintf(rs.hint, sizeof rs.hint, "%s", r == 0 ? "That isn't the owner password. Try again." :
+			"Folio couldn't check the owner password.");
+		set_text(rs.obj, R_HINT, rs.hint);
+		return;
+	}
+	tbx_hide(rs.obj);
+	rs.w = NULL;
+	docwin_event(w, rs.event);       /* now allowed */
+}
+
 /* ---- Shared --------------------------------------------------------------- */
 
 int passui_event(int code)
@@ -468,12 +554,21 @@ int passui_event(int code)
 	case EV_PWCANCEL:
 		security_event(code);
 		return 1;
+	case EV_RESTRICT_OK:
+	case EV_RESTRICT_CANCEL:
+		restricted_event(code);
+		return 1;
 	}
 	return 0;
 }
 
 void passui_forget(docwin *w)
 {
+	if (rs.w == w) {
+		set_text(rs.obj, R_PW, "");
+		tbx_hide(rs.obj);
+		rs.w = NULL;
+	}
 	if (sp.w == w) {
 		clear_fields();
 		tbx_hide(sp.obj);

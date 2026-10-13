@@ -76,6 +76,9 @@ for sz in "420 595" "595 842" "842 595"; do
 	printf '%%%%MediaBox 0 0 %s\n%%%%Font Helv Helvetica\nBT /Helv 24 Tf 40 40 Td (Page of %s) Tj ET\n' "$sz" "$sz" > "m${sz%% *}.txt"
 done
 "$AT" "$MUTOOL" create -o mixed.pdf m420.txt m595.txt m842.txt
+# Restricted: no password to open, owner password "owner"; printing and
+# copying not allowed, accessibility (reading aloud) and notes allowed.
+"$AT" "$MUTOOL" clean -E aes-256 -O owner -U "" -P -2080 doc.pdf restricted.pdf
 rm -f m420.txt m595.txt m842.txt
 rm -f p1.txt p2.txt p3.txt s1.txt s2.txt fix.js
 ls -l

@@ -737,6 +737,69 @@ void toolbar_fit(ObjectId tb, int parent_wimp)
 	place_scroller(s, st);
 }
 
+/* An Open_Window_Request for the toolbar's window (b, a Wimp_OpenWindow
+ * block): the usual pane way, so a drag of the window by its title bar is
+ * a plain Wimp_OpenWindow each step. If the toolbar is a top-level pane,
+ * it's opened first, along the top of where the window is going and in
+ * the window's place in the stack, and b[7] is set so the window goes
+ * just behind it; the caller then opens the window. Returns the pane's
+ * handle (0: no pane to move: a Wimp child moves with its parent). */
+int toolbar_open_with(ObjectId tb, int *b)
+{
+	int st[9], wh = 0, parent = -1, h, want, scx;
+	unsigned nest = 0;
+	shown_state *s;
+	if (!tb || window_get_wimp_handle(tb, &wh) || !wh)
+		return 0;
+	if (tb_state(wh, st, &parent, &nest) || parent != -1 || !(st[8] & (1 << 16)))
+		return 0;
+	s = state_for(tb);
+	s->tb_wimp = wh;
+	h = st[4] - st[2];
+	want = b[3] - b[1];
+	scx = s->scx;
+	if (scx > max_scroll(want))
+		scx = max_scroll(want);
+	if (scx < 0)
+		scx = 0;
+	st[1] = b[1];
+	st[3] = b[3];
+	st[4] = b[4];
+	st[2] = b[4] - h;
+	st[5] = scx;
+	/* In the window's place in the stack (its own if the window is to stay
+	 * just behind it, as during a drag). */
+	if (b[7] != wh)
+		st[7] = b[7];          /* else st[7] (from its state) keeps its place */
+	_swix(Wimp_OpenWindow, _IN(1), st);
+	b[7] = wh;
+	return wh;
+}
+
+/* After the window opened (it may have been moved by the Wimp, e.g. kept
+ * on the screen): puts the pane back along its top if it isn't. */
+void toolbar_follow(ObjectId tb, int pane, int parent_wimp)
+{
+	int st[9], ps[9];
+	if (!pane)
+		return;
+	ps[0] = parent_wimp;
+	st[0] = pane;
+	if (_swix(Wimp_GetWindowState, _IN(1), ps) || _swix(Wimp_GetWindowState, _IN(1), st))
+		return;
+	if (st[1] == ps[1] && st[4] == ps[4] && st[3] - st[1] == ps[3] - ps[1])
+		return;
+	{
+		int h = st[4] - st[2];
+		st[1] = ps[1];
+		st[3] = ps[3];
+		st[4] = ps[4];
+		st[2] = ps[4] - h;
+		_swix(Wimp_OpenWindow, _IN(1), st);
+	}
+	(void)tb;
+}
+
 /* Scrolls a toolbar sideways by dx (clamped). */
 static void scroll_by(shown_state *s, int dx)
 {

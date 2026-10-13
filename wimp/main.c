@@ -89,7 +89,7 @@ static void entry(menu_block *b, int i, int comp, const char *text, int flags,
 
 static void create_objects(void)
 {
-	static menu_block ib, dm, em, vm, nm, sm, om;
+	static menu_block ib, dm, em, vm, nm, sm, om, cm;
 	int ndm;
 	static tbx_proginfo pi;
 	static tbx_iconbar icon;
@@ -105,10 +105,16 @@ static void create_objects(void)
 	/* Icon bar menu: Info, Help..., Quit (Style Guide p46). */
 	entry(&ib, 0, 0, "Info", MENU_SUBMENU, 0, "Move right to see information about this version of Folio.");
 	entry(&ib, 1, 3, "Bookshelf...", 0, EV_BOOKSHELF, "Click to see your bookshelf.");
-	entry(&ib, 2, 1, "Help...", 0, EV_HELP, "Click to read Folio's help.");
-	entry(&ib, 3, 2, "Quit", 0, EV_QUIT, "Click to leave Folio.");
-	app.iconbar_menu = make_menu(&ib, "Folio", 4, 0);
+	entry(&ib, 2, 4, "Choices", MENU_SUBMENU, 0, "Move right for Folio's choices.");
+	entry(&ib, 3, 1, "Help...", 0, EV_HELP, "Click to read Folio's help.");
+	entry(&ib, 4, 2, "Quit", 0, EV_QUIT, "Click to leave Folio.");
+	app.iconbar_menu = make_menu(&ib, "Folio", 5, 0);
 	check(menu_set_submenu(app.iconbar_menu, 0, app.proginfo));
+	entry(&cm, 0, 1, "Obey document restrictions", 0, EV_OBEY,
+		"Click to choose whether Folio keeps to a PDF's \"no printing\" and \"no copying\" settings. "
+		"When ticked, its owner password lifts them.");
+	app.choices_menu = make_menu(&cm, "Choices", 1, EV_CHOICES_SHOWN);
+	check(menu_set_submenu(app.iconbar_menu, 4, app.choices_menu));
 
 	/* Document menu: View and Navigate submenus. */
 	entry(&vm, 0, VIEW_DARK, "Dark page        ^N", 0, EV_DARK, "Click for a black page with light text. Pictures keep their colours.");
@@ -149,16 +155,17 @@ static void create_objects(void)
 	entry(&dm, 0, DOC_SAVE, "Save...        F3", 0, EV_SAVE, "Click to save the document with its notes and markings (PDFs).");
 	entry(&dm, 1, DOC_PRINT, "Print...    Print", 0, EV_PRINT, "Click to print the document (with !Printers loaded).");
 	entry(&dm, 2, DOC_EXPORT_DRAW, "Export page as Draw...", 0, EV_EXPORT_DRAW, "Click to save the page you're reading as a Draw file: its text as outlines, each picture as a sprite of its own.");
-	entry(&dm, 3, DOC_PASSWORD, "Password...", MENU_DOTTED, EV_PASSWORD, "Click to put a password on the document, or take one off (PDFs).");
-	entry(&dm, 4, 3, "Edit", MENU_SUBMENU, 0, "Move right for undo, copying, highlighting and notes.");
-	entry(&dm, 5, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
-	entry(&dm, 6, 2, "Navigate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right for moving through the document.");
+	entry(&dm, 3, DOC_PASSWORD, "Password...", 0, EV_PASSWORD, "Click to put a password on the document, or take one off (PDFs).");
+	entry(&dm, 4, DOC_INFO, "Document info...", MENU_DOTTED, EV_DOCINFO, "Click to see the document's properties: title, author, dates, page size, security and more.");
+	entry(&dm, 5, 3, "Edit", MENU_SUBMENU, 0, "Move right for undo, copying, highlighting and notes.");
+	entry(&dm, 6, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
+	entry(&dm, 7, 2, "Navigate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right for moving through the document.");
 	/* The context item (DESIGN §3.4): its text names the word when it's shown. */
-	entry(&dm, 7, DOC_FIND, "Find...        F4", 0, EV_FIND, "Click to find text in the document.");
-	entry(&dm, 8, DOC_DEFINE, "Define", MENU_FADED | MENU_DOTTED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
-	dm.e[8].max_text = 80;
-	entry(&dm, 9, DOC_SHELF, "On bookshelf", 0, EV_ADD_SHELF, "Click to put this document on the bookshelf, or take it off.");
-	ndm = 10;
+	entry(&dm, 8, DOC_FIND, "Find...        F4", 0, EV_FIND, "Click to find text in the document.");
+	entry(&dm, 9, DOC_DEFINE, "Define", MENU_FADED | MENU_DOTTED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
+	dm.e[9].max_text = 80;
+	entry(&dm, 10, DOC_SHELF, "On bookshelf", 0, EV_ADD_SHELF, "Click to put this document on the bookshelf, or take it off.");
+	ndm = 11;
 	/* Text recognition: only with the OCR plugin. */
 	if (ocr_available()) {
 		entry(&dm, ndm++, DOC_OCR, "Text recognition", MENU_SUBMENU, 0, "Move right to read the text in scanned pages, so it can be found, selected, copied and read aloud.");
@@ -361,6 +368,14 @@ static int toolbox_event(int *b)
 		menu_set_tick(app.speed_menu, SPEED_NORMAL, speech_speed() == SPEED_NORMAL);
 		menu_set_tick(app.speed_menu, SPEED_FAST, speech_speed() == SPEED_FAST);
 		break;
+	case EV_OBEY:
+		app.obey_restrictions = !app.obey_restrictions;
+		app_log("choices: %s document restrictions", app.obey_restrictions ? "obey" : "ignore");
+		choices_save();
+		break;
+	case EV_CHOICES_SHOWN:
+		menu_set_tick(app.choices_menu, 1, app.obey_restrictions);
+		break;
 	case EV_OCR_AUTO:
 		app.ocr_auto = !app.ocr_auto;
 		choices_save();
@@ -494,6 +509,8 @@ int main(int argc, char **argv)
 				dict_redraw(block);
 			else if (contents_owns(block[0]))
 				contents_redraw(block);
+			else if (docinfo_owns(block[0]))
+				docinfo_redraw(block);
 			else if (thumbs_from_wimp(block[0]))
 				thumbs_redraw(thumbs_from_wimp(block[0]), block);
 			else if (toolbar_tip_owns(block[0]))

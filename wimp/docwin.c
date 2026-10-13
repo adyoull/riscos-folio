@@ -96,6 +96,9 @@ struct docwin {
 	struct { int page, y, cols; float zoom; } back[BACK_MAX];
 	int back_n;
 	ocr_win *ocr;             /* text recognition (NULL without the plugin) */
+	/* What the author allows (a PDF's permissions; read with the core lock
+	 * after opening, saving and the owner password). */
+	int perm_print, perm_copy, perm_access;
 };
 
 typedef struct {
@@ -473,6 +476,62 @@ static void take_result(render_job *r)
 	}
 }
 
+/* ---- What the author allows ------------------------------------------- */
+
+/* Core lock held. */
+static void read_perms(docwin *w)
+{
+	w->perm_print = folio_permitted(w->doc, FOLIO_PERM_PRINT);
+	w->perm_copy = folio_permitted(w->doc, FOLIO_PERM_COPY);
+	w->perm_access = folio_permitted(w->doc, FOLIO_PERM_ACCESSIBILITY) || w->perm_copy;
+	if (!w->perm_print || !w->perm_copy)
+		app_log("%s: the author allows%s%s%s", leafname(w->path), w->perm_print ? " printing" : "",
+			w->perm_copy ? " copying" : "", w->perm_access ? " reading aloud" : "");
+}
+
+/* Whether w may do what event asks (printing, copying, exporting, reading
+ * aloud): with Choices > Obey document restrictions, a PDF's permissions
+ * decide. If not, says so (offering the owner password) and returns 0. */
+static int allowed(docwin *w, int event)
+{
+	const char *what = NULL;
+	if (!app.obey_restrictions)
+		return 1;
+	switch (event) {
+	case EV_PRINT:
+		if (!w->perm_print)
+			what = "printing";
+		break;
+	case EV_COPY:
+	case EV_EXPORT_DRAW:
+		if (!w->perm_copy)
+			what = "copying its text and pictures";
+		break;
+	case EV_READ_ALOUD:
+	case EV_SPEAK_SEL:
+		if (!w->perm_access)
+			what = "its text to be read aloud";
+		break;
+	}
+	if (!what)
+		return 1;
+	app_log("%s: not allowed: %s", leafname(w->path), what);
+	passui_restricted(w, what, event);
+	return 0;
+}
+
+int docwin_allows(docwin *w, int event)
+{
+	if (!app.obey_restrictions)
+		return 1;
+	switch (event) {
+	case EV_PRINT: return w->perm_print;
+	case EV_COPY: case EV_EXPORT_DRAW: return w->perm_copy;
+	case EV_READ_ALOUD: case EV_SPEAK_SEL: return w->perm_access;
+	}
+	return 1;
+}
+
 /* ---- Layout ------------------------------------------------------------ */
 
 static void set_extent(docwin *w)
@@ -609,6 +668,7 @@ void choices_load(void)
 	app.default_zoom = 1.0f;
 	app.ocr_fast = 0;
 	app.ocr_auto = 1;
+	app.obey_restrictions = 1;
 	if (!f)
 		return;
 	if (fgets(line, sizeof line, f) && !strncmp(line, "folio-choices 1", 15))
@@ -622,6 +682,8 @@ void choices_load(void)
 				app.ocr_fast = 0;
 			else if (sscanf(line, "ocr-auto %d", &pc) == 1)
 				app.ocr_auto = pc != 0;
+			else if (sscanf(line, "obey-restrictions %d", &pc) == 1)
+				app.obey_restrictions = pc != 0;
 		}
 	fclose(f);
 	app_log("choices: new documents at %d%%", (int)(app.default_zoom * 100 + 0.5f));
@@ -642,8 +704,9 @@ void choices_save(void)
 		tbx_report("Folio couldn't save its choices.");
 		return;
 	}
-	fprintf(f, "folio-choices 1\nzoom %d\nocr %s\nocr-auto %d\n", (int)(app.default_zoom * 100 + 0.5f),
-		app.ocr_fast ? "fast" : "accurate", app.ocr_auto);
+	fprintf(f, "folio-choices 1\nzoom %d\nocr %s\nocr-auto %d\nobey-restrictions %d\n",
+		(int)(app.default_zoom * 100 + 0.5f), app.ocr_fast ? "fast" : "accurate", app.ocr_auto,
+		app.obey_restrictions);
 	fclose(f);
 	_swix(OS_File, _INR(0, 2), 18, path, 0xfff);
 }
@@ -880,6 +943,7 @@ docwin *docwin_open_password(const char *path, const char *password)
 		snprintf(w->password, sizeof w->password, "%s", password);
 	w->reflow = folio_is_reflowable(w->doc);
 	w->can_annotate = folio_can_annotate(w->doc);
+	read_perms(w);
 	w->asel_page = -1;
 	/* Count the first chapter now, so page 1 can be shown at once; the rest
 	 * are counted in null polls. */
@@ -963,6 +1027,7 @@ void docwin_close(docwin *w)
 		}
 	find_forget(w);
 	gotopage_forget(w);
+	docinfo_forget(w);
 	contents_forget(w);
 	annotui_forget(w);
 	passui_forget(w);
@@ -1756,6 +1821,8 @@ void docwin_edit_menu_shown(docwin *w)
 	menu_set_fade(app.edit_menu, EDIT_STRIKE, !markup_ok);
 	menu_set_fade(app.edit_menu, EDIT_NOTE, !w->can_annotate);
 	menu_set_fade(app.edit_menu, EDIT_DELANNOT, w->asel_page < 0);
+	/* Not faded when not allowed: choosing it says why, and offers the
+	 * owner password. */
 	menu_set_fade(app.edit_menu, EDIT_COPY, !w->sel || w->sel_n == 0);
 	menu_set_fade(app.edit_menu, EDIT_CLEAR, !w->sel);
 }
@@ -1956,9 +2023,14 @@ void docwin_event(docwin *w, int code)
 	case EV_FIRST: go_to_page(w, 0); break;
 	case EV_LAST: go_to_page(w, w->pages - 1); break;
 	case EV_BACK: go_back(w); break;
-	case EV_PRINT: print_open(w); break;
-	case EV_EXPORT_DRAW: export_open(w); break;
+	case EV_PRINT:
+		/* Print... while printing stops it: always allowed. */
+		if (print_busy_for(w) || allowed(w, code))
+			print_open(w);
+		break;
+	case EV_EXPORT_DRAW: if (allowed(w, code)) export_open(w); break;
 	case EV_GOTO: gotopage_open(w); break;
+	case EV_DOCINFO: docinfo_open(w); break;
 	case EV_OCR_PAGE: ocr_win_this_page(w->ocr); break;
 	case EV_OCR_ALL: ocr_win_all(w->ocr); break;
 	case EV_LINE_DOWN:
@@ -1970,7 +2042,7 @@ void docwin_event(docwin *w, int code)
 		scroll_to(w, st[6] + 40);
 		break;
 	case EV_CLOSE: docwin_close(w); break;
-	case EV_COPY: sel_copy(w); break;
+	case EV_COPY: if (allowed(w, code)) sel_copy(w); break;
 	case EV_SELECT_ALL: sel_all(w); break;
 	case EV_CLEAR_SEL: sel_clear(w); break;
 	case EV_DEFINE: define(w); break;
@@ -1995,8 +2067,12 @@ void docwin_event(docwin *w, int code)
 		if (w->can_annotate)
 			passui_security(w);
 		break;
-	case EV_READ_ALOUD: speech_read(w, 0); break;
-	case EV_SPEAK_SEL: speech_read(w, 1); break;
+	case EV_READ_ALOUD:
+		/* Read aloud again stops it: always allowed. */
+		if (speech_window() == w || allowed(w, code))
+			speech_read(w, 0);
+		break;
+	case EV_SPEAK_SEL: if (allowed(w, code)) speech_read(w, 1); break;
 	case EV_THUMBS: toggle_thumbs(w); break;
 	case EV_CONTENTS: contents_open(w); break;
 	}
@@ -2394,12 +2470,18 @@ int docwin_toolbar_key(docwin *w, int key)
 /* An Open_Window_Request (moved, resized, scrolled, brought to the front). */
 void docwin_open_request(docwin *w, int *b)
 {
-	/* Through the Toolbox, so it moves the toolbar with the window
-	 * (it's a pane the Toolbox places, not a Wimp child). */
-	tbx_show(w->obj, 0, 1, b + 1, 0, -1);
-	if (w->show_toolbar)
+	/* The toolbar is a pane: open it along the top of where the window is
+	 * going, then the window just behind it, with plain Wimp_OpenWindow
+	 * calls. (Until test32 this went through Toolbox_ShowObject on every
+	 * request, which also raised a Toolbox event each time: dragging the
+	 * window by its title bar kept Folio busy and starved other tasks.) */
+	int pane = w->show_toolbar ? toolbar_open_with(w->toolbar, b) : 0;
+	_swix(Wimp_OpenWindow, _IN(1), b);
+	if (pane)
+		toolbar_follow(w->toolbar, pane, w->wimp);
+	else if (w->show_toolbar)
 		toolbar_fit(w->toolbar, w->wimp);
-	w->fit_polls = 10;
+	w->fit_polls = 2;
 }
 
 /* ---- Annotations ---------------------------------------------------------- */
@@ -2646,6 +2728,7 @@ int docwin_check_owner(docwin *w, const char *utf8)
 		return -1;
 	core_now();
 	rc = folio_check_owner_password(w->doc, utf8);
+	read_perms(w);
 	core_unlock();
 	app_log("%s: owner password %s", w->title, rc == 1 ? "right" : rc == 0 ? "wrong" : "not checked");
 	return rc;
@@ -2753,6 +2836,7 @@ int docwin_save(docwin *w, const char *path)
 	if (doc) {
 		w->doc = doc;
 		folio_count_step(doc, 1 << 20);
+		read_perms(w);
 		ocr_win_after_reopen(w->ocr);
 	}
 	core_unlock();

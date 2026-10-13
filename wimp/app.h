@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test31 (13-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test32 (13-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -22,16 +22,18 @@ enum {
 	EV_COPY = 0x150, EV_SELECT_ALL, EV_CLEAR_SEL, EV_DEFINE, EV_FIND, EV_CONTENTS,
 	EV_HIGHLIGHT = 0x160, EV_UNDERLINE, EV_STRIKE, EV_NOTE, EV_UNDO, EV_REDO, EV_DEL_ANNOT, EV_SAVE,
 	EV_ADD_SHELF, EV_PASSWORD, EV_READ_ALOUD, EV_SPEAK_SEL, EV_PRINT, EV_EXPORT_DRAW,
-	EV_OCR_PAGE = 0x170, EV_OCR_ALL, EV_GOTO,
+	EV_OCR_PAGE = 0x170, EV_OCR_ALL, EV_GOTO, EV_DOCINFO,
 	EV_DICT_COPY = 0x200,  /* the pop-up's, not a window's */
 	EV_FIND_NEXT = 0x210, EV_FIND_PREV, EV_FIND_CANCEL,
 	EV_NOTE_OK = 0x220, EV_NOTE_DELETE, EV_NOTE_CANCEL,
 	EV_SH_OPEN = 0x230, EV_SH_REMOVE, EV_SH_FILER, EV_SH_RECENT, EV_SH_TITLE, EV_SH_AUTHOR,
 	EV_SH_FOLDERS, EV_SH_REFRESH, EV_SH_MISSING,
 	EV_PWOPEN_OK = 0x240, EV_PWOPEN_CANCEL, EV_PWSET, EV_PWREMOVE, EV_PWCANCEL,
+	EV_RESTRICT_OK, EV_RESTRICT_CANCEL,
 	EV_SPEED_SLOW = 0x250, EV_SPEED_NORMAL, EV_SPEED_FAST, EV_SPEED_SHOWN,
 	EV_OCR_AUTO = 0x260, EV_OCR_ACCURATE, EV_OCR_FAST, EV_OCR_SHOWN,
-	EV_GOTO_OK = 0x270, EV_GOTO_CANCEL
+	EV_GOTO_OK = 0x270, EV_GOTO_CANCEL,
+	EV_OBEY = 0x280, EV_CHOICES_SHOWN
 };
 
 /* View menu entries (component ids). */
@@ -40,7 +42,7 @@ enum { EDIT_COPY = 1, EDIT_SELECT_ALL, EDIT_CLEAR, EDIT_UNDO, EDIT_REDO, EDIT_HI
 /* Document menu entries. */
 enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6, DOC_SHELF = 7, DOC_PASSWORD = 8,
 	DOC_READ = 9, DOC_SPEAKSEL = 10, DOC_SPEED = 11, DOC_PRINT = 12, DOC_EXPORT_DRAW = 13,
-	DOC_OCR = 14 };
+	DOC_OCR = 14, DOC_INFO = 15 };
 /* Text recognition menu entries. */
 enum { OCR_PAGE = 1, OCR_ALL, OCR_AUTO, OCR_ACCURATE, OCR_FAST };
 enum { SPEED_SLOW = 1, SPEED_NORMAL, SPEED_FAST };
@@ -64,7 +66,8 @@ typedef struct {
 	float default_zoom;         /* new documents open at this scale (Choices) */
 	int ocr_fast;               /* text recognition: Fast rather than Accurate */
 	int ocr_auto;               /* recognise scanned pages while reading */
-	ObjectId ocr_menu;
+	int obey_restrictions;      /* a PDF's "no printing / no copying" (Choices) */
+	ObjectId ocr_menu, choices_menu;
 	int speech_urgent;          /* reading aloud is close to running out: background
 	                             * work (drawing pages ahead, thumbnails, measuring,
 	                             * text recognition) waits, as the worker thread
@@ -147,6 +150,8 @@ int toolbar_scroll_request(int *block);   /* 1 if it was a toolbar's */
 ObjectId toolbar_create(docwin *w);
 void toolbar_attach(ObjectId win, ObjectId tb, int on);
 void toolbar_fit(ObjectId tb, int parent_wimp);
+int toolbar_open_with(ObjectId tb, int *open_block);   /* pane first; 0 if no pane */
+void toolbar_follow(ObjectId tb, int pane, int parent_wimp);
 void docwin_open_request(docwin *w, int *block);
 void toolbar_update(ObjectId tb, int page, int pages, int exact, float zoom,
 		int dark, int thumbs, int two, int has_selection, int can_annotate, int speaking);
@@ -191,6 +196,12 @@ void find_open(docwin *w);
 void find_forget(docwin *w);
 void find_event(int code);
 
+/* docinfo.c: Document info */
+void docinfo_open(docwin *w);
+void docinfo_forget(docwin *w);
+int docinfo_owns(int wimp_handle);
+void docinfo_redraw(int *block);
+
 /* gotopage.c: Go to page (F5) */
 void gotopage_open(docwin *w);
 void gotopage_forget(docwin *w);
@@ -218,6 +229,9 @@ char *app_utf8_text(const char *desktop);
 void passui_ask_open(const char *path, int wrong);
 void passui_security(docwin *w);
 int passui_event(int code);              /* 1 if it was theirs */
+/* "The author doesn't allow <what>": the owner password lifts it, and then
+ * event is sent to w again. */
+void passui_restricted(docwin *w, const char *what, int event);
 
 /* print.c: the Print dialogue and printing. */
 /* export.c: Export page as Draw... */

@@ -5,7 +5,7 @@ It's built on [MuPDF](https://mupdf.com) with a native front end that follows
 the RISC OS Style Guide, and takes its ideas for markup and reading from
 Flexcil. "Folio" is a working name.
 
-Status: **test builds** (0.0.1-test31). It's used day to day on a Raspberry Pi
+Status: **test builds** (0.0.1-test32). It's used day to day on a Raspberry Pi
 running RISC OS 5, but expect rough edges. The design is in
 [`docs/DESIGN.md`](docs/DESIGN.md).
 
@@ -36,6 +36,11 @@ running RISC OS 5, but expect rough edges. The design is in
   signatures survive); Discard/Cancel/Save on closing with changes.
 - **Passwords (PDFs):** Folio asks for the password of a protected PDF,
   and can put a password on a PDF (AES-256) or take one off.
+  It keeps to a PDF's "no printing" and "no copying" restrictions (the
+  owner password lifts them; Choices > Obey document restrictions turns
+  this off).
+- **Document info:** the file, title, author, dates, PDF version, page
+  size, security and permissions, forms, attachments and JavaScript.
 - **Reading aloud** (with the Speech plugin, a separate download: drag the
   !Folio in it over yours, as with OpenTTD's sound packs): Piper's
   natural-sounding voices run by

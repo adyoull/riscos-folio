@@ -190,6 +190,54 @@ int main(int argc, char **argv)
 		folio_close(d);
 	}
 
+	/* Restrictions: restricted.pdf can't be printed or copied from; reading
+	 * aloud (accessibility) and notes are allowed; the owner password "owner"
+	 * lifts them. */
+	{
+		char rp[600];
+		snprintf(rp, sizeof rp, "%s/restricted.pdf", dir);
+		d = folio_open(fc, rp, NULL);
+		CHECK(d != NULL, "open restricted.pdf: %s", folio_error(fc));
+		if (d) {
+			CHECK(!folio_permitted(d, FOLIO_PERM_PRINT), "printing allowed");
+			CHECK(!folio_permitted(d, FOLIO_PERM_COPY), "copying allowed");
+			CHECK(folio_permitted(d, FOLIO_PERM_ACCESSIBILITY), "accessibility not allowed");
+			CHECK(folio_permitted(d, FOLIO_PERM_ANNOTATE), "notes not allowed");
+			{
+				folio_info in;
+				int k, found = 0;
+				folio_get_info(d, &in);
+				for (k = 0; k < in.n; k++) {
+					printf("  %s: %s\n", in.item[k].label, in.item[k].value);
+					if (!strcmp(in.item[k].label, "Title") && !strcmp(in.item[k].value, "Folio Test PDF"))
+						found |= 1;
+					if (!strcmp(in.item[k].label, "Printing") && !strcmp(in.item[k].value, "Not allowed"))
+						found |= 2;
+					if (!strcmp(in.item[k].label, "Page size") && !strncmp(in.item[k].value, "A4,", 3))
+						found |= 4;
+					if (!strcmp(in.item[k].label, "Security") && strstr(in.item[k].value, "AES"))
+						found |= 8;
+				}
+				CHECK(found == 15, "info: title, printing, page size, security (%d)", found);
+			}
+			{
+				char dt[64];
+				folio_pdf_date("D:20230115093000+01'00'", dt, sizeof dt);
+				CHECK(!strcmp(dt, "15 Jan 2023, 09:30"), "date: %s", dt);
+				folio_pdf_date("D:2019", dt, sizeof dt);
+				CHECK(!strcmp(dt, "2019"), "date: %s", dt);
+			}
+			CHECK(folio_check_owner_password(d, "owner") == 1, "owner password: %s", folio_error(fc));
+			CHECK(folio_permitted(d, FOLIO_PERM_PRINT) && folio_permitted(d, FOLIO_PERM_COPY),
+				"owner password didn't lift the restrictions");
+			folio_close(d);
+		}
+		d = folio_open(fc, epub, NULL);
+		CHECK(d && folio_permitted(d, FOLIO_PERM_PRINT) && folio_permitted(d, FOLIO_PERM_COPY),
+			"an EPUB restricted");
+		folio_close(d);
+	}
+
 	/* Not a PDF. */
 	d = folio_open(fc, epub, NULL);
 	CHECK(d != NULL, "open epub: %s", folio_error(fc));
