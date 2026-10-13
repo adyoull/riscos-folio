@@ -16,7 +16,18 @@
 int __riscosify_control = __RISCOSIFY_NO_PROCESS;
 /* The C heap (MuPDF's store, page sprites) goes in its own dynamic area. */
 const char *const __dynamic_da_name = "Folio Heap";
-int __dynamic_da_max_size = 512 * 1024 * 1024;
+/* The size "Folio Heap" reserves. A dynamic area takes its whole maximum
+ * of the logical address space when it's made, used or not, and RISC OS has
+ * only so much for every program (AddrSpace's findings: Chris's Pi 4 had
+ * 446 MB left with 63 areas). The kernel also caps a new area (DALimit:
+ * 128 MB on most machines), and UnixLib 5.0.3.3 adds "Folio Heap 2", "3"...
+ * only when one fills; big blocks (page pictures, the voice's weights) come
+ * from ARMEABISupport's mmap areas of their own size anyway. So ask for
+ * 128 MB, as Matinee does, not the 512 MB of test1 to test33. What goes in
+ * the heap and mmaps: MuPDF's store (64 MB), page pictures (48 MB, more only
+ * for pages on screen), thumbnails (16 MB), the voice while reading aloud
+ * (about 65 MB), text recognition while it runs (up to about 50 MB). */
+int __dynamic_da_max_size = 128 * 1024 * 1024;
 
 app_state app;
 
@@ -457,7 +468,7 @@ int main(int argc, char **argv)
 	if (_swix(0x50b00 /* MimeMap_Translate */, _INR(0, 2) | _OUT(3), 3, "epub", 0, &app.epub_type))
 		app.epub_type = -1;
 
-	app.fc = folio_new(128 << 20);
+	app.fc = folio_new(64 << 20);
 	if (!app.fc) {
 		tbx_report("Folio couldn't start MuPDF (not enough memory?).");
 		return 1;

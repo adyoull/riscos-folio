@@ -21,7 +21,7 @@
 #include <swis.h>
 
 #define GAP 32                    /* OS units around and between pages */
-#define CACHE_BYTES (64 << 20)    /* page sprites */
+#define CACHE_BYTES (48 << 20)    /* page sprites (more for pages on screen) */
 #define CACHE_SLOTS 32
 #define MIN_ZOOM 0.25f
 #define MAX_ZOOM 4.0f

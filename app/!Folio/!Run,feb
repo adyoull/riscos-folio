@@ -29,9 +29,10 @@ RMEnsure ProgInfo 0 Error Folio needs the Toolbox module ProgInfo (in the RISC O
 RMEnsure PrintDbox 0 IfThere System:Modules.Toolbox.PrintDbox Then RMLoad System:Modules.Toolbox.PrintDbox
 
 | --- Memory ---------------------------------------------------------
-| MuPDF's cache and the page pictures go in a dynamic area, "Folio Heap",
-| removed when Folio quits. The WimpSlot only holds the program itself.
-| Choices (layouts of books) go in <Choices$Write>.Folio.
-WimpSlot -min 20480K -max 20480K
+| MuPDF's cache, the page pictures, the voice and the rest go in a dynamic
+| area, "Folio Heap" (128 MB; UnixLib adds more areas only if it fills),
+| removed when Folio quits. The WimpSlot only holds the program itself
+| (about 22 MB with OCR). Choices go in <Choices$Write>.Folio.
+WimpSlot -min 23552K -max 23552K
 | A log of what Folio did goes in <Wimp$ScrapDir>.FolioLog.
 Run <Folio$Dir>.!RunImage %*0

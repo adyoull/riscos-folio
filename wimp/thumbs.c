@@ -19,7 +19,7 @@
 #define LABEL     40
 #define VIS_W     (TW + 2 * PAD)
 #define SCROLL_W  44        /* the child's vertical scroll bar, outside its visible area */
-#define BUDGET    (32 << 20)
+#define BUDGET    (16 << 20)
 #define TASK      0x4b534154
 
 enum { T_NONE = 0, T_HAVE = 1, T_FAILED = 2 };
