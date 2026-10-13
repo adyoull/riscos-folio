@@ -43,6 +43,9 @@ void speaker_set_unplayed(int samples);
 /* Sound made but not yet heard (samples): what's queued here plus what the
  * sound system still has. */
 int speaker_ready(void);
+/* The thread stops making sentences once this much sound is waiting to be
+ * heard (made, queued or playing), and starts again below it. */
+#define SPEAKER_AHEAD_SECONDS 12
 /* Forgets everything queued and stops the sentence being made, at once. */
 void speaker_stop(void);
 /* The thread is working (worth giving it time). */

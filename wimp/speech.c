@@ -37,9 +37,16 @@
 #define QUEUE_SECONDS 1                      /* kept queued in StreamManager */
 #define CHUNKS 8                             /* chunks kept for their boxes */
 #define MAX_BOXES 64
-#define SLICE_CS 8                           /* time given to the speech thread per poll */
-#define SLICE_BEHIND_CS 20                   /* ... when there's little left to hear */
+/* Time for the speech thread is given out steadily: in every PERIOD_CS, a
+ * share ("duty") that depends on how much sound is ready. Nearly nothing
+ * ready (BEHIND_SECONDS or less): all of it. Nearly SPEAKER_AHEAD_SECONDS
+ * ready: a little (MIN_DUTY). In between, in proportion. So it settles
+ * where its share matches what the voice costs (about 0.6 of real time on
+ * a Pi 4), using a steady part of the machine instead of a burst of 100%
+ * then nothing. */
+#define PERIOD_CS 10
 #define BEHIND_SECONDS 4
+#define MIN_DUTY 0.15f
 
 typedef struct inflight {
 	struct inflight *next;
@@ -73,6 +80,9 @@ static struct {
 	int loading_said;
 	/* Waiting for the first page's text to be recognised (a scan). */
 	int start_wait, start_page;
+	unsigned next_turn;       /* when the speech thread next gets time */
+	unsigned given, window_start;   /* time given to it, for the log */
+	float duty;               /* its share of each PERIOD_CS, smoothed */
 	folio_point start_a, start_b;
 } sp;
 
@@ -384,6 +394,8 @@ void speech_stop(void)
 	clear_reading();
 	sp.w = NULL;
 	sp.start_wait = 0;
+	sp.duty = 0;
+	sp.window_start = 0;
 	docwin_set_spoken(w, NULL, NULL, 0);
 	docwin_refresh_toolbar(w);
 	app_log("speech: stopped");
@@ -656,22 +668,50 @@ int speech_background(unsigned *wake)
 			return 0;
 		}
 	}
-	/* Time for the speech thread (it only runs while Folio has the machine):
-	 * null events while it's making a sentence. Otherwise (it's ahead, and
-	 * waiting) just a look every tenth of a second, to keep the sound
-	 * topped up and show each sentence as it starts. */
+	/* Time for the speech thread (it only runs while Folio has the machine). */
 	if (speaker_busy() || st == SP_LOADING) {
-		/* Longer turns when the listener is about to catch up with it
-		 * (a gap would come next); the desktop is a little slower then. */
-		int ready = speaker_ready();
-		unsigned t0 = now_cs(), slice;
+		int ready = speaker_ready(), rate = speaker_rate();
+		unsigned now = now_cs();
+		float duty, span;
 		if (sp.fly_tail && sp.fly_tail->pos < sp.fly_tail->a->n + sp.fly_tail->pause)
 			ready += sp.fly_tail->a->n + sp.fly_tail->pause - sp.fly_tail->pos;
-		slice = st == SP_READY && ready < BEHIND_SECONDS * speaker_rate() ? SLICE_BEHIND_CS : SLICE_CS;
-		do
-			pthread_yield();
-		while (speaker_busy() && now_cs() - t0 < slice);
-		return 1;
+		span = (float)(SPEAKER_AHEAD_SECONDS - BEHIND_SECONDS) * rate;
+		duty = st != SP_READY ? 1.0f : (SPEAKER_AHEAD_SECONDS * (float)rate - ready) / span;
+		if (duty > 1.0f)
+			duty = 1.0f;
+		if (duty < MIN_DUTY)
+			duty = MIN_DUTY;
+		if ((int)(now - sp.next_turn) >= 0) {
+			/* Smoothed (about 2 s), since sound becomes ready a whole
+			 * sentence at a time; all of it at once when behind. */
+			sp.duty = duty >= 1.0f || sp.duty <= 0 ? duty : sp.duty + 0.05f * (duty - sp.duty);
+			duty = sp.duty;
+			unsigned slice = (unsigned)(duty * PERIOD_CS + 0.5f), t0 = now;
+			if (slice < 1)
+				slice = 1;
+			do
+				pthread_yield();
+			while (speaker_busy() && now_cs() - t0 < slice);
+			sp.given += now_cs() - t0;
+			/* The next turn a period after this one started; if it ran
+			 * late (other tasks), not before a fair gap. */
+			sp.next_turn = t0 + PERIOD_CS;
+			if ((int)(sp.next_turn - now_cs()) < (int)(PERIOD_CS - slice))
+				sp.next_turn = now_cs() + (PERIOD_CS - slice);
+		}
+		/* Every 10 s: its share of the machine, and how far ahead it is. */
+		if (now - sp.window_start >= 1000) {
+			if (sp.window_start)
+				app_log("speech: %d%% of the time to the voice over %u s; %.1f s ready",
+					(int)(100 * sp.given / (now - sp.window_start)), (now - sp.window_start) / 100,
+					(double)ready / rate);
+			sp.window_start = now;
+			sp.given = 0;
+		}
+		if (sp.duty >= 0.99f)
+			return 1;           /* null events: it's behind */
+		*wake = sp.next_turn;
+		return 0;
 	}
 	*wake = now_cs() + 10;
 	return 0;

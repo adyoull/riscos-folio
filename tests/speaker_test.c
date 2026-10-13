@@ -65,26 +65,27 @@ int main(int argc, char **argv)
 	}
 	CHECK(speaker_pending() == 0, "pending after %d", speaker_pending());
 
-	/* It works three sentences ahead, then waits (not busy) until one is taken. */
+	/* It works until SPEAKER_AHEAD_SECONDS of sound is waiting to be heard,
+	 * then waits (not busy) until there's room. */
 	{
 		const char *t5 = "One. Two. Three. Four. Five.";
 		int got = 0;
+		speaker_set_unplayed(SPEAKER_AHEAD_SECONDS * speaker_rate() - speaker_rate() / 10);
 		speaker_push(5, t5, (int)strlen(t5), 1.0f);
 		for (i = 0; i < 3000 && (speaker_busy() || speaker_pending() == 0); i++)
 			usleep(100000);
 		usleep(300000);
-		CHECK(!speaker_busy(), "still busy when three ahead");
+		CHECK(!speaker_busy(), "still busy when far enough ahead");
 		while ((a = speaker_take()) != NULL) {
 			got++;
 			speaker_free(a);
-			if (got == 3)
-				break;
 		}
-		CHECK(got == 3, "%d sentences made ahead (want 3)", got);
-		/* Taking them made room: the last two follow. */
-		for (i = 0; i < 2; i++) {
+		CHECK(got >= 1 && got <= 2, "%d sentences made ahead (want 1 or 2)", got);
+		/* The sound was heard: room again, and the rest follow. */
+		speaker_set_unplayed(0);
+		for (i = got; i < 5; i++) {
 			a = wait_audio(300);
-			CHECK(a && a->chunk == 5, "sentence %d after making room", 4 + i);
+			CHECK(a && a->chunk == 5, "sentence %d after making room", i + 1);
 			speaker_free(a);
 		}
 	}

@@ -14,11 +14,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* How far ahead of the listener it works: up to AHEAD_SENTENCES made and
- * waiting (in a burst, then it sleeps), and never more than AHEAD_SECONDS
- * of sound not yet heard. */
-#define AHEAD_SENTENCES 3
-#define AHEAD_SECONDS 20
+/* How far ahead of the listener it works: until SPEAKER_AHEAD_SECONDS of
+ * sound isn't yet heard (and at most AHEAD_SENTENCES sentences waiting, to
+ * bound memory). How fast it gets there is the main thread's choice: it
+ * gives the thread time a little at a time (speech.c), so the work is
+ * spread out rather than done in bursts. */
+#define AHEAD_SENTENCES 16
 
 typedef struct sp_chunk {
 	struct sp_chunk *next;
@@ -41,7 +42,7 @@ static int out_samples, out_count, unplayed, working_chunks, waiting_room;
 /* Enough made for now? (with mu held) */
 static int ahead_enough(void)
 {
-	return out_count >= AHEAD_SENTENCES || out_samples + unplayed > AHEAD_SECONDS * rate;
+	return out_count >= AHEAD_SENTENCES || out_samples + unplayed >= SPEAKER_AHEAD_SECONDS * rate;
 }
 static pv_voice *voice;
 

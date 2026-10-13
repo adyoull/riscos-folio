@@ -29,14 +29,16 @@ Using it
   Normal (a comfortable pace for listening) and Faster (the voice's own
   speed).
   The first time, the voice takes a few seconds to load.
-  It works up to three sentences ahead of what you're hearing, then rests,
-  so it doesn't take the machine's time while it waits.
+  It works up to about 12 seconds ahead of what you're hearing, at a steady
+  pace: a share of the machine's time that grows when it gets close to
+  catching up and shrinks as it gets ahead, rather than bursts of all of
+  it. When it's far enough ahead it rests.
 
 If there are gaps between sentences
-  Each sentence is logged ("speech: 3.20 s of speech made in 1.90 s"), in
-  <Wimp$ScrapDir>.FolioLog. If the time to make one is
-  longer than the speech itself, the machine can't keep up: close other
-  busy tasks, or try Faster.
+  Every 10 seconds <Wimp$ScrapDir>.FolioLog gets a line such as
+  "speech: 55% of the time to the voice over 10 s; 7.5 s ready". If
+  "ready" keeps falling towards 0 while the share is near 100%, the
+  machine can't keep up: close other busy tasks, or try Faster.
 
 Licences
   The voice (Voices) is Piper's "southern_english_female", trained on the
