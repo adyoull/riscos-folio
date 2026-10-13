@@ -385,6 +385,7 @@ void folio_close(folio_doc *doc)
 	ctx = doc->ctx;
 	folio_forget_pages(doc);
 	drop_outline(doc);
+	folio_ocr_free(doc);
 	fz_free(ctx, doc->chap_pages);
 	fz_free(ctx, doc->css);
 	fz_free(ctx, doc->format);

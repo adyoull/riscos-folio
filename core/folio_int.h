@@ -57,6 +57,12 @@ struct folio_doc {
 	int pw_change;              /* FOLIO_PW_*: applied by the next folio_save_pdf */
 	char new_pw[128];           /* UTF-8, for FOLIO_PW_SET */
 
+	/* Recognised text (ocr.c), by page number. */
+	struct folio_ocr_store *ocr;
+	int ocr_n;
+	int ocr_changed;            /* since loaded or saved */
+	fz_font *ocr_font;
+
 	fz_cookie cookie;           /* folio_abort() sets cookie.abort */
 	folio_cpage cache[FOLIO_PAGE_CACHE];
 	unsigned clock;
@@ -66,8 +72,15 @@ struct folio_doc {
 void folio_set_error(folio_ctx *fc);
 /* The cached page for loc (loaded on demand), or throws. */
 folio_cpage *folio_get_page(folio_doc *doc, folio_loc loc);
-/* The structured text of a cached page (made on demand), or throws. */
+/* The structured text of a cached page (made on demand), or throws: the
+ * recognised text if the page has been through OCR, else its own. */
 fz_stext_page *folio_get_text(folio_doc *doc, folio_cpage *cp);
+/* The page's own structured text, with its pictures (for drawing). */
+fz_stext_page *folio_page_own_text(folio_doc *doc, folio_cpage *cp);
+/* OCR (ocr.c): the page's recognised text, or NULL; and freeing it all. */
+typedef struct folio_ocr_store folio_ocr_store;
+fz_stext_page *folio_ocr_text(folio_doc *doc, folio_cpage *cp);
+void folio_ocr_free(folio_doc *doc);
 void folio_drop_cpage(folio_doc *doc, folio_cpage *cp);
 void folio_forget_pages(folio_doc *doc);
 /* PDFs: turn on the undo journal (annot.c). */

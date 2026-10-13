@@ -89,7 +89,7 @@ static void entry(menu_block *b, int i, int comp, const char *text, int flags,
 
 static void create_objects(void)
 {
-	static menu_block ib, dm, em, vm, nm, sm;
+	static menu_block ib, dm, em, vm, nm, sm, om;
 	int ndm;
 	static tbx_proginfo pi;
 	static tbx_iconbar icon;
@@ -158,13 +158,22 @@ static void create_objects(void)
 	dm.e[8].max_text = 80;
 	entry(&dm, 9, DOC_SHELF, "On bookshelf", 0, EV_ADD_SHELF, "Click to put this document on the bookshelf, or take it off.");
 	ndm = 10;
+	/* Text recognition: only with the OCR plugin. */
+	if (ocr_available()) {
+		entry(&dm, ndm++, DOC_OCR, "Text recognition", MENU_SUBMENU, 0, "Move right to read the text in scanned pages, so it can be found, selected, copied and read aloud.");
+		entry(&om, 0, OCR_PAGE, "Recognise this page", 0, EV_OCR_PAGE, "Click to read the text in the picture of this page (even if it has text of its own).");
+		entry(&om, 1, OCR_ALL, "Recognise all pages", MENU_DOTTED, EV_OCR_ALL, "Click to read the text in every scanned page, in the background; click again to stop.");
+		entry(&om, 2, OCR_AUTO, "Scanned pages as I read", MENU_DOTTED, EV_OCR_AUTO, "Click to choose whether scanned pages are read as you come to them.");
+		entry(&om, 3, OCR_ACCURATE, "Accurate", 0, EV_OCR_ACCURATE, "Click to recognise text with the larger data: fewer mistakes, about twice as long.");
+		entry(&om, 4, OCR_FAST, "Fast", 0, EV_OCR_FAST, "Click to recognise text with the smaller data: quicker, a few more mistakes.");
+		app.ocr_menu = make_menu(&om, "Text", 5, EV_OCR_SHOWN);
+	}
 	/* Reading aloud: only with the Speech plugin. */
 	if (speech_available()) {
-		dm.e[9].flags |= MENU_DOTTED;
-		entry(&dm, 10, DOC_READ, "Read aloud", 0, EV_READ_ALOUD, "Click to hear the document read aloud from here (or from the selection); click again to stop.");
-		entry(&dm, 11, DOC_SPEAKSEL, "Speak selection", 0, EV_SPEAK_SEL, "Click to hear just the selected text.");
-		entry(&dm, 12, DOC_SPEED, "Reading speed", MENU_SUBMENU, 0, "Move right to choose how fast it reads.");
-		ndm = 13;
+		dm.e[ndm - 1].flags |= MENU_DOTTED;
+		entry(&dm, ndm++, DOC_READ, "Read aloud", 0, EV_READ_ALOUD, "Click to hear the document read aloud from here (or from the selection); click again to stop.");
+		entry(&dm, ndm++, DOC_SPEAKSEL, "Speak selection", 0, EV_SPEAK_SEL, "Click to hear just the selected text.");
+		entry(&dm, ndm++, DOC_SPEED, "Reading speed", MENU_SUBMENU, 0, "Move right to choose how fast it reads.");
 		entry(&sm, 0, SPEED_SLOW, "Slower", 0, EV_SPEED_SLOW, "Click to read more slowly.");
 		entry(&sm, 1, SPEED_NORMAL, "Normal", 0, EV_SPEED_NORMAL, "Click to read at a comfortable pace for listening.");
 		entry(&sm, 2, SPEED_FAST, "Faster", 0, EV_SPEED_FAST, "Click to read more quickly (the voice's own speed).");
@@ -173,6 +182,8 @@ static void create_objects(void)
 	app.doc_menu = make_menu(&dm, "Folio", ndm, EV_DOCMENU_SHOWN);
 	if (app.speed_menu)
 		check(menu_set_submenu(app.doc_menu, DOC_SPEED, app.speed_menu));
+	if (app.ocr_menu)
+		check(menu_set_submenu(app.doc_menu, DOC_OCR, app.ocr_menu));
 	check(menu_set_submenu(app.doc_menu, 3, app.edit_menu));
 	check(menu_set_submenu(app.doc_menu, 1, app.view_menu));
 	check(menu_set_submenu(app.doc_menu, 2, app.nav_menu));
@@ -278,7 +289,8 @@ static docwin *window_for_event(void)
 	 * belong to the window the menu was last opened from (recorded when the
 	 * document menu's show event arrives, whose parent is that window). */
 	ObjectId self = app.idb.self_id;
-	if (self == app.doc_menu || self == app.view_menu || self == app.nav_menu || self == app.edit_menu)
+	if (self == app.doc_menu || self == app.view_menu || self == app.nav_menu || self == app.edit_menu ||
+			(self == app.ocr_menu && self))
 		return docwin_from_object(app.menu_window);
 	return docwin_from_object(self);
 }
@@ -343,6 +355,24 @@ static int toolbox_event(int *b)
 		menu_set_tick(app.speed_menu, SPEED_SLOW, speech_speed() == SPEED_SLOW);
 		menu_set_tick(app.speed_menu, SPEED_NORMAL, speech_speed() == SPEED_NORMAL);
 		menu_set_tick(app.speed_menu, SPEED_FAST, speech_speed() == SPEED_FAST);
+		break;
+	case EV_OCR_AUTO:
+		app.ocr_auto = !app.ocr_auto;
+		choices_save();
+		break;
+	case EV_OCR_ACCURATE:
+	case EV_OCR_FAST:
+		app.ocr_fast = code == EV_OCR_FAST;
+		choices_save();
+		docwin_ocr_settings_changed();
+		break;
+	case EV_OCR_SHOWN:
+		menu_set_tick(app.ocr_menu, OCR_AUTO, app.ocr_auto);
+		menu_set_tick(app.ocr_menu, OCR_ACCURATE, ocr_has_accurate() && (!app.ocr_fast || !ocr_has_fast()));
+		menu_set_tick(app.ocr_menu, OCR_FAST, ocr_has_fast() && (app.ocr_fast || !ocr_has_accurate()));
+		menu_set_fade(app.ocr_menu, OCR_ACCURATE, !ocr_has_accurate());
+		menu_set_fade(app.ocr_menu, OCR_FAST, !ocr_has_fast());
+		docwin_ocr_menu_shown(docwin_from_object(app.menu_window));
 		break;
 	case EV_EDIT_SHOWN:
 		if ((w = window_for_event()) != NULL)
@@ -415,6 +445,7 @@ int main(int argc, char **argv)
 	if (worker_init())
 		app_log("no worker thread: pages will be drawn in the poll loop");
 	speech_init();
+	ocr_plugin_init();
 	create_objects();
 	bookshelf_init();
 	/* !Folio [-page N] [file] */

@@ -65,5 +65,11 @@ cat > s2.txt <<'TXT'
 BT /Helv 12 Tf 72 760 Td (The second page has one more sentence.) Tj ET
 TXT
 "$AT" "$MUTOOL" create -o speech.pdf s1.txt s2.txt
+# For OCR: speech.pdf's page 1 as a 300 dpi grey picture only (a scan),
+# then its page 2 with real text.
+"$AT" "$MUTOOL" draw -q -r 300 -c gray -o scanp1.png speech.pdf 1
+"$AT" "$MUTOOL" convert -O compress -o scanp1.pdf scanp1.png
+"$AT" "$MUTOOL" merge -O compress -o scan.pdf scanp1.pdf 1 speech.pdf 2
+rm -f scanp1.png scanp1.pdf
 rm -f p1.txt p2.txt p3.txt s1.txt s2.txt fix.js
 ls -l

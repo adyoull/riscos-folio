@@ -538,3 +538,38 @@ Both methods below are tested in `muprobe` (`spike/dark-pdf.png`, `spike/dark-ep
   - whether EPUB annotations matter early;
   - filetypes for EPUB and notebooks;
   - registering the app name and filetypes with ROOL (SG p94).
+
+## 10. Text recognition for scanned pages (OCR; owner, 2026-10-13)
+
+A scanned PDF is pictures of pages. With the OCR plugin, Folio reads the
+text in them with Tesseract, through MuPDF's OCR device, so Find, selection,
+Copy, Define and reading aloud work on scans.
+
+- **Engine:** MuPDF 1.28.5 is built with its bundled Tesseract 5 and
+  Leptonica (`tesseract=yes`). Patch 0002 compiles Tesseract's NEON kernels
+  with `-mfpu=neon` (the rest stays VFPv3) and maps
+  `<datadir>/<lang>.traineddata` to `<datadir>.<lang>` on RISC OS, where Folio
+  takes native file names. Tesseract finds NEON through `getauxval`, which
+  `core/rostubs.c` supplies on RISC OS (with stand-in headers in
+  `mupdf/riscos-include`); the stubs also cover Leptonica's
+  `open_memstream`/`fmemopen`, which UnixLib lacks and MuPDF never uses.
+- **Core (`core/ocr.c`):** the page's display list runs into the OCR device
+  at 300 dpi (at most 12 Mpx), with the page's top left at the image's
+  origin. Each word comes out as a line "x0 y0 x1 y1 text" in page points.
+  From those, a structured-text page is built as MuPDF's OCR device does it
+  (Courier glyphs spread across the word), but upright, one size per line of
+  text, so lines and paragraphs join as printed text does. `folio_get_text`
+  returns it in place of the page's own text; drawing keeps using the page's
+  own (its pictures, for dark mode). Results are saved per document
+  (`folio_ocr_save`/`load`), checked against the page count and the PDF's ID
+  (or the file's size).
+- **Front end (`wimp/ocrui.c`):** recognising is a worker job (`JOB_OCR`),
+  given out only when no page or thumbnail is waiting, and stopped when a
+  visible page needs drawing. Order: a page reading aloud is waiting for;
+  "Recognise this page"; with "Scanned pages as I read" the current page and
+  the next two; "Recognise all pages". Pages with text of their own are left
+  alone (FOLIO_OCR_NOT_SCAN) unless asked for by hand.
+- **Plugin:** `!Folio.Plugins.OCR` with `Accurate.eng` (the standard English
+  set without its Tesseract 3 part, 5.2 MB, byte-identical results) and
+  `Fast.eng` (tessdata_fast, 4.1 MB). On four Style Guide pages Accurate made
+  about half Fast's mistakes on clean scans, at about twice the time.

@@ -1,0 +1,12 @@
+Text recognition for Folio: putting it in
+=========================================
+
+Drag the !Folio in this archive over your own !Folio (onto the directory
+that holds it): the Filer adds Plugins.OCR to it and leaves the rest of
+your !Folio as it is. Then quit Folio and run it again. A Text recognition
+entry appears on the document's menu.
+
+To take it out again, delete !Folio.Plugins.OCR (Shift-double-click !Folio
+to open it).
+
+!Folio.Plugins.OCR.ReadMe says how to use it.

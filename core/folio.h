@@ -213,6 +213,35 @@ typedef struct {
 int folio_get_page_text(folio_doc *doc, folio_loc loc, folio_page_text *t);
 void folio_page_text_free(folio_page_text *t);
 
+/* ---- Text recognition (OCR) ------------------------------------------- */
+/* Scanned pages have no text, only a picture of it. folio_ocr_page reads the
+ * picture with Tesseract (300 dpi grey); afterwards the page's text, for
+ * selection, Copy, Find, Define and read aloud, is the recognised text.
+ * Recognising a page takes seconds: call it from the worker. */
+
+#define FOLIO_OCR_NOT_SCAN (-2)
+
+/* 1 if this build can recognise text and the document has fixed pages. */
+int folio_ocr_supported(folio_doc *doc);
+/* 1 if the page has no text of its own but has pictures; 0; -1 on error. */
+int folio_page_is_scan(folio_doc *doc, folio_loc loc);
+/* datadir: the folder with the language data, lang: e.g. "eng". On RISC OS
+ * the data is "<datadir>.<lang>"; elsewhere "<datadir>/<lang>.traineddata".
+ * only_scans: leave pages with text of their own alone (FOLIO_OCR_NOT_SCAN).
+ * Returns the characters found (0 or more), or -1 (folio_error; stopped by
+ * folio_abort if folio_aborted). */
+int folio_ocr_page(folio_doc *doc, folio_loc loc, const char *datadir, const char *lang,
+		int only_scans);
+int folio_page_has_ocr(folio_doc *doc, folio_loc loc);
+int folio_ocr_pages(folio_doc *doc);      /* pages recognised */
+int folio_ocr_changed(folio_doc *doc);    /* recognised since loaded or saved */
+/* The recognised text of every page, kept between sessions: saving with
+ * none removes the file. Loading checks the file is for this document (its
+ * page count, and a PDF's ID or else the file's size) and returns the pages
+ * restored, or -1. */
+int folio_ocr_save(folio_doc *doc, const char *path);
+int folio_ocr_load(folio_doc *doc, const char *path);
+
 /* ---- Links ------------------------------------------------------------ */
 
 typedef struct {

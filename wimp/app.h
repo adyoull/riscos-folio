@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test26 (12-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test27 (13-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -22,13 +22,15 @@ enum {
 	EV_COPY = 0x150, EV_SELECT_ALL, EV_CLEAR_SEL, EV_DEFINE, EV_FIND, EV_CONTENTS,
 	EV_HIGHLIGHT = 0x160, EV_UNDERLINE, EV_STRIKE, EV_NOTE, EV_UNDO, EV_REDO, EV_DEL_ANNOT, EV_SAVE,
 	EV_ADD_SHELF, EV_PASSWORD, EV_READ_ALOUD, EV_SPEAK_SEL, EV_PRINT, EV_EXPORT_DRAW,
+	EV_OCR_PAGE = 0x170, EV_OCR_ALL,
 	EV_DICT_COPY = 0x200,  /* the pop-up's, not a window's */
 	EV_FIND_NEXT = 0x210, EV_FIND_PREV, EV_FIND_CANCEL,
 	EV_NOTE_OK = 0x220, EV_NOTE_DELETE, EV_NOTE_CANCEL,
 	EV_SH_OPEN = 0x230, EV_SH_REMOVE, EV_SH_FILER, EV_SH_RECENT, EV_SH_TITLE, EV_SH_AUTHOR,
 	EV_SH_FOLDERS, EV_SH_REFRESH, EV_SH_MISSING,
 	EV_PWOPEN_OK = 0x240, EV_PWOPEN_CANCEL, EV_PWSET, EV_PWREMOVE, EV_PWCANCEL,
-	EV_SPEED_SLOW = 0x250, EV_SPEED_NORMAL, EV_SPEED_FAST, EV_SPEED_SHOWN
+	EV_SPEED_SLOW = 0x250, EV_SPEED_NORMAL, EV_SPEED_FAST, EV_SPEED_SHOWN,
+	EV_OCR_AUTO = 0x260, EV_OCR_ACCURATE, EV_OCR_FAST, EV_OCR_SHOWN
 };
 
 /* View menu entries (component ids). */
@@ -36,7 +38,10 @@ enum { EDIT_COPY = 1, EDIT_SELECT_ALL, EDIT_CLEAR, EDIT_UNDO, EDIT_REDO, EDIT_HI
 	EDIT_ULINE, EDIT_STRIKE, EDIT_NOTE, EDIT_DELANNOT };
 /* Document menu entries. */
 enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6, DOC_SHELF = 7, DOC_PASSWORD = 8,
-	DOC_READ = 9, DOC_SPEAKSEL = 10, DOC_SPEED = 11, DOC_PRINT = 12, DOC_EXPORT_DRAW = 13 };
+	DOC_READ = 9, DOC_SPEAKSEL = 10, DOC_SPEED = 11, DOC_PRINT = 12, DOC_EXPORT_DRAW = 13,
+	DOC_OCR = 14 };
+/* Text recognition menu entries. */
+enum { OCR_PAGE = 1, OCR_ALL, OCR_AUTO, OCR_ACCURATE, OCR_FAST };
 enum { SPEED_SLOW = 1, SPEED_NORMAL, SPEED_FAST };
 /* Navigate menu entries. */
 enum { NAV_CONTENTS = 5, NAV_BACK = 6 };
@@ -56,6 +61,9 @@ typedef struct {
 	FILE *log;
 	void *sprites;              /* <Folio$Dir>.Sprites, loaded by the Toolbox (1 = none) */
 	float default_zoom;         /* new documents open at this scale (Choices) */
+	int ocr_fast;               /* text recognition: Fast rather than Accurate */
+	int ocr_auto;               /* recognise scanned pages while reading */
+	ObjectId ocr_menu;
 } app_state;
 
 extern app_state app;
@@ -106,6 +114,12 @@ void docwin_show_hit(docwin *w, int page, const folio_quad *q, int n);
 
 docwin *docwin_from_toolbar(ObjectId id);
 int docwin_pages(docwin *w);
+int docwin_reading_dir(docwin *w);        /* +1 forwards, -1 backwards */
+void docwin_text_changed(docwin *w, int page);   /* recognised */
+int docwin_ocr_wait(docwin *w, int page);  /* reading aloud: wait for OCR */
+void docwin_ocr_menu_shown(docwin *w);   /* w may be NULL */
+void docwin_ocr_settings_changed(void);
+void choices_save(void);
 void docwin_refresh_toolbar(docwin *w);
 int docwin_read_start(docwin *w, int *page, folio_point *a, folio_point *b);
 void docwin_set_spoken(docwin *w, const int *pages, const folio_quad *q, int n);
@@ -204,6 +218,25 @@ int print_event(int *block);             /* 1 if it was the Print dialogue's */
 void print_forget(docwin *w);
 int print_background(void);              /* 1 while a job is running */
 void print_quit(void);
+int print_busy_for(docwin *w);           /* printing from this window */
+
+/* ocrui.c: text recognition (the OCR plugin). */
+typedef struct ocr_win ocr_win;
+int ocr_plugin_init(void);                      /* finds the plugin: 1 if there */
+int ocr_available(void);
+int ocr_has_accurate(void);
+int ocr_has_fast(void);
+ocr_win *ocr_win_new(docwin *w);         /* core lock held; NULL without OCR */
+void ocr_win_close(ocr_win *o);          /* core lock held: saves its text */
+void ocr_win_before_reopen(ocr_win *o);  /* around saving the PDF (lock held) */
+void ocr_win_after_reopen(ocr_win *o);
+int ocr_win_next(ocr_win *o);            /* worker idle: gives it a page; 1 if so */
+int ocr_win_running(ocr_win *o);
+int ocr_win_wait(ocr_win *o, int page);  /* reading aloud: 1 = wait for page */
+void ocr_win_this_page(ocr_win *o);
+void ocr_win_all(ocr_win *o);            /* on or off */
+int ocr_win_all_on(ocr_win *o);
+void ocr_settings_changed(ocr_win *o);
 void passui_forget(docwin *w);
 
 /* speech.c: reading aloud (with the Speech plugin) */
@@ -239,6 +272,7 @@ void bookshelf_take(render_job *r);
 int bookshelf_has(const char *path);
 void bookshelf_toggle(const char *path);
 void bookshelf_note(const char *path, int page, int pages, const char *title, const char *author);
+void ocr_win_take(ocr_win *o, const render_job *r);   /* a JOB_OCR result */
 
 /* annotui.c: the Note, Save and Discard/Cancel/Save boxes */
 void note_open(docwin *w, int page, int index, folio_point at, const char *text);

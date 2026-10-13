@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test26)
+Folio (test build 0.0.1-test27)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -86,6 +86,18 @@ Reading aloud (with the Speech plugin)
   sentence being read is shown with a tinted band, and the pages turn as it
   goes. Click the button (or Read aloud) again to stop. Speak selection
   reads just the selected text.
+
+Scanned pages (with the OCR plugin)
+  A scanned PDF is pictures of pages, with no text to find or select.
+  Drag the !Folio in FolioOCR-<version>.zip over this !Folio (the Filer
+  adds Plugins.OCR to it), then run Folio again: the document's menu gets
+  Text recognition. Folio then reads the text in each scanned page as you
+  come to it (the window's title says when), and Find, selecting, Copy,
+  Define and Read aloud work on it. Recognise all pages does the whole
+  document in the background, so Find can search all of it; Recognise this
+  page does just the page you're on. Accurate makes fewer mistakes; Fast
+  takes about half as long. What's recognised is kept, so it isn't done
+  again next time. OCR.ReadMe has more.
 
 Printing
   Print... on the document's menu (or the Print key) opens the Print box:

@@ -23,10 +23,14 @@ fi
 cd "$SRC"
 [ -d generated/resources/fonts ] || make -j"$JOBS" generate
 
-# No X11/GL/curl/crypto/threads; no Tesseract or barcodes. CJK fonts stay out
-# of the program (the font pack supplies them, DESIGN.md §6).
+# No X11/GL/curl/crypto/threads or barcodes. CJK fonts stay out of the
+# program (the font pack supplies them, DESIGN.md §6). Tesseract (OCR) is the
+# bundled copy; its NEON kernels get -mfpu=neon and are used only when
+# getauxval() reports NEON (on RISC OS the program supplies getauxval and
+# riscos-include/ stands in for the Linux headers).
 COMMON="build=release HAVE_X11=no HAVE_GLUT=no HAVE_OBJCOPY=no HAVE_LIBCRYPTO=no
-	HAVE_PTHREAD=no HAVE_CURL=no tesseract=no barcode=no tofu_cjk=yes"
+	HAVE_PTHREAD=no HAVE_CURL=no tesseract=yes barcode=no tofu_cjk=yes
+	HAVE_NEON=yes TESSERACT_NEON_CFLAGS=-mfpu=neon"
 
 if [ "$WHAT" = all ] || [ "$WHAT" = riscos ]; then
 	P=arm-riscos-gnueabihf-
@@ -34,13 +38,13 @@ if [ "$WHAT" = all ] || [ "$WHAT" = riscos ]; then
 	# -Wl,-s so the checks can see symbols.
 	make -j"$JOBS" OS=riscos build_prefix=ro- $COMMON \
 		CC=${P}gcc CXX=${P}g++ AR=${P}ar LD=${P}ld RANLIB=${P}ranlib \
-		XCFLAGS="-O2 -mfpu=vfpv3 -mfloat-abi=hard -fstack-clash-protection -D_FILE_OFFSET_BITS=64" \
+		XCFLAGS="-O2 -mfpu=vfpv3 -mfloat-abi=hard -fstack-clash-protection -D_FILE_OFFSET_BITS=64 -DHAVE_GETAUXVAL -I$HERE/riscos-include" \
 		LDFLAGS="-static" libs
 fi
 if [ "$WHAT" = all ] || [ "$WHAT" = linuxarm ]; then
 	P=arm-linux-gnueabihf-
 	make -j"$JOBS" OS=Linux build_prefix=armlinux- $COMMON shared=no \
 		CC=${P}gcc CXX=${P}g++ AR=${P}ar LD=${P}ld RANLIB=${P}ranlib \
-		XCFLAGS="-O2 -marm -mcpu=cortex-a8 -mfpu=vfpv3 -mfloat-abi=hard -mno-unaligned-access -fstack-clash-protection" \
+		XCFLAGS="-O2 -marm -mcpu=cortex-a8 -mfpu=vfpv3 -mfloat-abi=hard -mno-unaligned-access -fstack-clash-protection -DHAVE_GETAUXVAL" \
 		XLDFLAGS="-no-pie" libs apps
 fi

@@ -58,6 +58,11 @@ void print_forget(docwin *w)
 	}
 }
 
+int print_busy_for(docwin *w)
+{
+	return job_running(w);
+}
+
 static int have_printer(char *name, size_t size)
 {
 	int r0, xres, yres, features;

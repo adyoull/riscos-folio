@@ -5,7 +5,7 @@ It's built on [MuPDF](https://mupdf.com) with a native front end that follows
 the RISC OS Style Guide, and takes its ideas for markup and reading from
 Flexcil. "Folio" is a working name.
 
-Status: **test builds** (0.0.1-test26). It's used day to day on a Raspberry Pi
+Status: **test builds** (0.0.1-test27). It's used day to day on a Raspberry Pi
 running RISC OS 5, but expect rough edges. The design is in
 [`docs/DESIGN.md`](docs/DESIGN.md).
 
@@ -44,6 +44,13 @@ running RISC OS 5, but expect rough edges. The design is in
   Without the plugin Folio has no speech button and loads nothing for it.
   Speech needs NEON (a Raspberry Pi 2 or later; it keeps up on a Pi 4) and
   John Duffell's SharedSoundBuffer and StreamManager modules.
+- **Scanned pages** (with the OCR plugin, a separate download dropped in
+  the same way): Tesseract, through MuPDF, reads the text in scanned pages
+  in the background, as you come to them or the whole document, so Find,
+  selecting, Copy, Define and reading aloud work on scans. Two sets of
+  English data: Accurate (Tesseract's standard set without its unused
+  Tesseract 3 part, about 5 MB) and Fast (about 4 MB). What's recognised is
+  kept, so it isn't done again.
 - **Bookshelf:** Select on the icon bar icon. Covers, progress, sorting by
   recent, title or author; drag books to it, or drag directories to have
   Folio watch them for new documents when it starts and on Refresh.
@@ -80,17 +87,23 @@ with its `tools/build-espeak.sh` and `make` (`PVOICE_DIR`),
     RCD_DIR = /path/to/riscos-crossdev
     RISCOS_TOOLCHAIN = /path/to/riscos-crossdev-toolchain-1.4-x86_64-linux
     PVOICE_DIR = /path/to/riscos-pvoice
+    TESSDATA = /path/to/tessdata      # from tools/get-tessdata.sh
 
     mupdf/build.sh      # fetches MuPDF 1.28.5, applies mupdf/patches, builds for RISC OS and ARM Linux
     make test           # the tests, under qemu-arm-aligntrap
     make app            # !Folio, checked, zipped with RISC OS filetypes: build/Folio-<version>.zip
     make plugin         # the Speech plugin: build/FolioSpeech-<version>.zip
+    make ocrplugin      # the OCR plugin: build/FolioOCR-<version>.zip
+
+MuPDF is built with its bundled Tesseract and Leptonica (OCR); Tesseract's
+NEON code is compiled with `-mfpu=neon` and chosen at run time, the rest
+of the program stays VFPv3.
 
 ## Layout
 
 | Directory | What's there |
 |---|---|
-| `core/` | MuPDF wrapped for the reader, with no Wimp code: documents, layout and counting, reading positions, drawing tiles into 32bpp sprite pixels (normal, dark, sepia), text selection and find, links, annotations and saving, passwords, the dictionary's URLs and HTML |
+| `core/` | MuPDF wrapped for the reader, with no Wimp code: documents, layout and counting, reading positions, drawing tiles into 32bpp sprite pixels (normal, dark, sepia), text selection and find, links, annotations and saving, passwords, the dictionary's URLs and HTML, text recognition (OCR) and keeping its results |
 | `wimp/` | The RISC OS front end: a Toolbox application through a thin layer of our own (`tbx.h`, objects from in-memory templates), the page worker thread, document windows, toolbar, thumbnail drawer, Contents, Find, the dictionary pop-up, annotation and password dialogues and the Bookshelf |
 | `app/!Folio` | The application's files |
 | `tests/` | Tests for the core, the worker, the dictionary, Find, annotations, passwords and the Bookshelf's data, run under qemu |

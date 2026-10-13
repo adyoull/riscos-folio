@@ -1,0 +1,90 @@
+From 3beea3a18c1d40a895ad58ad2a480188bd0e256d Mon Sep 17 00:00:00 2001
+From: Andrew Youll <adyoull@users.noreply.github.com>
+Date: Tue, 13 Oct 2026 06:02:39 +0100
+Subject: [PATCH] OCR: NEON flags for Tesseract's NEON kernels; RISC OS data
+ file names
+
+---
+ Makethird               |  4 ++++
+ source/fitz/tessocr.cpp | 37 +++++++++++++++++++++++++++++++++++--
+ 2 files changed, 39 insertions(+), 2 deletions(-)
+
+diff --git a/Makethird b/Makethird
+index 21badef..1b983cf 100644
+--- a/Makethird
++++ b/Makethird
+@@ -312,6 +312,10 @@ ifeq ($(USE_SYSTEM_TESSERACT),yes)
+ else
+   THIRD_LIBS += $(TESSERACT_LIBS)
+   THIRD_SRC += $(TESSERACT_SRC)
++# The NEON kernels may need their own flags (e.g. -mfpu=neon) when the rest
++# of the build targets plain VFP; they are only called after run-time detection.
++$(OUT)/thirdparty/tesseract/src/arch/%neon.o: thirdparty/tesseract/src/arch/%neon.cpp
++	$(CXX_CMD) $(LIB_CFLAGS) $(TESSERACT_CFLAGS) $(TESSERACT_BUILD_CFLAGS) $(TESSERACT_NEON_CFLAGS)
+ $(OUT)/thirdparty/tesseract/%.o: thirdparty/tesseract/%.cpp
+ 	$(CXX_CMD) $(LIB_CFLAGS) $(TESSERACT_CFLAGS) $(TESSERACT_BUILD_CFLAGS)
+ endif
+diff --git a/source/fitz/tessocr.cpp b/source/fitz/tessocr.cpp
+index b017421..9266f23 100644
+--- a/source/fitz/tessocr.cpp
++++ b/source/fitz/tessocr.cpp
+@@ -35,13 +35,46 @@ extern "C" {
+ #include "tessocr.h"
+ #include "leptonica-wrap.h"
+ 
++#ifdef __riscos__
++#include <string.h>
++#include <stdlib.h>
++
++/* Tesseract asks for "<datadir>/<lang>.traineddata". A RISC OS program
++ * that takes native file names (no UnixLib name translation) keeps the
++ * data as "<datadir>.<lang>", so map the name across. */
++static FILE *
++fopen_data(const char *filename, const char *mode)
++{
++	const char *slash = strrchr(filename, '/');
++	const char *suffix = ".traineddata";
++	size_t n = strlen(filename), sl = strlen(suffix);
++	if (slash && n > sl && strcmp(filename + n - sl, suffix) == 0)
++	{
++		char *name = (char *)malloc(n + 1);
++		FILE *fp;
++		if (name == NULL)
++			return NULL;
++		memcpy(name, filename, n - sl);
++		name[n - sl] = 0;
++		name[slash - filename] = '.';
++		fp = fopen(name, mode);
++		free(name);
++		if (fp)
++			return fp;
++	}
++	return fopen(filename, mode);
++}
++#else
++#define fopen_data fopen
++#endif
++
+ #if TESSERACT_MAJOR_VERSION >= 5
+ 
+ static bool
+ load_file(const char* filename, std::vector<char>* data)
+ {
+ 	bool result = false;
+-	FILE *fp = fopen(filename, "rb");
++	FILE *fp = fopen_data(filename, "rb");
+ 	if (fp == NULL)
+ 		return false;
+ 
+@@ -76,7 +109,7 @@ static bool
+ load_file(const char* filename, GenericVector<char>* data)
+ {
+ 	bool result = false;
+-	FILE *fp = fopen(filename, "rb");
++	FILE *fp = fopen_data(filename, "rb");
+ 	if (fp == NULL)
+ 		return false;
+ 
+-- 
+2.43.0
+

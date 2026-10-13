@@ -71,6 +71,9 @@ static struct {
 	short block[BLOCK_FRAMES * 2];
 	int block_fill;           /* frames in block */
 	int loading_said;
+	/* Waiting for the first page's text to be recognised (a scan). */
+	int start_wait, start_page;
+	folio_point start_a, start_b;
 } sp;
 
 static unsigned now_cs(void)
@@ -380,14 +383,17 @@ void speech_stop(void)
 	ssb_close();
 	clear_reading();
 	sp.w = NULL;
+	sp.start_wait = 0;
 	docwin_set_spoken(w, NULL, NULL, 0);
 	docwin_refresh_toolbar(w);
 	app_log("speech: stopped");
 }
 
+static void begin_at(int page, folio_point a, folio_point b);
+
 void speech_read(docwin *w, int selection_only)
 {
-	int page, sel, from, to = -1;
+	int page, sel;
 	folio_point a, b;
 	if (!sp.available)
 		return;
@@ -420,6 +426,25 @@ void speech_read(docwin *w, int selection_only)
 	sp.selection_only = selection_only;
 	sp.text_done = 0;
 	sp.loading_said = 0;
+	sp.start_wait = 0;
+	if (docwin_ocr_wait(w, page)) {
+		/* A scan: its text comes first (speech_background starts then). */
+		sp.start_wait = 1;
+		sp.start_page = page;
+		sp.start_a = a;
+		sp.start_b = b;
+		app_log("speech: waiting for the text on page %d to be recognised", page + 1);
+		docwin_refresh_toolbar(w);
+		return;
+	}
+	begin_at(page, a, b);
+}
+
+/* Starts reading from point a on the page (to b, for Speak selection). */
+static void begin_at(int page, folio_point a, folio_point b)
+{
+	docwin *w = sp.w;
+	int from, to = -1, selection_only = sp.selection_only;
 	from = char_at(page, a, 0);
 	if (selection_only)
 		to = char_at(page, b, 1);
@@ -477,6 +502,9 @@ static void fetch_more(void)
 		sp.text_done = 1;
 		return;
 	}
+	/* A scanned page: wait for its text. */
+	if (sp.next_page < docwin_pages(sp.w) && docwin_ocr_wait(sp.w, sp.next_page))
+		return;
 	if (sp.next_page < docwin_pages(sp.w) && fetch_page(sp.next_page, 0, -1, 0) == 0)
 		sp.next_page++;
 }
@@ -598,6 +626,16 @@ int speech_background(unsigned *wake)
 		speech_stop();
 		tbx_report(msg);
 		return 0;
+	}
+	if (sp.start_wait) {
+		if (docwin_ocr_wait(sp.w, sp.start_page)) {
+			*wake = now_cs() + 10;
+			return 0;
+		}
+		sp.start_wait = 0;
+		begin_at(sp.start_page, sp.start_a, sp.start_b);
+		if (!sp.w)
+			return 0;
 	}
 	if (st == SP_LOADING) {
 		if (!sp.loading_said++)

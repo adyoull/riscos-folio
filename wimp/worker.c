@@ -116,6 +116,17 @@ static void run_job(void)
 		job.cs = (int)(now_cs() - t0);
 		return;
 	}
+	if (job.kind == JOB_OCR) {
+		core_lock();
+		job.chars = folio_ocr_page(job.doc, job.loc, job.datadir, job.lang, job.only_scans);
+		job.ok = job.chars >= 0 || job.chars == FOLIO_OCR_NOT_SCAN;
+		job.aborted = !job.ok && folio_aborted(job.doc);
+		if (!job.ok)
+			snprintf(job.err, sizeof job.err, "%s", folio_error(job.fc));
+		core_unlock();
+		job.cs = (int)(now_cs() - t0);
+		return;
+	}
 	tile.x0 = 0;
 	tile.y0 = 0;
 	tile.x1 = job.px_w;

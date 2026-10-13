@@ -1,0 +1,54 @@
+Text recognition (OCR) for Folio
+================================
+
+A scanned PDF is pictures of pages: there is no text in it to find, select,
+copy or read aloud. With this plugin Folio reads the text in those
+pictures (optical character recognition, with Tesseract), and the page then
+works like any other: Find, selecting, Copy, Define and Read aloud all use
+the recognised text. The page itself looks the same.
+
+Using it
+--------
+Menu > Text recognition:
+
+  Recognise this page     reads the page you're on (even one that has some
+                          text of its own, e.g. text drawn as outlines).
+  Recognise all pages     reads every scanned page in the background, so
+                          Find can search the whole document; the window's
+                          title shows the page it has reached. Choose it
+                          again to stop.
+  Scanned pages as I read (on to start with) reads each scanned page as you
+                          come to it, and the next two.
+  Accurate / Fast         which data to use (see below).
+
+Reading aloud waits for a scanned page's text before reading it.
+
+A page takes a few seconds (about twice as long with Accurate). It happens
+in the background: Folio and the desktop carry on, and a page you scroll to
+is drawn first. Pages with text of their own are left alone, except by
+Recognise this page.
+
+What's recognised is kept in <Choices$Write>.Folio.OCR, one file per
+document, so it isn't done again when you next open the document. You can
+delete that folder at any time.
+
+Accurate and Fast
+-----------------
+Two sets of Tesseract's English data are included:
+
+  Accurate  (about 5 MB) Tesseract's standard English data, without the
+            parts for the old Tesseract 3 engine, which Folio doesn't use.
+            On test scans it made about half the mistakes of Fast.
+  Fast      (about 4 MB) a smaller network: about twice as quick.
+
+Either folder can be deleted to save space; Folio then uses the other.
+
+Good scans (300 dpi, straight, clean) recognise best. Handwriting, unusual
+fonts, columns of numbers and pictures of text in photographs may come out
+wrong or not at all. Only English is included for now.
+
+Licences
+--------
+The language data is Tesseract's (https://github.com/tesseract-ocr), under
+the Apache License 2.0: see DataLicence. Tesseract itself is part of
+Folio's !RunImage (Apache-2.0, through MuPDF).

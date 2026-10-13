@@ -89,6 +89,7 @@ struct docwin {
 	char link_uri[512];
 	struct { int page, y, cols; float zoom; } back[BACK_MAX];
 	int back_n;
+	ocr_win *ocr;             /* text recognition (NULL without the plugin) */
 };
 
 typedef struct {
@@ -352,6 +353,11 @@ static void take_result(render_job *r)
 		bookshelf_take(r);
 		return;
 	}
+	if (r->kind == JOB_OCR) {
+		if (is_window(w))
+			ocr_win_take(w->ocr, r);
+		return;
+	}
 	if (r->kind == JOB_THUMB) {
 		if (is_window(w) && r->mode == w->mode && !r->aborted)
 			thumbs_take(w->thumbs, r->page, r->gen, r->area, r->ok);
@@ -510,6 +516,8 @@ void choices_load(void)
 	FILE *f = fopen("Choices:Folio.Choices", "r");
 	char line[80];
 	app.default_zoom = 1.0f;
+	app.ocr_fast = 0;
+	app.ocr_auto = 1;
 	if (!f)
 		return;
 	if (fgets(line, sizeof line, f) && !strncmp(line, "folio-choices 1", 15))
@@ -517,17 +525,22 @@ void choices_load(void)
 			int pc;
 			if (sscanf(line, "zoom %d", &pc) == 1 && pc >= (int)(MIN_ZOOM * 100) && pc <= (int)(MAX_ZOOM * 100))
 				app.default_zoom = pc / 100.0f;
+			else if (!strncmp(line, "ocr fast", 8))
+				app.ocr_fast = 1;
+			else if (!strncmp(line, "ocr accurate", 12))
+				app.ocr_fast = 0;
+			else if (sscanf(line, "ocr-auto %d", &pc) == 1)
+				app.ocr_auto = pc != 0;
 		}
 	fclose(f);
 	app_log("choices: new documents at %d%%", (int)(app.default_zoom * 100 + 0.5f));
 }
 
-static void choices_set_zoom(float z)
+void choices_save(void)
 {
 	const char *cw = getenv("Choices$Write");
 	char path[220];
 	FILE *f;
-	app.default_zoom = z;
 	if (!cw || !*cw)
 		return;
 	snprintf(path, sizeof path, "%s.Folio", cw);
@@ -538,8 +551,16 @@ static void choices_set_zoom(float z)
 		tbx_report("Folio couldn't save its choices.");
 		return;
 	}
-	fprintf(f, "folio-choices 1\nzoom %d\n", (int)(z * 100 + 0.5f));
+	fprintf(f, "folio-choices 1\nzoom %d\nocr %s\nocr-auto %d\n", (int)(app.default_zoom * 100 + 0.5f),
+		app.ocr_fast ? "fast" : "accurate", app.ocr_auto);
 	fclose(f);
+	_swix(OS_File, _INR(0, 2), 18, path, 0xfff);
+}
+
+static void choices_set_zoom(float z)
+{
+	app.default_zoom = z;
+	choices_save();
 	app_log("choices: new documents at %d%%", (int)(z * 100 + 0.5f));
 }
 
@@ -625,7 +646,8 @@ static void save_place(docwin *w)
 static void abort_for(docwin *w)
 {
 	const render_job *cur = worker_current();
-	if (cur && cur->owner == w)
+	/* Recognising text doesn't depend on the zoom or the colours. */
+	if (cur && cur->owner == w && cur->kind != JOB_OCR)
 		folio_abort(w->doc);
 }
 
@@ -798,6 +820,9 @@ docwin *docwin_open_password(const char *path, const char *password)
 		toolbar_attach(w->obj, w->toolbar, 1);
 	w->top = w->show_toolbar ? toolbar_height() : 0;
 	layout(w);
+	core_lock();
+	w->ocr = ocr_win_new(w);
+	core_unlock();
 
 	/* Style Guide p105: the first window centred, at most a quarter of the
 	 * screen; each later one 48 OS units lower. */
@@ -863,6 +888,8 @@ void docwin_close(docwin *w)
 		bookshelf_note(w->path, current_page(w), exact ? pages : 0, title, author);
 		core_lock();
 	}
+	ocr_win_close(w->ocr);
+	w->ocr = NULL;
 	folio_close(w->doc);
 	core_unlock();
 	cache_forget(w);
@@ -1018,7 +1045,7 @@ static void resolve_mark(docwin *w)
 
 /* The next page this window wants drawn: visible ones first (from the
  * top), then two ahead in the direction of reading. -1 if none. */
-static int wanted_page(docwin *w)
+static int wanted_page(docwin *w, int visible_only)
 {
 	int st[9], vis_h, top, bottom, i0, i1, i, k;
 	int order[64], n = 0;
@@ -1035,7 +1062,7 @@ static int wanted_page(docwin *w)
 	i1 = last_in_row(w, i1);
 	for (i = i0; i <= i1 && n < 58; i++)
 		order[n++] = i;
-	for (k = 1; k <= 2 * w->cols; k++)
+	for (k = 1; k <= 2 * w->cols && !visible_only; k++)
 		order[n++] = w->dir >= 0 ? i1 + k : i0 - k;
 	for (k = 0; k < n; k++) {
 		folio_loc loc;
@@ -1046,7 +1073,7 @@ static int wanted_page(docwin *w)
 			continue;
 		if (w->fail_page == i && w->fail_gen == w->gen)
 			continue;
-		if (cur && cur->owner == w && cur->page == i && cur->gen == w->gen)
+		if (cur && cur->owner == w && cur->kind == JOB_PAGE && cur->page == i && cur->gen == w->gen)
 			continue;
 		if (folio_loc_from_number(w->doc, i, &loc))
 			continue;
@@ -1109,10 +1136,22 @@ int docwin_background(void)
 		busy |= w->counting || w->pending_mark || w->goto_page >= 0;
 	}
 
+	/* Recognising text takes seconds: a page that needs drawing now comes
+	 * first (the recognising starts again later). */
+	{
+		const render_job *cur = worker_current();
+		if (cur && cur->kind == JOB_OCR && worker_busy())
+			for (w = windows; w; w = w->next)
+				if (w->want_render && wanted_page(w, 1) >= 0) {
+					app_log("ocr: stopped for a page to draw");
+					worker_stop_for(NULL);
+					break;
+				}
+	}
 	/* Give the worker a page if it has none. */
 	if (worker_idle()) {
 		for (w = windows; w; w = w->next) {
-			int page = w->want_render ? wanted_page(w) : -1;
+			int page = w->want_render ? wanted_page(w, 0) : -1;
 			if (page < 0) {
 				w->want_render = 0;
 				continue;
@@ -1135,6 +1174,11 @@ int docwin_background(void)
 				break;
 		}
 	}
+	/* Then text to recognise. */
+	if (worker_idle())
+		for (w = windows; w; w = w->next)
+			if (w->ocr && ocr_win_next(w->ocr))
+				break;
 	/* And some time to work on it. */
 	if (!worker_idle()) {
 		if (worker_slice(5) && worker_take(&r))
@@ -1473,6 +1517,8 @@ void docwin_doc_menu_shown(docwin *w)
 		menu_set_fade(app.doc_menu, DOC_SPEAKSEL, !(w->sel && w->sel_n > 0));
 	}
 	menu_set_tick(app.doc_menu, DOC_SHELF, bookshelf_has(w->path));
+	if (ocr_available())
+		menu_set_fade(app.doc_menu, DOC_OCR, w->ocr == NULL);
 	static char entry[100];
 	char word[64];
 	if (define_word(w, word, sizeof word) == 0) {
@@ -1716,6 +1762,8 @@ void docwin_event(docwin *w, int code)
 	case EV_BACK: go_back(w); break;
 	case EV_PRINT: print_open(w); break;
 	case EV_EXPORT_DRAW: export_open(w); break;
+	case EV_OCR_PAGE: ocr_win_this_page(w->ocr); break;
+	case EV_OCR_ALL: ocr_win_all(w->ocr); break;
 	case EV_LINE_DOWN:
 		get_state(w, st);
 		scroll_to(w, st[6] - 40);
@@ -1783,6 +1831,29 @@ int docwin_wimp(docwin *w) { return w->wimp; }
 int docwin_current_page(docwin *w) { return current_page(w); }
 int docwin_is_counting(docwin *w) { return w->counting; }
 int docwin_pages(docwin *w) { return w->pages; }
+int docwin_reading_dir(docwin *w) { return w->dir < 0 ? -1 : 1; }
+int docwin_ocr_wait(docwin *w, int page) { return is_window(w) && ocr_win_wait(w->ocr, page); }
+
+void docwin_text_changed(docwin *w, int page)
+{
+	if (is_window(w) && page == current_page(w))
+		tb_update(w);
+}
+
+void docwin_ocr_settings_changed(void)
+{
+	docwin *w;
+	for (w = windows; w; w = w->next)
+		ocr_settings_changed(w->ocr);
+}
+
+void docwin_ocr_menu_shown(docwin *w)
+{
+	int on = w && w->ocr;
+	menu_set_fade(app.ocr_menu, OCR_PAGE, !on);
+	menu_set_fade(app.ocr_menu, OCR_ALL, !on);
+	menu_set_tick(app.ocr_menu, OCR_ALL, on && ocr_win_all_on(w->ocr));
+}
 void docwin_refresh_toolbar(docwin *w) { if (is_window(w)) tb_update(w); }
 
 /* ---- Reading aloud ---------------------------------------------------------- */
@@ -2436,6 +2507,7 @@ int docwin_save(docwin *w, const char *path)
 		tbx_report(msg);
 		return -1;
 	}
+	ocr_win_before_reopen(w->ocr);
 	folio_close(w->doc);
 	w->doc = NULL;
 	/* Move any file already there aside, then the new one in. */
@@ -2471,6 +2543,7 @@ int docwin_save(docwin *w, const char *path)
 	if (doc) {
 		w->doc = doc;
 		folio_count_step(doc, 1 << 20);
+		ocr_win_after_reopen(w->ocr);
 	}
 	core_unlock();
 	_swix(Hourglass_Off, 0);

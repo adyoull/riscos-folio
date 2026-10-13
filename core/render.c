@@ -70,7 +70,7 @@ static void restore_pictures(folio_doc *doc, folio_cpage *cp, fz_pixmap *pix,
 		fz_matrix ctm, fz_irect tile)
 {
 	fz_context *ctx = doc->ctx;
-	fz_stext_page *st = folio_get_text(doc, cp);
+	fz_stext_page *st = folio_page_own_text(doc, cp);
 	fz_stext_block *b;
 	fz_pixmap *normal = NULL;
 

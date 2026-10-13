@@ -8,11 +8,11 @@
 #include <stddef.h>
 #include <stdio.h>
 
-enum { JOB_PAGE = 0, JOB_THUMB = 1, JOB_COVER = 2 };
+enum { JOB_PAGE = 0, JOB_THUMB = 1, JOB_COVER = 2, JOB_OCR = 3 };
 
 typedef struct {
 	void *owner;             /* the window */
-	int kind;                /* JOB_PAGE, JOB_THUMB or JOB_COVER */
+	int kind;                /* JOB_PAGE, JOB_THUMB, JOB_COVER or JOB_OCR */
 	folio_ctx *fc;
 	folio_doc *doc;
 	int page, gen;
@@ -27,6 +27,12 @@ typedef struct {
 	 * and returns the title and author. */
 	char path[256];
 	char title[128], author[96];
+	/* JOB_OCR: recognise the text on page loc with the data in datadir
+	 * (folio_ocr_page); chars gets its result. No sprite (area NULL). */
+	char datadir[256];
+	char lang[16];
+	int only_scans;
+	int chars;
 	/* results */
 	int ok, aborted, cs;
 	char err[128];

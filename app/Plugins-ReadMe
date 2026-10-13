@@ -12,3 +12,9 @@ Speech
   documents aloud with a natural-sounding voice: a speaker button appears on
   the toolbar, and Read aloud, Speak selection and Reading speed on the
   document's menu. See Speech.ReadMe.
+
+OCR
+  FolioOCR-<version>.zip: drag the !Folio in it over this one, which puts
+  its OCR folder here. It lets Folio read the text in scanned pages, so it
+  can be found, selected, copied and read aloud: a Text recognition entry
+  appears on the document's menu. See OCR.ReadMe.

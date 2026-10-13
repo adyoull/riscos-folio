@@ -20,10 +20,15 @@ RISCOS_TOOLCHAIN ?= /opt/riscos-crossdev-toolchain-1.4-x86_64-linux
 # (after its tools/build-espeak.sh); Folio links its build/ro/libpvoice.a.
 PVOICE_DIR ?= ../riscos-pvoice
 PV_INC := -I$(PVOICE_DIR)/src
+# Tesseract's English data for the OCR plugin and its test, from
+# tools/get-tessdata.sh: $(TESSDATA)/standard and $(TESSDATA)/fast.
+TESSDATA ?= ../tessdata
 export PATH := $(RISCOS_TOOLCHAIN)/bin:$(PATH)
 MUPDF ?= $(CURDIR)/mupdf/src
-MU_RO := $(MUPDF)/build/ro-release-tofu_cjk
-MU_AL := $(MUPDF)/build/armlinux-release-tofu_cjk
+MU_RO := $(MUPDF)/build/ro-release-tesseract-tofu_cjk
+MU_AL := $(MUPDF)/build/armlinux-release-tesseract-tofu_cjk
+# MuPDF with Tesseract (OCR) is part C++.
+MU_LIBS := -lmupdf -lmupdf-third -lstdc++ -lm -lpthread
 
 RO_CC := $(RISCOS_TOOLCHAIN)/bin/arm-riscos-gnueabihf-gcc
 RO_AR := $(RISCOS_TOOLCHAIN)/bin/arm-riscos-gnueabihf-ar
@@ -35,15 +40,16 @@ AL_CFLAGS := -O2 -g -marm -mcpu=cortex-a8 -mfpu=vfpv3 -mfloat-abi=hard \
 WARN := -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -std=gnu99
 INC := -Icore -Ithird/cjson -I$(MUPDF)/include
 
-CORE_SRC := core/doc.c core/render.c core/text.c core/dict.c core/annot.c core/security.c core/drawfile.c
+CORE_SRC := core/doc.c core/render.c core/text.c core/dict.c core/annot.c core/security.c core/drawfile.c \
+	core/ocr.c
 CORE_HDR := core/folio.h core/folio_int.h core/dict.h
 CORE_OBJ = $(CORE_SRC:core/%.c=build/$(1)/%.o) build/$(1)/cJSON.o
 
 WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c wimp/clip.c wimp/dict.c wimp/contents.c wimp/find.c wimp/toolbar.c wimp/thumbs.c wimp/annotui.c wimp/passui.c wimp/bookshelf.c wimp/shelfdata.c \
-	wimp/readtext.c wimp/speaker.c wimp/speech.c wimp/print.c wimp/printlay.c wimp/export.c
+	wimp/readtext.c wimp/speaker.c wimp/speech.c wimp/print.c wimp/printlay.c wimp/export.c wimp/ocrui.c
 WIMP_HDR := wimp/app.h wimp/tbx.h wimp/worker.h wimp/shelfdata.h wimp/readtext.h wimp/speaker.h \
 	core/folio.h core/dict.h
-VERSION ?= 0.0.1-test26
+VERSION ?= 0.0.1-test27
 
 all: build/ro/libfolio.a build/al/libfolio.a build/al/core_test build/ro/core_test.elf build/ro/folio.elf
 
@@ -69,20 +75,20 @@ build/al/libfolio.a: $(call CORE_OBJ,al)
 
 build/al/core_test: tests/core_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
-		-L$(MU_AL) -lmupdf -lmupdf-third -lm -lpthread -o $@
+		-L$(MU_AL) $(MU_LIBS) -o $@
 # Built for RISC OS too, so the checks see the core and MuPDF linked together.
-build/ro/core_test.elf: tests/core_test.c build/ro/libfolio.a
-	$(RO_CC) $(RO_CFLAGS) $(WARN) $(INC) -static $< build/ro/libfolio.a \
-		-L$(MU_RO) -lmupdf -lmupdf-third -lm -lpthread -o $@
+build/ro/core_test.elf: tests/core_test.c build/ro/libfolio.a build/ro/rostubs.o
+	$(RO_CC) $(RO_CFLAGS) $(WARN) $(INC) -static $< build/ro/libfolio.a build/ro/rostubs.o \
+		-L$(MU_RO) $(MU_LIBS) -o $@
 
 build/ro/wimp/%.o: wimp/%.c $(WIMP_HDR)
 	@mkdir -p $(@D)
 	$(RO_CC) $(RO_CFLAGS) $(WARN) $(INC) $(PV_INC) -Iwimp -c $< -o $@
 
 # The application (RISC OS only).
-build/ro/folio.elf: $(WIMP_SRC:wimp/%.c=build/ro/wimp/%.o) build/ro/libfolio.a
-	$(RO_CC) $(RO_CFLAGS) -static $(WIMP_SRC:wimp/%.c=build/ro/wimp/%.o) build/ro/libfolio.a \
-		$(PVOICE_DIR)/build/ro/libpvoice.a -L$(MU_RO) -lmupdf -lmupdf-third -lm -lpthread -o $@
+build/ro/folio.elf: $(WIMP_SRC:wimp/%.c=build/ro/wimp/%.o) build/ro/libfolio.a build/ro/rostubs.o
+	$(RO_CC) $(RO_CFLAGS) -static $(WIMP_SRC:wimp/%.c=build/ro/wimp/%.o) build/ro/libfolio.a build/ro/rostubs.o \
+		$(PVOICE_DIR)/build/ro/libpvoice.a -L$(MU_RO) $(MU_LIBS) -o $@
 
 # !Folio in build/app, and a zip with RISC OS filetypes.
 app: build/ro/folio.elf
@@ -123,6 +129,20 @@ plugin:
 	python3 $(RCD_DIR)/package/rozip.py build/FolioSpeech-$(VERSION).zip -C build/plugin '!Folio' 'ReadMe,fff'
 	@ls -l build/FolioSpeech-$(VERSION).zip
 
+# The OCR plugin: Tesseract's English data in two sizes, Accurate (the
+# standard set without its unused Tesseract 3 part, about 5 MB) and Fast
+# (about 4 MB), in an OCR folder for !Folio.Plugins; zipped as the Speech
+# plugin is, to drag over the reader's own !Folio.
+ocrplugin:
+	rm -rf build/ocrplugin && mkdir -p build/ocrplugin/!Folio/Plugins/OCR/Accurate build/ocrplugin/!Folio/Plugins/OCR/Fast
+	python3 -I tools/strip-tessdata.py $(TESSDATA)/standard/eng.traineddata 'build/ocrplugin/!Folio/Plugins/OCR/Accurate/eng,ffd'
+	cp $(TESSDATA)/fast/eng.traineddata 'build/ocrplugin/!Folio/Plugins/OCR/Fast/eng,ffd'
+	cp app/OCR/ReadMe 'build/ocrplugin/!Folio/Plugins/OCR/ReadMe,fff'
+	cp $(TESSDATA)/standard/LICENSE 'build/ocrplugin/!Folio/Plugins/OCR/DataLicence,fff'
+	cp app/OCR-Install build/ocrplugin/ReadMe,fff
+	python3 $(RCD_DIR)/package/rozip.py build/FolioOCR-$(VERSION).zip -C build/ocrplugin '!Folio' 'ReadMe,fff'
+	@ls -l build/FolioOCR-$(VERSION).zip
+
 tests/data/stamp: tests/make-data.sh tests/make-epub.py
 	tests/make-data.sh $(MU_AL)/mutool $(RCD_DIR)/qemu/aligntrap.sh
 	touch $@
@@ -130,15 +150,15 @@ tests/data/stamp: tests/make-data.sh tests/make-epub.py
 # The page worker, with a stand-in for the one RISC OS call it makes.
 build/al/worker_test: tests/worker_test.c wimp/worker.c wimp/worker.h build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -Iwimp -Itests/stub -no-pie tests/worker_test.c wimp/worker.c \
-		build/al/libfolio.a -L$(MU_AL) -lmupdf -lmupdf-third -lm -lpthread -o $@
+		build/al/libfolio.a -L$(MU_AL) $(MU_LIBS) -o $@
 
 build/al/dict_test: tests/dict_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
-		-L$(MU_AL) -lmupdf -lmupdf-third -lm -lpthread -o $@
+		-L$(MU_AL) $(MU_LIBS) -o $@
 
 build/al/annot_test: tests/annot_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
-		-L$(MU_AL) -lmupdf -lmupdf-third -lm -lpthread -o $@
+		-L$(MU_AL) $(MU_LIBS) -o $@
 
 build/al/printlay_test: tests/printlay_test.c wimp/printlay.c wimp/printlay.h
 	$(AL_CC) $(AL_CFLAGS) $(WARN) -Iwimp -no-pie tests/printlay_test.c wimp/printlay.c -lm -o $@
@@ -152,15 +172,19 @@ build/al/speaker_test: tests/speaker_test.c wimp/speaker.c wimp/speaker.h
 
 build/al/pagetext_test: tests/pagetext_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
-		-L$(MU_AL) -lmupdf -lmupdf-third -lm -lpthread -o $@
+		-L$(MU_AL) $(MU_LIBS) -o $@
 
 build/al/draw_test: tests/draw_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
-		-L$(MU_AL) -lmupdf -lmupdf-third -lm -lpthread -o $@
+		-L$(MU_AL) $(MU_LIBS) -o $@
 
 build/al/password_test: tests/password_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
-		-L$(MU_AL) -lmupdf -lmupdf-third -lm -lpthread -o $@
+		-L$(MU_AL) $(MU_LIBS) -o $@
+
+build/al/ocr_test: tests/ocr_test.c build/al/libfolio.a
+	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
+		-L$(MU_AL) $(MU_LIBS) -o $@
 
 build/al/shelf_test: tests/shelf_test.c wimp/shelfdata.c wimp/shelfdata.h
 	$(AL_CC) $(AL_CFLAGS) $(WARN) -Iwimp -no-pie tests/shelf_test.c wimp/shelfdata.c -o $@
@@ -168,9 +192,9 @@ build/al/shelf_test: tests/shelf_test.c wimp/shelfdata.c wimp/shelfdata.h
 # Find, with stand-ins for the Toolbox and the document window.
 build/al/find_test: tests/find_test.c wimp/find.c wimp/worker.c $(WIMP_HDR) build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -Iwimp -Itests/stub-wimp -no-pie tests/find_test.c wimp/find.c \
-		wimp/worker.c build/al/libfolio.a -L$(MU_AL) -lmupdf -lmupdf-third -lm -lpthread -o $@
+		wimp/worker.c build/al/libfolio.a -L$(MU_AL) $(MU_LIBS) -o $@
 
-test: build/al/core_test build/al/worker_test build/al/dict_test build/al/find_test build/al/annot_test build/al/password_test build/al/draw_test build/al/pagetext_test build/al/readtext_test build/al/printlay_test build/al/speaker_test build/al/shelf_test tests/data/stamp
+test: build/al/core_test build/al/worker_test build/al/dict_test build/al/find_test build/al/annot_test build/al/password_test build/al/draw_test build/al/pagetext_test build/al/readtext_test build/al/printlay_test build/al/speaker_test build/al/shelf_test build/al/ocr_test tests/data/stamp
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/core_test tests/data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/worker_test tests/data/doc.pdf
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/dict_test tests/dict
@@ -184,6 +208,7 @@ test: build/al/core_test build/al/worker_test build/al/dict_test build/al/find_t
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/speaker_test \
 		$(PVOICE_DIR)/voices/en_GB-southern_english_female-low.voice $(PVOICE_DIR)/build/espeak-ng-data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/shelf_test
+	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/ocr_test tests/data $(TESSDATA)/fast
 
 check: build/ro/core_test.elf
 	RISCOS_TOOLCHAIN=$(RISCOS_TOOLCHAIN) $(RCD_DIR)/checks/check-all.sh build/ro/core_test.elf
@@ -191,4 +216,4 @@ check: build/ro/core_test.elf
 clean:
 	rm -rf build tests/data/*.epub tests/data/*.pdf tests/data/stamp tests/out
 
-.PHONY: all app plugin test check clean
+.PHONY: all app plugin ocrplugin test check clean

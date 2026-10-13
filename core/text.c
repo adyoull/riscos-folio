@@ -8,6 +8,12 @@
 
 fz_stext_page *folio_get_text(folio_doc *doc, folio_cpage *cp)
 {
+	fz_stext_page *ocr = folio_ocr_text(doc, cp);
+	return ocr ? ocr : folio_page_own_text(doc, cp);
+}
+
+fz_stext_page *folio_page_own_text(folio_doc *doc, folio_cpage *cp)
+{
 	if (!cp->text) {
 		fz_stext_options opts;
 		fz_init_stext_options(doc->ctx, &opts);
