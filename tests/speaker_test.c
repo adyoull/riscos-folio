@@ -6,6 +6,7 @@
  * throws away what's queued; a bad voice fails cleanly. */
 #include "speaker.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -88,6 +89,39 @@ int main(int argc, char **argv)
 			CHECK(a && a->chunk == 5, "sentence %d after making room", i + 1);
 			speaker_free(a);
 		}
+	}
+
+	/* A long sentence comes a clause at a time: the same sentence span, a
+	 * clause flag on all but the last, and no long silences inside. */
+	{
+		const char *t6 = "When the evening came, and the lamps were lit along the harbour wall, "
+			"she walked slowly down to the water, wondering whether the ship would ever return.";
+		int parts = 0, ok = 1, total = 0, last_clause = 1;
+		speaker_push(6, t6, (int)strlen(t6), 1.0f);
+		while ((a = wait_audio(300)) != NULL) {
+			int k, run = 0, longest = 0;
+			parts++;
+			total += a->n;
+			if (a->chunk != 6 || a->start != 0 || a->end < (int)strlen(t6) - 1)
+				ok = 0;
+			for (k = 0; k < a->n; k++) {
+				run = abs(a->pcm[k]) < 300 ? run + 1 : 0;
+				if (run > longest)
+					longest = run;
+			}
+			printf("part %d: %.2f s, clause %d, longest quiet %.2f s\n", parts,
+				(double)a->n / speaker_rate(), a->clause, (double)longest / speaker_rate());
+			if (a->clause && longest > speaker_rate() * 6 / 10)
+				ok = 0;
+			last_clause = a->clause;
+			speaker_free(a);
+			if (!last_clause)
+				break;
+		}
+		CHECK(parts >= 2 && parts <= 4, "%d parts", parts);
+		CHECK(ok && !last_clause, "parts: spans, clause flags and silences");
+		CHECK(total < speaker_rate() * 8, "%.2f s in all (the whole sentence is about 6.5 s)",
+			(double)total / speaker_rate());
 	}
 
 	/* A stop throws away what's queued. */

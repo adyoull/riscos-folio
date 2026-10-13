@@ -45,7 +45,7 @@
  * a Pi 4), using a steady part of the machine instead of a burst of 100%
  * then nothing. */
 #define PERIOD_CS 10
-#define BEHIND_SECONDS 4
+#define BEHIND_SECONDS 5
 #define MIN_DUTY 0.15f
 
 typedef struct inflight {
@@ -83,6 +83,7 @@ static struct {
 	unsigned next_turn;       /* when the speech thread next gets time */
 	unsigned given, window_start;   /* time given to it, for the log */
 	float duty;               /* its share of each PERIOD_CS, smoothed */
+	int shown_chunk, shown_start, shown_end;   /* the sentence highlighted */
 	folio_point start_a, start_b;
 } sp;
 
@@ -379,6 +380,7 @@ static void clear_reading(void)
 		f = n;
 	}
 	sp.fly = sp.fly_tail = sp.shown = NULL;
+	sp.shown_chunk = -1;
 	rt_free(&sp.carry);
 	for (i = 0; i < CHUNKS; i++)
 		rt_free(&sp.chunk[i].c);
@@ -552,7 +554,9 @@ static void feed(void)
 			app_log("speech: %.2f s of speech made in %.2f s (x%.2f)", (double)a->n / rate,
 				a->cs / 100.0, a->n ? a->cs / 100.0 / ((double)a->n / rate) : 0.0);
 			f->a = a;
-			f->pause = rate * (a->paragraph ? 55 : 20) / 100;
+			/* Pauses: after a paragraph, a sentence, or a clause of a long
+			 * sentence (made separately: speaker.c). */
+			f->pause = rate * (a->paragraph ? 55 : a->clause ? 15 : 20) / 100;
 			f->stream_start = sp.added + sp.block_fill * 4;
 			f->stream_end = f->stream_start + (a->n + f->pause) * 4;
 			if (sp.fly_tail)
@@ -612,6 +616,12 @@ static void follow(void)
 	}
 	for (f = sp.fly; f; f = f->next)
 		if (played >= f->stream_start && played < f->stream_end && sp.shown != f) {
+			/* The next part of the same sentence: already shown. */
+			if (sp.shown_chunk == f->a->chunk && sp.shown_start == f->a->start &&
+					sp.shown_end == f->a->end) {
+				sp.shown = f;
+				break;
+			}
 			rt_chunk *c = chunk_by_id(f->a->chunk);
 			int pages[MAX_BOXES], n = 0;
 			folio_quad boxes[MAX_BOXES];
@@ -619,6 +629,9 @@ static void follow(void)
 				n = rt_boxes(c, f->a->start, f->a->end, quads_for, NULL, pages, boxes, MAX_BOXES);
 			docwin_set_spoken(sp.w, pages, boxes, n);
 			sp.shown = f;
+			sp.shown_chunk = f->a->chunk;
+			sp.shown_start = f->a->start;
+			sp.shown_end = f->a->end;
 			break;
 		}
 	speaker_set_unplayed((sp.added + sp.block_fill * 4 - played) / 4);

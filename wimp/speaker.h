@@ -15,6 +15,7 @@ typedef struct sp_audio {
 	int chunk;              /* the chunk's id */
 	int start, end;         /* the sentence's bytes in the chunk */
 	int paragraph;          /* a paragraph ends here (a longer pause after) */
+	int clause;             /* part of a long sentence, more to come (a short pause) */
 	short *pcm;
 	int n;
 	int cs;                 /* how long making it took (centiseconds) */

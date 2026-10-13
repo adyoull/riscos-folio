@@ -75,6 +75,68 @@ static int paragraph_after(const char *t, int len, int at)
 	return 1;
 }
 
+/* Long sentences are made a clause at a time, split after a comma, semicolon
+ * or colon, so the thread never has a long piece to finish before the
+ * listener needs it, and if it has to wait, the wait falls where a reader
+ * would breathe. Only sentences over SPLIT_OVER phonemes (about 4 s) are
+ * split, into parts of at least PART_MIN (about 1.5 s). */
+#ifndef SPLIT_OVER
+#define SPLIT_OVER 110
+#endif
+#define PART_MIN 40
+
+static int clause_mark(uint32_t c)
+{
+	return c == ',' || c == ';' || c == ':';
+}
+
+/* Where the parts of sentence s start: ends[] gets each part's end (an index
+ * into s->ph); returns the number of parts. */
+static int split_parts(const pv_sentence *s, int *ends, int max)
+{
+	int n = 0, start = 0, i;
+	if (s->n <= SPLIT_OVER) {
+		ends[0] = s->n;
+		return 1;
+	}
+	for (i = 0; i < s->n && n < max - 1; i++)
+		if (clause_mark(s->ph[i]) && i + 1 - start >= PART_MIN && s->n - (i + 1) >= PART_MIN) {
+			ends[n++] = i + 1;
+			start = i + 1;
+		}
+	ends[n++] = s->n;
+	return n;
+}
+
+/* The first and last sample louder than 5% of the peak (10 ms windows). */
+static void voiced(const float *f, int n, int rate, float peak, int *a, int *b)
+{
+	int w = rate / 100, i, j;
+	float t = peak * 0.05f;
+	*a = 0;
+	*b = n;
+	if (w < 1 || n < w)
+		return;
+	for (i = 0; i + w <= n; i += w) {
+		float m = 0;
+		for (j = i; j < i + w; j++)
+			if (fabsf(f[j]) > m)
+				m = fabsf(f[j]);
+		if (m > t)
+			break;
+	}
+	*a = i + w <= n ? i : 0;
+	for (i = n - w; i >= *a; i -= w) {
+		float m = 0;
+		for (j = i; j < i + w; j++)
+			if (fabsf(f[j]) > m)
+				m = fabsf(f[j]);
+		if (m > t)
+			break;
+	}
+	*b = i >= *a ? i + w : n;
+}
+
 static void speak_chunk(sp_chunk *c, int mygen)
 {
 	pv_sentence *s;
@@ -86,77 +148,112 @@ static void speak_chunk(sp_chunk *c, int mygen)
 	o.length_scale *= c->length_scale;
 	o.stop = &stop_now;
 	for (i = 0; i < n; i++) {
-		int ids[4096], k, ns = 0;
-		unsigned t0;
-		float *f, peak = 0.01f, gain;
-		sp_audio *a;
-		/* Not too far ahead of the listener. */
-		pthread_mutex_lock(&mu);
-		while (!quitting && gen == mygen && ahead_enough()) {
-			busy = 0;          /* waiting isn't work: no need to give it time */
-			waiting_room = 1;
-			pthread_cond_wait(&cv, &mu);
-		}
-		waiting_room = 0;
-		busy = 1;
-		if (quitting || gen != mygen) {
-			pthread_mutex_unlock(&mu);
-			break;
-		}
-		pthread_mutex_unlock(&mu);
-
-		k = pv_phonemes_to_ids(voice, s[i].ph, s[i].n, ids, 4096);
-		t0 = speaker_clock();
-		f = pv_synthesize(voice, ids, k, &o, &ns, NULL);
-		if (!f)
-			continue;           /* stopped, or out of memory */
-		/* Up to a rate the sound system plays as it is (16 kHz x 3 = 48 kHz)
-		 * with a proper filter: its own rate conversion left a tinny edge. */
-		if (up_factor > 1) {
-			int nu = 0;
-			float *u = pv_upsample(f, ns, up_factor, &nu);
-			if (u) {
-				free(f);
-				f = u;
-				ns = nu;
+		int ends[32], parts = split_parts(&s[i], ends, 32), p, from = 0;
+		float ref = 0;          /* the sentence's loudness so far */
+		for (p = 0; p < parts; from = ends[p], p++) {
+			int ids[4096], k, ns = 0, va, vb, keep0, keep1, srate;
+			unsigned t0;
+			float *f, peak = 0.01f, gain;
+			sp_audio *a;
+			int first = p == 0, last = p == parts - 1;
+			/* Not too far ahead of the listener (between parts too: a
+			 * natural place to wait). */
+			pthread_mutex_lock(&mu);
+			while (!quitting && gen == mygen && ahead_enough()) {
+				busy = 0;          /* waiting isn't work: no need to give it time */
+				waiting_room = 1;
+				pthread_cond_wait(&cv, &mu);
 			}
-		}
-		a = calloc(1, sizeof *a);
-		if (a)
-			a->pcm = malloc((ns ? ns : 1) * sizeof *a->pcm);
-		if (!a || !a->pcm) {
-			free(a);
+			waiting_room = 0;
+			busy = 1;
+			if (quitting || gen != mygen) {
+				pthread_mutex_unlock(&mu);
+				goto done;
+			}
+			pthread_mutex_unlock(&mu);
+
+			k = pv_phonemes_to_ids(voice, s[i].ph + from, ends[p] - from, ids, 4096);
+			t0 = speaker_clock();
+			f = pv_synthesize(voice, ids, k, &o, &ns, NULL);
+			if (!f)
+				continue;           /* stopped, or out of memory */
+			srate = pv_sample_rate(voice);
+			for (k = 0; k < ns; k++)
+				if (fabsf(f[k]) > peak)
+					peak = fabsf(f[k]);
+			/* A part on its own starts and ends in silence (sometimes a
+			 * second of it): keep 30 ms either side of the voice where it
+			 * joins another part; the pause between them is speech.c's. */
+			keep0 = 0;
+			keep1 = ns;
+			if (parts > 1) {
+				voiced(f, ns, srate, peak, &va, &vb);
+				if (!first)
+					keep0 = va - srate * 3 / 100 > 0 ? va - srate * 3 / 100 : 0;
+				if (!last)
+					keep1 = vb + srate * 3 / 100 < ns ? vb + srate * 3 / 100 : ns;
+				if (keep1 <= keep0) {
+					keep0 = 0;
+					keep1 = ns;
+				}
+				if (keep0 > 0)
+					memmove(f, f + keep0, (keep1 - keep0) * sizeof *f);
+				ns = keep1 - keep0;
+			}
+			/* Up to a rate the sound system plays as it is (16 kHz x 3 =
+			 * 48 kHz) with a proper filter: its own rate conversion left a
+			 * tinny edge. */
+			if (up_factor > 1) {
+				int nu = 0;
+				float *u = pv_upsample(f, ns, up_factor, &nu);
+				if (u) {
+					free(f);
+					f = u;
+					ns = nu;
+				}
+			}
+			a = calloc(1, sizeof *a);
+			if (a)
+				a->pcm = malloc((ns ? ns : 1) * sizeof *a->pcm);
+			if (!a || !a->pcm) {
+				free(a);
+				free(f);
+				continue;
+			}
+			/* To 16 bits as Piper does, the peak to near full scale; one
+			 * level for the whole sentence (the loudest part so far), so
+			 * its parts match. */
+			if (peak > ref)
+				ref = peak;
+			gain = 32767.0f * 0.9f / ref;
+			for (k = 0; k < ns; k++) {
+				float v = f[k] * gain;
+				a->pcm[k] = (short)lrintf(v > 32767.0f ? 32767.0f : v < -32767.0f ? -32767.0f : v);
+			}
 			free(f);
-			continue;
+			a->n = ns;
+			a->cs = (int)(speaker_clock() - t0);
+			a->chunk = c->id;
+			a->start = s[i].start;
+			a->end = s[i].end;
+			a->clause = !last;
+			a->paragraph = last && paragraph_after(c->text, c->len, s[i].end);
+			pthread_mutex_lock(&mu);
+			if (gen == mygen && !quitting) {
+				if (out_tail)
+					out_tail->next = a;
+				else
+					out_head = a;
+				out_tail = a;
+				out_samples += ns;
+				out_count++;
+				a = NULL;
+			}
+			pthread_mutex_unlock(&mu);
+			speaker_free(a);
 		}
-		/* To 16 bits as Piper does: the sentence's peak to near full scale. */
-		for (k = 0; k < ns; k++)
-			if (fabsf(f[k]) > peak)
-				peak = fabsf(f[k]);
-		gain = 32767.0f * 0.9f / peak;
-		for (k = 0; k < ns; k++)
-			a->pcm[k] = (short)lrintf(f[k] * gain);
-		free(f);
-		a->n = ns;
-		a->cs = (int)(speaker_clock() - t0);
-		a->chunk = c->id;
-		a->start = s[i].start;
-		a->end = s[i].end;
-		a->paragraph = paragraph_after(c->text, c->len, s[i].end);
-		pthread_mutex_lock(&mu);
-		if (gen == mygen && !quitting) {
-			if (out_tail)
-				out_tail->next = a;
-			else
-				out_head = a;
-			out_tail = a;
-			out_samples += ns;
-			out_count++;
-			a = NULL;
-		}
-		pthread_mutex_unlock(&mu);
-		speaker_free(a);
 	}
+done:
 	pv_sentences_free(s, n);
 }
 

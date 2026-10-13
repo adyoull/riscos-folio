@@ -32,7 +32,10 @@ Using it
   It works up to about 12 seconds ahead of what you're hearing, at a steady
   pace: a share of the machine's time that grows when it gets close to
   catching up and shrinks as it gets ahead, rather than bursts of all of
-  it. When it's far enough ahead it rests.
+  it. When it's far enough ahead it rests. Long sentences are made a
+  clause at a time (split after a comma, semicolon or colon), so it never
+  has a long piece to finish before you need it, and any wait falls where
+  a reader would take a breath.
 
 If there are gaps between sentences
   Every 10 seconds <Wimp$ScrapDir>.FolioLog gets a line such as
