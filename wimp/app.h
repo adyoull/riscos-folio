@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test30 (13-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test31 (13-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -65,6 +65,10 @@ typedef struct {
 	int ocr_fast;               /* text recognition: Fast rather than Accurate */
 	int ocr_auto;               /* recognise scanned pages while reading */
 	ObjectId ocr_menu;
+	int speech_urgent;          /* reading aloud is close to running out: background
+	                             * work (drawing pages ahead, thumbnails, measuring,
+	                             * text recognition) waits, as the worker thread
+	                             * shares the machine with the voice */
 } app_state;
 
 extern app_state app;

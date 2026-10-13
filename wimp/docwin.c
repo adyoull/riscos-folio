@@ -1319,7 +1319,8 @@ int docwin_background(void)
 			app_log("%s: opened at page %d", w->title, t + 1);
 		}
 		busy |= w->counting || w->pending_mark || w->goto_page >= 0;
-		busy |= measure_step(w);
+		if (!app.speech_urgent)
+			busy |= measure_step(w);
 	}
 
 	/* Recognising text takes seconds: a page that needs drawing now comes
@@ -1337,7 +1338,7 @@ int docwin_background(void)
 	/* Give the worker a page if it has none. */
 	if (worker_idle()) {
 		for (w = windows; w; w = w->next) {
-			int page = w->want_render ? wanted_page(w, 0) : -1;
+			int page = w->want_render ? wanted_page(w, app.speech_urgent) : -1;
 			if (page < 0) {
 				w->want_render = 0;
 				continue;
@@ -1347,7 +1348,7 @@ int docwin_background(void)
 		}
 	}
 	/* Then thumbnails for open drawers. */
-	if (worker_idle()) {
+	if (worker_idle() && !app.speech_urgent) {
 		const render_job *cur = worker_current();
 		for (w = windows; w; w = w->next) {
 			int px_w, px_h, gen, page;

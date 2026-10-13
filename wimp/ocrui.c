@@ -313,6 +313,9 @@ int ocr_win_next(ocr_win *o)
 		return 1;
 	if (o->asked >= 0 && o->asked < o->n && submit(o, o->asked, 0))
 		return 1;
+	/* Reading aloud is short of time: only what it's waiting for. */
+	if (app.speech_urgent)
+		return 0;
 	if (app.ocr_auto) {
 		cur = docwin_current_page(o->w);
 		dir = docwin_reading_dir(o->w);

@@ -258,6 +258,12 @@ typedef struct {
 	int tb_wimp;            /* the toolbar's Wimp window (once fitted) */
 	int scroller;           /* the arrows' Wimp window, or 0 */
 	int scx;                /* how far it's scrolled */
+	/* The last fit that the Wimp didn't take as asked (e.g. the window runs
+	 * off the screen, so the pane is clipped): the parent's x0 and width,
+	 * and the toolbar's state it gave. Not asked again until something
+	 * changes (test29 reopened it on every poll, slowing reading aloud). */
+	int fit_x0, fit_want, fit_got_x0, fit_got_x1, fit_got_scx;
+	int logged_want;        /* the width last logged */
 } shown_state;
 
 static shown_state shown[16];
@@ -703,7 +709,12 @@ void toolbar_fit(ObjectId tb, int parent_wimp)
 	if (scx < 0)
 		scx = 0;
 	if (st[1] != ps[1] || st[3] - st[1] != want || st[5] != scx) {
-		if (st[3] - st[1] != want)
+		if (s->fit_want == want && s->fit_x0 == ps[1] && s->fit_got_x0 == st[1] &&
+				s->fit_got_x1 == st[3] && s->fit_got_scx == st[5]) {
+			place_scroller(s, st);
+			return;           /* asked already: this is what the Wimp allows */
+		}
+		if (st[3] - st[1] != want && want != s->logged_want && (s->logged_want = want) != 0)
 			app_log("toolbar: %d wide (%s)%s", want, parent != -1 ? "child" : "pane",
 				want < content_w ? ", scrolls" : "");
 		st[1] = ps[1];
@@ -713,6 +724,15 @@ void toolbar_fit(ObjectId tb, int parent_wimp)
 		tb_reopen(st, parent, nest);
 		if (tb_state(wh, st, &parent, &nest))
 			return;
+		if (st[1] != ps[1] || st[3] - st[1] != want || st[5] != scx) {
+			s->fit_x0 = ps[1];
+			s->fit_want = want;
+			s->fit_got_x0 = st[1];
+			s->fit_got_x1 = st[3];
+			s->fit_got_scx = st[5];
+		} else {
+			s->fit_want = 0;
+		}
 	}
 	place_scroller(s, st);
 }

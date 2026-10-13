@@ -48,6 +48,7 @@ static pv_voice *voice;
 
 static unsigned no_clock(void) { return 0; }
 unsigned (*speaker_clock)(void) = no_clock;
+volatile unsigned speaker_given;
 
 static void free_chunk(sp_chunk *c)
 {
@@ -152,7 +153,7 @@ static void speak_chunk(sp_chunk *c, int mygen)
 		float ref = 0;          /* the sentence's loudness so far */
 		for (p = 0; p < parts; from = ends[p], p++) {
 			int ids[4096], k, ns = 0, va, vb, keep0, keep1, srate;
-			unsigned t0;
+			unsigned t0, g0;
 			float *f, peak = 0.01f, gain;
 			sp_audio *a;
 			int first = p == 0, last = p == parts - 1;
@@ -174,6 +175,7 @@ static void speak_chunk(sp_chunk *c, int mygen)
 
 			k = pv_phonemes_to_ids(voice, s[i].ph + from, ends[p] - from, ids, 4096);
 			t0 = speaker_clock();
+			g0 = speaker_given;
 			f = pv_synthesize(voice, ids, k, &o, &ns, NULL);
 			if (!f)
 				continue;           /* stopped, or out of memory */
@@ -233,6 +235,7 @@ static void speak_chunk(sp_chunk *c, int mygen)
 			free(f);
 			a->n = ns;
 			a->cs = (int)(speaker_clock() - t0);
+			a->given = (int)(speaker_given - g0);
 			a->chunk = c->id;
 			a->start = s[i].start;
 			a->end = s[i].end;

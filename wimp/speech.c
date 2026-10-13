@@ -34,7 +34,7 @@
 
 #define BLOCK_FRAMES 1024
 #define BLOCK_BYTES (BLOCK_FRAMES * 4)       /* 16-bit stereo */
-#define QUEUE_SECONDS 1                      /* kept queued in StreamManager */
+#define QUEUE_SECONDS 2                      /* kept queued in StreamManager */
 #define CHUNKS 8                             /* chunks kept for their boxes */
 #define MAX_BOXES 64
 /* Time for the speech thread is given out steadily: in every PERIOD_CS, a
@@ -46,6 +46,7 @@
  * then nothing. */
 #define PERIOD_CS 10
 #define BEHIND_SECONDS 5
+#define URGENT_SECONDS 7
 #define MIN_DUTY 0.15f
 
 typedef struct inflight {
@@ -396,6 +397,7 @@ void speech_stop(void)
 	clear_reading();
 	sp.w = NULL;
 	sp.start_wait = 0;
+	app.speech_urgent = 0;
 	sp.duty = 0;
 	sp.window_start = 0;
 	docwin_set_spoken(w, NULL, NULL, 0);
@@ -551,8 +553,11 @@ static void feed(void)
 				speaker_free(a);
 				break;
 			}
-			app_log("speech: %.2f s of speech made in %.2f s (x%.2f)", (double)a->n / rate,
-				a->cs / 100.0, a->n ? a->cs / 100.0 / ((double)a->n / rate) : 0.0);
+			/* What it cost: the time given to the thread while it was made
+			 * (the clock time is longer: it's paced). */
+			app_log("speech: %.2f s of speech made with %.2f s of the machine (x%.2f), over %.2f s",
+				(double)a->n / rate, a->given / 100.0,
+				a->n ? a->given / 100.0 / ((double)a->n / rate) : 0.0, a->cs / 100.0);
 			f->a = a;
 			/* Pauses: after a paragraph, a sentence, or a clause of a long
 			 * sentence (made separately: speaker.c). */
@@ -642,8 +647,10 @@ int speech_background(unsigned *wake)
 	char err[200];
 	int st;
 	*wake = 0;
-	if (!sp.w)
+	if (!sp.w) {
+		app.speech_urgent = 0;
 		return 0;
+	}
 	st = speaker_state(err, sizeof err);
 	if (st == SP_FAILED) {
 		char msg[300];
@@ -688,6 +695,9 @@ int speech_background(unsigned *wake)
 		float duty, span;
 		if (sp.fly_tail && sp.fly_tail->pos < sp.fly_tail->a->n + sp.fly_tail->pause)
 			ready += sp.fly_tail->a->n + sp.fly_tail->pause - sp.fly_tail->pos;
+		/* Below URGENT_SECONDS the rest of Folio holds back its own
+		 * background work (docwin.c), so the voice has the machine. */
+		app.speech_urgent = st == SP_READY && ready < URGENT_SECONDS * rate;
 		span = (float)(SPEAKER_AHEAD_SECONDS - BEHIND_SECONDS) * rate;
 		duty = st != SP_READY ? 1.0f : (SPEAKER_AHEAD_SECONDS * (float)rate - ready) / span;
 		if (duty > 1.0f)
@@ -706,6 +716,7 @@ int speech_background(unsigned *wake)
 				pthread_yield();
 			while (speaker_busy() && now_cs() - t0 < slice);
 			sp.given += now_cs() - t0;
+			speaker_given += now_cs() - t0;
 			/* The next turn a period after this one started; if it ran
 			 * late (other tasks), not before a fair gap. */
 			sp.next_turn = t0 + PERIOD_CS;
@@ -726,6 +737,7 @@ int speech_background(unsigned *wake)
 		*wake = sp.next_turn;
 		return 0;
 	}
+	app.speech_urgent = 0;     /* ahead, and resting */
 	*wake = now_cs() + 10;
 	return 0;
 }

@@ -19,12 +19,17 @@ typedef struct sp_audio {
 	short *pcm;
 	int n;
 	int cs;                 /* how long making it took (centiseconds) */
+	int given;              /* of which time given to the thread (speaker_given) */
 } sp_audio;
 
 enum { SP_OFF, SP_LOADING, SP_READY, SP_FAILED };
 
 /* The clock the thread times sentences with (centiseconds); set it first. */
 extern unsigned (*speaker_clock)(void);
+/* Centiseconds of time the main thread has given the speech thread so far
+ * (it adds to it): what a sentence really cost, now that the thread is
+ * paced (speech.c). */
+extern volatile unsigned speaker_given;
 
 /* Starts the thread, which loads the voice and eSpeak's data. 0 or -1. */
 int speaker_start(const char *voice_path, const char *espeak_dir);

@@ -38,7 +38,13 @@ Using it
   a reader would take a breath.
 
 If there are gaps between sentences
-  Every 10 seconds <Wimp$ScrapDir>.FolioLog gets a line such as
+  While it's close to running out, Folio holds back its other background
+  work (drawing pages ahead, thumbnails, text recognition) so the voice
+  has the machine; the page you're looking at is still drawn.
+  Each sentence is logged with what it cost, e.g. "speech: 4.20 s of
+  speech made with 2.90 s of the machine (x0.69), over 5.10 s": if the
+  x figure is over 1, the machine can't keep up even with all the time.
+  Every 10 seconds <Wimp$ScrapDir>.FolioLog also gets a line such as
   "speech: 55% of the time to the voice over 10 s; 7.5 s ready". If
   "ready" keeps falling towards 0 while the share is near 100%, the
   machine can't keep up: close other busy tasks, or try Faster.
