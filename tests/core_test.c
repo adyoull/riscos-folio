@@ -478,6 +478,33 @@ int main(int argc, char **argv)
 	test_pdf(fc, dir);
 	printf("Abort\n");
 	test_abort(fc, dir);
+	printf("Text ends\n");
+	{
+		/* footer.pdf: each page's number is first in its text but at the
+		 * bottom right, where the corner nearest the page's end is. */
+		folio_doc *f = folio_open(fc, data(dir, "footer.pdf"), NULL);
+		CHECK(f != NULL, "open footer.pdf: %s", folio_error(fc));
+		if (f) {
+			folio_point st = { FOLIO_TEXT_START, 0 }, en = { FOLIO_TEXT_END, 0 };
+			folio_point corner = { 595, 842 }, mid = { 49, 105 };
+			folio_quad q[16];
+			char *t;
+			t = folio_selection_text(f, (folio_loc){ 0, 0 }, mid, corner);
+			printf("  (to the corner instead: '%s')\n", t ? t : "");
+			folio_free(f, t);
+			t = folio_selection_text(f, (folio_loc){ 0, 0 }, mid, en);
+			CHECK(t && strstr(t, "Page 1 line 2") && strstr(t, "Page 1 line 3.") && !strstr(t, "line 1"),
+				"line 2 to the end: '%s'", t ? t : "(null)");
+			folio_free(f, t);
+			t = folio_selection_text(f, (folio_loc){ 0, 1 }, st, en);
+			CHECK(t && strstr(t, "30") && strstr(t, "Page 2 line 1") && strstr(t, "Page 2 line 3."),
+				"whole page 2: '%s'", t ? t : "(null)");
+			folio_free(f, t);
+			CHECK(folio_selection_quads(f, (folio_loc){ 0, 1 }, st, en, q, 16) == 4,
+				"whole page 2 is four lines");
+			folio_close(f);
+		}
+	}
 	printf("Page sizes\n");
 	{
 		/* mixed.pdf: A5 (420 x 595), then A4 (595 x 842), then A4 landscape. */

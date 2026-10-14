@@ -183,6 +183,12 @@ typedef enum { FOLIO_SELECT_CHARS, FOLIO_SELECT_WORDS, FOLIO_SELECT_LINES } foli
  * lines; a and b are updated to the snapped ends. */
 int folio_snap(folio_doc *doc, folio_loc loc, folio_point *a, folio_point *b,
 		folio_select_mode mode);
+/* A selection end can be the first or last character of the page's text
+ * (in reading order), whatever is nearest the page's corners: a point whose
+ * x is FOLIO_TEXT_START or FOLIO_TEXT_END (y is ignored). For selections
+ * over several pages. */
+#define FOLIO_TEXT_START (-100000.0f)
+#define FOLIO_TEXT_END   (-200000.0f)
 /* Quads covering the selection from a to b, for drawing it. Returns the
  * number written (up to max), or -1. */
 int folio_selection_quads(folio_doc *doc, folio_loc loc, folio_point a, folio_point b,

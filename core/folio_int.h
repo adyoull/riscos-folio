@@ -103,4 +103,8 @@ static inline folio_quad from_fz_quad(fz_quad q)
 }
 static inline folio_rect from_fz_rect(fz_rect r) { folio_rect q = { r.x0, r.y0, r.x1, r.y1 }; return q; }
 
+/* A selection end in page space, with FOLIO_TEXT_START/END resolved to
+ * the first or last character of st (text.c). */
+fz_point folio_sel_point(fz_context *ctx, fz_stext_page *st, folio_cpage *cp, folio_point p);
+
 #endif

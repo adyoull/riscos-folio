@@ -46,6 +46,35 @@ static folio_quad quad_from_page(folio_cpage *cp, fz_quad q)
 	return r;
 }
 
+fz_point folio_sel_point(fz_context *ctx, fz_stext_page *st, folio_cpage *cp, folio_point p)
+{
+	fz_stext_block *b;
+	fz_stext_line *l;
+	fz_stext_char *ch, *first = NULL, *last = NULL;
+	if (p.x != FOLIO_TEXT_START && p.x != FOLIO_TEXT_END)
+		return to_page(cp, p);
+	for (b = st ? st->first_block : NULL; b; b = b->next) {
+		if (b->type != FZ_STEXT_BLOCK_TEXT)
+			continue;
+		for (l = b->u.t.first_line; l; l = l->next)
+			for (ch = l->first_char; ch; ch = ch->next) {
+				if (!first)
+					first = ch;
+				last = ch;
+			}
+	}
+	/* The middle of the first character's leading edge, or of the last's
+	 * trailing edge: MuPDF's selection takes the character boundary nearest
+	 * a point, so these are exactly before the first and after the last. */
+	if (p.x == FOLIO_TEXT_START)
+		return first ? fz_make_point((first->quad.ul.x + first->quad.ll.x) / 2,
+				(first->quad.ul.y + first->quad.ll.y) / 2) :
+			fz_make_point(cp->bounds.x0, cp->bounds.y0);
+	return last ? fz_make_point((last->quad.ur.x + last->quad.lr.x) / 2,
+			(last->quad.ur.y + last->quad.lr.y) / 2) :
+		fz_make_point(cp->bounds.x1, cp->bounds.y1);
+}
+
 static int fz_mode(folio_select_mode m)
 {
 	return m == FOLIO_SELECT_WORDS ? FZ_SELECT_WORDS :
@@ -85,7 +114,9 @@ int folio_selection_quads(folio_doc *doc, folio_loc loc, folio_point a, folio_po
 	fz_try(ctx) {
 		folio_cpage *cp = folio_get_page(doc, loc);
 		q = fz_malloc_array(ctx, max, fz_quad);
-		n = fz_highlight_selection(ctx, folio_get_text(doc, cp), to_page(cp, a), to_page(cp, b), q, max);
+		fz_stext_page *st = folio_get_text(doc, cp);
+		n = fz_highlight_selection(ctx, st, folio_sel_point(ctx, st, cp, a),
+			folio_sel_point(ctx, st, cp, b), q, max);
 		for (i = 0; i < n; i++)
 			quads[i] = quad_from_page(cp, q[i]);
 	}
@@ -106,7 +137,9 @@ char *folio_selection_text(folio_doc *doc, folio_loc loc, folio_point a, folio_p
 	fz_var(s);
 	fz_try(ctx) {
 		folio_cpage *cp = folio_get_page(doc, loc);
-		s = fz_copy_selection(ctx, folio_get_text(doc, cp), to_page(cp, a), to_page(cp, b), 0);
+		fz_stext_page *st = folio_get_text(doc, cp);
+		s = fz_copy_selection(ctx, st, folio_sel_point(ctx, st, cp, a),
+			folio_sel_point(ctx, st, cp, b), 0);
 	}
 	fz_catch(ctx) {
 		folio_set_error(doc->fc);

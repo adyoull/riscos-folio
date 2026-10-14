@@ -90,6 +90,19 @@ for sz in "420 595" "595 842" "842 595"; do
 	printf '%%%%MediaBox 0 0 %s\n%%%%Font Helv Helvetica\nBT /Helv 24 Tf 40 40 Td (Page of %s) Tj ET\n' "$sz" "$sz" > "m${sz%% *}.txt"
 done
 "$AT" "$MUTOOL" create -o mixed.pdf m420.txt m595.txt m842.txt
+# Two pages whose page number comes first in the text but sits at the
+# bottom right (as in many manuals): selections over several pages.
+for pg in 1 2; do
+	{
+		printf '%%%%MediaBox 0 0 595 842\n%%%%Font Helv Helvetica\n'
+		printf 'BT /Helv 10 Tf 540 30 Td (%s) Tj ET\n' $((pg + 28))
+		for l in 1 2 3; do
+			printf 'BT /Helv 14 Tf 50 %d Td (Page %s line %s.) Tj ET\n' $((780 - l * 24)) $pg $l
+		done
+	} > "f$pg.txt"
+done
+"$AT" "$MUTOOL" create -o footer.pdf f1.txt f2.txt
+rm -f f1.txt f2.txt
 # Restricted: no password to open, owner password "owner"; printing and
 # copying not allowed, accessibility (reading aloud) and notes allowed.
 "$AT" "$MUTOOL" clean -E aes-256 -O owner -U "" -P -2080 doc.pdf restricted.pdf

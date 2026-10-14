@@ -1636,9 +1636,14 @@ static int sel_bounds(docwin *w, int p, folio_point *s, folio_point *e)
 	sel_span(w, &lo, &hi, &a, &b);
 	if (p < lo || p > hi)
 		return 0;
-	s->x = s->y = 0;
-	e->x = pt_w(w, p);
-	e->y = pt_h(w, p);
+	/* The first and last characters of the text, not the page's corners:
+	 * the character nearest a corner can be a page number or heading that
+	 * comes anywhere in the text's order, and the part of the page selected
+	 * was then the wrong part, or nothing (test38). */
+	s->x = FOLIO_TEXT_START;
+	s->y = 0;
+	e->x = FOLIO_TEXT_END;
+	e->y = 0;
 	if (p == lo)
 		*s = a;
 	if (p == hi)
@@ -2242,10 +2247,10 @@ static void sel_all(docwin *w)
 	sel_clear(w);
 	w->sel = 1;
 	w->sel_page = w->sel_end = page;
-	w->sel_a.x = 0;
+	w->sel_a.x = FOLIO_TEXT_START;
 	w->sel_a.y = 0;
-	w->sel_b.x = pt_w(w, page);
-	w->sel_b.y = pt_h(w, page);
+	w->sel_b.x = FOLIO_TEXT_END;
+	w->sel_b.y = 0;
 	sel_show(w);
 }
 

@@ -118,7 +118,8 @@ int folio_annot_markup(folio_doc *doc, folio_loc loc, folio_annot_kind kind,
 		folio_cpage *cp = folio_get_page(doc, loc);
 		fz_stext_page *st = folio_get_text(doc, cp);
 		pdf_page *page = pdf_page_from_fz_page(ctx, cp->page);
-		n = fz_highlight_selection(ctx, st, to_page(cp, a), to_page(cp, b), q, (int)(sizeof q / sizeof q[0]));
+		n = fz_highlight_selection(ctx, st, folio_sel_point(ctx, st, cp, a),
+			folio_sel_point(ctx, st, cp, b), q, (int)(sizeof q / sizeof q[0]));
 		if (n <= 0)
 			fz_throw(ctx, FZ_ERROR_ARGUMENT, "no text selected");
 		pdf_begin_operation(ctx, pdf, op_name(kind));
