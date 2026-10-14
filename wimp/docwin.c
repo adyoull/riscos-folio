@@ -651,9 +651,10 @@ static int row_step(docwin *w, int by)
 
 static void scroll_to(docwin *w, int y)
 {
-	formui_commit(w);
 	int st[9];
 	get_state(w, st);
+	if (y != st[6])
+		formui_commit(w);     /* the page moves from under the field */
 	st[6] = y;
 	_swix(Wimp_OpenWindow, _IN(1), st);
 }
@@ -3221,7 +3222,20 @@ int docwin_toolbar_key(docwin *w, int key)
 /* An Open_Window_Request (moved, resized, scrolled, brought to the front). */
 void docwin_open_request(docwin *w, int *b)
 {
-	formui_commit(w);         /* a field being typed in: kept, as the page moves */
+	/* A field being typed in: kept (and the editor closed) if the page moves
+	 * or the window changes size; brought to the front with it otherwise.
+	 * (A click brings the window to the front: test42-43 closed the editor
+	 * each time, so the caret showed for a moment and went.) */
+	int raise_editor = 0;
+	{
+		int st[9];
+		get_state(w, st);
+		if (st[1] != b[1] || st[2] != b[2] || st[3] != b[3] || st[4] != b[4] ||
+				st[5] != b[5] || st[6] != b[6])
+			formui_commit(w);
+		else
+			raise_editor = 1;
+	}
 	if (w->full) {
 		/* Full screen stays over the whole screen. */
 		b[1] = 0;
@@ -3229,6 +3243,8 @@ void docwin_open_request(docwin *w, int *b)
 		b[3] = app.screen_w;
 		b[4] = app.screen_h;
 		_swix(Wimp_OpenWindow, _IN(1), b);
+		if (raise_editor)
+			formui_raise(w);
 		return;
 	}
 	/* The toolbar is a pane: open it along the top of where the window is
@@ -3243,6 +3259,8 @@ void docwin_open_request(docwin *w, int *b)
 	else if (w->show_toolbar)
 		toolbar_fit(w->toolbar, w->wimp);
 	w->fit_polls = 2;
+	if (raise_editor)
+		formui_raise(w);
 }
 
 /* ---- Annotations ---------------------------------------------------------- */

@@ -330,7 +330,28 @@ void formui_lose_caret(int handle)
 	_swix(Wimp_GetCaretPosition, _IN(1), caret);
 	if (caret[0] == fe.handle)
 		return;
+	/* Taken by the document window itself (not by a click on it, which
+	 * keeps the field first): put it back. */
+	if (fe.w && caret[0] == docwin_wimp(fe.w)) {
+		app_log("form: the caret went to the document window: put back");
+		formui_raise(fe.w);
+		_swix(Wimp_SetCaretPosition, _INR(0, 5), fe.handle, 0, 0, 0, -1, (int)strlen(fe.buf[0]));
+		return;
+	}
 	commit();
+}
+
+/* The document window came to the front: the editor goes in front of it. */
+void formui_raise(docwin *w)
+{
+	int st[9];
+	if (fe.w != w || !fe.handle)
+		return;
+	st[0] = fe.handle;
+	if (_swix(Wimp_GetWindowState, _IN(1), st))
+		return;
+	st[7] = -1;
+	_swix(Wimp_OpenWindow, _IN(1), st);
 }
 
 /* ---- Choices menu ----------------------------------------------------------- */
