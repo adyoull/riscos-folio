@@ -229,6 +229,16 @@ int worker_take(render_job *out)
 	return 1;
 }
 
+/* Asks the running job to stop, without waiting for it: its result comes
+ * back as usual, marked aborted. */
+void worker_abort_current(void)
+{
+	pthread_mutex_lock(&job_mutex);
+	if (state == RUNNING && job.doc)
+		folio_abort(job.doc);
+	pthread_mutex_unlock(&job_mutex);
+}
+
 void worker_stop_for(void *owner)
 {
 	render_job r;

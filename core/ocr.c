@@ -355,7 +355,9 @@ int folio_ocr_page(folio_doc *doc, folio_loc loc, const char *datadir, const cha
 	fz_device *ocr = NULL;
 	word_device *wd = NULL;
 	fz_buffer *buf = NULL;
+	fz_options *opts = NULL;
 	int result = -1;
+	fz_var(opts);
 	fz_var(ocr);
 	fz_var(wd);
 	fz_var(buf);
@@ -390,7 +392,14 @@ int folio_ocr_page(folio_doc *doc, folio_loc loc, const char *datadir, const cha
 		wd->out = buf;
 		wd->scale = scale;
 		wd->origin = fz_make_point(b.x0, b.y0);
-		ocr = fz_new_ocr_device(ctx, &wd->super, ctm, b, 0, lang, datadir, ocr_progress, doc);
+		/* Tesseract's API reads the page as one block of text unless told
+		 * otherwise (PSM_SINGLE_BLOCK), so two columns came out line by line
+		 * across both (reported by Chris on test34). Mode 3 is its page
+		 * layout analysis without orientation detection: columns, then
+		 * the lines in each, in reading order. */
+		opts = fz_new_options(ctx, "tessedit_pageseg_mode=3");
+		ocr = fz_new_ocr_device_with_options(ctx, &wd->super, ctm, b, 0, lang, datadir,
+			ocr_progress, doc, opts);
 		fz_run_display_list(ctx, cp->contents, ocr, ctm, fz_infinite_rect, &doc->cookie);
 		folio_check_abort(doc);
 		fz_close_device(ctx, ocr);
@@ -417,6 +426,7 @@ int folio_ocr_page(folio_doc *doc, folio_loc loc, const char *datadir, const cha
 		fz_drop_device(ctx, ocr);
 		fz_drop_device(ctx, wd ? &wd->super : NULL);
 		fz_drop_buffer(ctx, buf);
+		fz_drop_options(ctx, opts);
 	}
 	fz_catch(ctx) {
 		folio_set_error(doc->fc);
@@ -439,7 +449,8 @@ int folio_ocr_changed(folio_doc *doc)
 }
 
 /* ---- Saving and loading -------------------------------------------------- */
-/* "folio-ocr 1", a line naming the document, then for each page
+/* "folio-ocr 2" (1: before the page layout analysis, so read across
+ * columns: done again), a line naming the document, then for each page
  * "page N L" and L bytes of word lines. */
 
 static void fingerprint(folio_doc *doc, char *out, size_t size)
@@ -491,7 +502,7 @@ int folio_ocr_save(folio_doc *doc, const char *path)
 		snprintf(doc->fc->err, sizeof doc->fc->err, "Can't write %s", path);
 		return -1;
 	}
-	fprintf(f, "folio-ocr 1\n%s\n", fp);
+	fprintf(f, "folio-ocr 2\n%s\n", fp);
 	for (i = 0; i < doc->ocr_n; i++)
 		if (doc->ocr[i].words) {
 			fprintf(f, "page %d %lu\n", i, (unsigned long)doc->ocr[i].len);
@@ -517,7 +528,7 @@ int folio_ocr_load(folio_doc *doc, const char *path)
 	if (!f)
 		return -1;
 	fingerprint(doc, fp, sizeof fp);
-	if (!fgets(line, sizeof line, f) || strcmp(line, "folio-ocr 1\n") != 0 ||
+	if (!fgets(line, sizeof line, f) || strcmp(line, "folio-ocr 2\n") != 0 ||
 			!fgets(line, sizeof line, f) || strncmp(line, fp, strlen(fp)) != 0 ||
 			line[strlen(fp)] != '\n') {
 		fclose(f);

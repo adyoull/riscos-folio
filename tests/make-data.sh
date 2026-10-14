@@ -71,6 +71,20 @@ TXT
 "$AT" "$MUTOOL" convert -O compress -o scanp1.pdf scanp1.png
 "$AT" "$MUTOOL" merge -O compress -o scan.pdf scanp1.pdf 1 speech.pdf 2
 rm -f scanp1.png scanp1.pdf
+# Two columns, scanned: for the OCR reading order.
+{
+	printf '%%%%MediaBox 0 0 595 842\n%%%%Font Helv Helvetica\n'
+	n=0
+	for w in one two three four five six seven eight; do
+		y=$((760 - n * 24)); n=$((n + 1))
+		printf 'BT /Helv 14 Tf 50 %d Td (Left column line %s.) Tj ET\n' $y $w
+		printf 'BT /Helv 14 Tf 330 %d Td (Right column line %s.) Tj ET\n' $y $w
+	done
+} > cols.txt
+"$AT" "$MUTOOL" create -o colsplain.pdf cols.txt
+"$AT" "$MUTOOL" draw -q -r 300 -c gray -o colsp1.png colsplain.pdf 1
+"$AT" "$MUTOOL" convert -O compress -o columns.pdf colsp1.png
+rm -f cols.txt colsplain.pdf colsp1.png
 # Pages of different sizes: A5, A4, A4 landscape.
 for sz in "420 595" "595 842" "842 595"; do
 	printf '%%%%MediaBox 0 0 %s\n%%%%Font Helv Helvetica\nBT /Helv 24 Tf 40 40 Td (Page of %s) Tj ET\n' "$sz" "$sz" > "m${sz%% *}.txt"

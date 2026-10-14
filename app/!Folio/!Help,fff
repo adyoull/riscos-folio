@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test35)
+Folio (test build 0.0.1-test36)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -189,7 +189,8 @@ Selecting text and looking words up
   already looked up are kept in
   <Choices$Write>.Folio.Dict and work offline.
 
-Folio reopens each document at the page where you left it (kept in
+Folio reopens each document at the page where you left it, at the same
+scale, pages across, and window size and place (kept in
 <Choices$Write>.Folio.Places). Pages are drawn by a background thread, so
 the desktop keeps going while a heavy page loads.
 

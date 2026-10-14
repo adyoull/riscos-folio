@@ -99,6 +99,8 @@ struct docwin {
 	/* What the author allows (a PDF's permissions; read with the core lock
 	 * after opening, saving and the owner password). */
 	int perm_print, perm_copy, perm_access;
+	/* The window's place as it was left (load_place), screen OS units. */
+	int have_view, view[4];
 };
 
 typedef struct {
@@ -737,8 +739,11 @@ static void make_accel_path(docwin *w)
 
 /* ---- Reading positions ------------------------------------------------- */
 /* <Choices$Write>.Folio.Places.P<hash of the path>: a small text file,
- * "folio-place 1", then chapter and fraction, then the page's first words.
- * Read back through Choices: (Style Guide p92). */
+ * "folio-place 2", then chapter and fraction, then the page's first words,
+ * then "view <zoom> <cols> <cover> <x0> <y0> <x1> <y1>": the scale, pages
+ * across and the window's place on the screen, so a document (from the
+ * Bookshelf or anywhere) opens as it was left (Chris, test34). "folio-place
+ * 1" files have no view line. Read back through Choices: (Style Guide p92). */
 
 static void make_place_path(docwin *w, char *out, size_t size, int for_writing)
 {
@@ -766,12 +771,24 @@ static void load_place(docwin *w)
 	f = fopen(path, "r");
 	if (!f)
 		return;
-	if (fgets(line, sizeof line, f) && !strncmp(line, "folio-place 1", 13) &&
+	if (fgets(line, sizeof line, f) && (!strncmp(line, "folio-place 1", 13) ||
+			!strncmp(line, "folio-place 2", 13)) &&
 			fscanf(f, "%d %f\n", &w->mark.chapter, &w->mark.fraction) == 2) {
+		float z;
+		int c, cv, r[4];
 		if (!fgets(w->mark.text, sizeof w->mark.text, f))
 			w->mark.text[0] = 0;
 		w->mark.text[strcspn(w->mark.text, "\n")] = 0;
 		w->pending_mark = 1;
+		if (fgets(line, sizeof line, f) &&
+				sscanf(line, "view %f %d %d %d %d %d %d", &z, &c, &cv, &r[0], &r[1], &r[2], &r[3]) == 7 &&
+				z >= MIN_ZOOM && z <= MAX_ZOOM && (c == 1 || c == 2) && r[2] > r[0] && r[3] > r[1]) {
+			w->zoom = z;
+			w->cols = c;
+			w->cover = cv != 0;
+			memcpy(w->view, r, sizeof w->view);
+			w->have_view = 1;
+		}
 	}
 	fclose(f);
 }
@@ -791,7 +808,12 @@ static void save_place(docwin *w)
 	make_place_path(w, path, sizeof path, 1);
 	if (!path[0] || !(f = fopen(path, "w")))
 		return;
-	fprintf(f, "folio-place 1\n%d %.5f\n%s\n", m.chapter, m.fraction, m.text);
+	{
+		int st[9];
+		get_state(w, st);
+		fprintf(f, "folio-place 2\n%d %.5f\n%s\nview %.4f %d %d %d %d %d %d\n", m.chapter, m.fraction,
+			m.text, w->zoom, w->cols, w->cover, st[1], st[2], st[3], st[4]);
+	}
 	fclose(f);
 	_swix(OS_File, _INR(0, 2), 18, path, 0xfff);
 }
@@ -997,6 +1019,31 @@ docwin *docwin_open_password(const char *path, const char *password)
 	x0 = (app.screen_w - vis_w) / 2;
 	y1 = (app.screen_h + vis_h) / 2 - 48 * (open_count % 6);
 	open_count++;
+	/* Where it was when last read, kept on the screen. */
+	if (w->have_view) {
+		vis_w = w->view[2] - w->view[0];
+		vis_h = w->view[3] - w->view[1];
+		if (vis_w > app.screen_w - 48)
+			vis_w = app.screen_w - 48;
+		if (vis_h > app.screen_h - 120)
+			vis_h = app.screen_h - 120;
+		if (vis_w < 400)
+			vis_w = 400;
+		if (vis_h < 300)
+			vis_h = 300;
+		x0 = w->view[0];
+		y1 = w->view[3];
+		if (x0 < 0)
+			x0 = 0;
+		if (x0 + vis_w > app.screen_w)
+			x0 = app.screen_w - vis_w;
+		if (y1 > app.screen_h - 40)
+			y1 = app.screen_h - 40;
+		if (y1 - vis_h < 0)
+			y1 = vis_h;
+		app_log("%s: as last read: %d%%, %d across, %dx%d at %d,%d", w->title,
+			(int)(w->zoom * 100 + 0.5f), w->cols, vis_w, vis_h, x0, y1);
+	}
 	st[0] = w->wimp;
 	st[1] = x0;
 	st[2] = y1 - vis_h;
@@ -1332,6 +1379,15 @@ static int measure_step(docwin *w)
 	return w->sizes_next < w->pages;
 }
 
+static int any_dragging(void)
+{
+	docwin *w;
+	for (w = windows; w; w = w->next)
+		if (w->dragging)
+			return 1;
+	return 0;
+}
+
 int docwin_background(void)
 {
 	docwin *w;
@@ -1395,8 +1451,11 @@ int docwin_background(void)
 		if (cur && cur->kind == JOB_OCR && worker_busy())
 			for (w = windows; w; w = w->next)
 				if (w->want_render && wanted_page(w, 1) >= 0) {
-					app_log("ocr: stopped for a page to draw");
-					worker_stop_for(NULL);
+					/* Not waiting for it: Tesseract can take a while to
+					 * notice, and the desktop would wait with it. */
+					if (!folio_aborted(cur->doc))
+						app_log("ocr: stopped for a page to draw");
+					worker_abort_current();
 					break;
 				}
 	}
@@ -1426,8 +1485,8 @@ int docwin_background(void)
 				break;
 		}
 	}
-	/* Then text to recognise. */
-	if (worker_idle())
+	/* Then text to recognise (not while selecting text). */
+	if (worker_idle() && !any_dragging())
 		for (w = windows; w; w = w->next)
 			if (w->ocr && ocr_win_next(w->ocr))
 				break;
@@ -1697,10 +1756,18 @@ static int sel_drag_tick(docwin *w)
 		return 0;
 	}
 	get_state(w, st);
-	if (ptr[1] < st[2] + 48)
-		scroll_to(w, st[6] - 48);
-	else if (ptr[1] > st[4] - 48)
-		scroll_to(w, st[6] + 48);
+	/* Scroll while the pointer is near the top or bottom, but only as far
+	 * as the page being selected goes (a selection is one page): beyond
+	 * it, scrolling on met pages still being drawn and recognised, and
+	 * the desktop all but stopped (Chris, test34). */
+	{
+		int ptop = page_top(w, w->sel_page), pbot = ptop - slot_h(w, w->sel_page);
+		int vis_top = st[6] - w->top, vis_bot = st[6] - (st[4] - st[2]);
+		if (ptr[1] < st[2] + 48 && pbot < vis_bot)
+			scroll_to(w, st[6] - 48 > pbot + (st[4] - st[2]) ? st[6] - 48 : pbot + (st[4] - st[2]));
+		else if (ptr[1] > st[4] - 48 && ptop > vis_top)
+			scroll_to(w, st[6] + 48 < ptop + w->top ? st[6] + 48 : ptop + w->top);
+	}
 	if (point_at(w, ptr[0], ptr[1], &pt, w->sel_page) >= 0 &&
 			(pt.x != w->sel_b.x || pt.y != w->sel_b.y)) {
 		w->sel_b = pt;

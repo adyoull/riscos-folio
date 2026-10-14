@@ -48,6 +48,7 @@ int worker_slice(int cs);
 int worker_take(render_job *out);
 /* Stops and discards the job if it belongs to owner (any job if NULL). */
 void worker_stop_for(void *owner);
+void worker_abort_current(void);    /* ask it to stop; don't wait */
 
 void core_lock(void);
 void core_unlock(void);

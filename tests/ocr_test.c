@@ -128,6 +128,23 @@ int main(int argc, char **argv)
 	folio_close(other);
 	folio_close(d);
 
+	/* Two columns: down the first, then the second. */
+	snprintf(path, sizeof path, "%s/columns.pdf", dir);
+	d = folio_open(fc, path, NULL);
+	CHECK(d != NULL, "open columns.pdf: %s", folio_error(fc));
+	if (d) {
+		n = folio_ocr_page(d, p1, data, "eng", 1);
+		CHECK(n > 100, "columns recognised: %d", n);
+		if (folio_get_page_text(d, p1, &t) == 0) {
+			const char *l8 = strstr(t.text, "Left column line eight");
+			const char *r1 = strstr(t.text, "Right column line one");
+			printf("columns: [%.200s...]\n", t.text);
+			CHECK(l8 && r1 && l8 < r1, "left column read before the right");
+			folio_page_text_free(&t);
+		}
+		folio_close(d);
+	}
+
 	/* Forcing a page with text of its own. */
 	snprintf(path, sizeof path, "%s/scan.pdf", dir);
 	d = folio_open(fc, path, NULL);
