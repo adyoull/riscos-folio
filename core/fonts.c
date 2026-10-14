@@ -32,7 +32,7 @@
 
 static FcConfig *config;
 static int started;            /* 1: tried; config NULL if it failed */
-static char status[200] = "fontconfig not started";
+static char status[400] = "fontconfig not started";
 
 /* Fonts opened, by file and face. */
 #define KEEP 24
@@ -50,6 +50,7 @@ static struct {
 #define APPFONTS 16
 static struct {
 	char path[300];
+	char ro[300];         /* RISC OS: its native name, read with OS_File */
 	fz_font *font;
 	int failed;
 } appf[APPFONTS];
@@ -62,11 +63,12 @@ static int skip_name(const char *n)
 		!strcmp(n, "FontLicence") || !strncmp(n, "fonts/", 6);
 }
 
-static void add_app_font(const char *dir, const char *leaf)
+static void add_app_font(const char *dir, const char *leaf, const char *ro)
 {
 	if (appn >= APPFONTS || skip_name(leaf))
 		return;
 	snprintf(appf[appn].path, sizeof appf[appn].path, "%s/%s", dir, leaf);
+	snprintf(appf[appn].ro, sizeof appf[appn].ro, "%s", ro ? ro : "");
 	appn++;
 }
 
@@ -95,13 +97,14 @@ static void list_app_fonts(void)
 				break;
 			}
 			for (p = buf, i = 0; i < n; i++) {
-				char leaf[100];
+				char leaf[100], native[300];
 				size_t k;
 				snprintf(leaf, sizeof leaf, "%.99s", p);
+				snprintf(native, sizeof native, "%.180s.%.99s", ro, p);
 				for (k = 0; leaf[k]; k++)
 					if (leaf[k] == '/')
 						leaf[k] = '.';
-				add_app_font(app, leaf);
+				add_app_font(app, leaf, native);
 				p += strlen(p) + 1;
 			}
 		}
@@ -113,11 +116,58 @@ static void list_app_fonts(void)
 		if (!d)
 			snprintf(app_note, sizeof app_note, " (can't read %.80s)", app);
 		while (d && (e = readdir(d)) != NULL)
-			add_app_font(app, e->d_name);
+			add_app_font(app, e->d_name, NULL);
 		if (d)
 			closedir(d);
 	}
 #endif
+}
+
+#ifdef __riscos__
+/* The whole file, read with OS_File by its native name (UnixLib's names
+ * for "<Folio$Dir>" paths didn't reach the file on the Pi: test47). */
+static fz_font *load_native(fz_context *ctx, const char *ro)
+{
+	int type = 0, len = 0;
+	unsigned char *data;
+	fz_buffer *buf = NULL;
+	fz_font *font = NULL;
+	if (_swix(OS_File, _INR(0, 1) | _OUT(0) | _OUT(4), 17, ro, &type, &len) || type != 1 || len <= 0)
+		return NULL;
+	data = malloc((size_t)len);
+	if (!data)
+		return NULL;
+	if (_swix(OS_File, _INR(0, 3), 16, ro, data, 0)) {
+		free(data);
+		return NULL;
+	}
+	fz_var(buf);
+	fz_var(font);
+	fz_try(ctx) {
+		buf = fz_new_buffer_from_data(ctx, data, (size_t)len);   /* takes data */
+		font = fz_new_font_from_buffer(ctx, NULL, buf, 0, 0);
+	}
+	fz_always(ctx)
+		fz_drop_buffer(ctx, buf);
+	fz_catch(ctx)
+		font = NULL;
+	return font;
+}
+#endif
+
+static fz_font *open_app_font(fz_context *ctx, int i)
+{
+	fz_font *font = NULL;
+#ifdef __riscos__
+	if (appf[i].ro[0])
+		return load_native(ctx, appf[i].ro);
+#endif
+	fz_var(font);
+	fz_try(ctx)
+		font = fz_new_font_from_file(ctx, NULL, appf[i].path, 0, 0);
+	fz_catch(ctx)
+		font = NULL;
+	return font;
 }
 
 /* The first of Folio's own fonts with character c, or NULL. */
@@ -127,12 +177,17 @@ static fz_font *app_font_with(fz_context *ctx, int c)
 	list_app_fonts();
 	for (i = 0; i < appn; i++) {
 		if (!appf[i].font && !appf[i].failed) {
-			fz_try(ctx)
-				appf[i].font = fz_new_font_from_file(ctx, NULL, appf[i].path, 0, 0);
-			fz_catch(ctx) {
+			appf[i].font = open_app_font(ctx, i);
+			if (!appf[i].font) {
 				appf[i].failed = 1;
-				snprintf(app_note, sizeof app_note, " (couldn't open %.90s)", appf[i].path);
+				snprintf(app_note, sizeof app_note, "couldn't open %.90s",
+					appf[i].ro[0] ? appf[i].ro : appf[i].path);
+			} else {
+				snprintf(app_note, sizeof app_note, "opened %.90s",
+					appf[i].ro[0] ? appf[i].ro : appf[i].path);
 			}
+			/* Said in the status, for the log. */
+			snprintf(status + strlen(status), sizeof status - strlen(status), "; %s", app_note);
 		}
 		if (appf[i].font && fz_encode_character(ctx, appf[i].font, c) > 0)
 			return fz_keep_font(ctx, appf[i].font);

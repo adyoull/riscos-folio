@@ -1399,7 +1399,7 @@ int docwin_background(void)
 	unsigned t0, t;
 	/* fontconfig's start (on the first font asked for), for the log. */
 	{
-		static char last[200];
+		static char last[400];
 		const char *st = folio_fonts_status();
 		if (strcmp(st, last)) {
 			snprintf(last, sizeof last, "%s", st);
