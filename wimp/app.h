@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test37 (14-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test38 (14-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -103,6 +103,7 @@ void docwin_edit_menu_shown(docwin *w);
 void docwin_nav_menu_shown(docwin *w);
 /* Background work for every window; returns 1 if more remains. */
 int docwin_background(void);
+void docwin_user_drag_done(void);
 void docwin_mode_changed(void);
 void docwin_close_request(docwin *w);
 void docwin_click(docwin *w, int *block);

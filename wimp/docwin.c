@@ -64,6 +64,7 @@ struct docwin {
 	 * each page are kept in selslot[] below. */
 	int sel, sel_page, sel_end, dragging;
 	int sel_stale;            /* a page showing still needs its boxes drawn */
+	unsigned drag_cs;         /* when the drag last scrolled */
 	folio_point sel_a, sel_b;
 	char sel_word[64];        /* set by a double-click on a word */
 	/* Toolbar and thumbnail drawer. */
@@ -422,6 +423,8 @@ static void new_note(docwin *w);
 static void undo_redo(docwin *w, int redo);
 static void sel_forget(docwin *w);
 static int sel_drag_tick(docwin *w);
+static void drag_start(docwin *w);
+static void drag_stop(docwin *w);
 static int current_page(docwin *w);
 static void go_to_page(docwin *w, int i);
 static void link_press(docwin *w, int *b);
@@ -1075,6 +1078,7 @@ void docwin_close(docwin *w)
 			*p = w->next;
 			break;
 		}
+	drag_stop(w);
 	sel_forget(w);
 	find_forget(w);
 	gotopage_forget(w);
@@ -1697,14 +1701,17 @@ static void sel_forget(docwin *w)
 			selslots[i].w = NULL;
 }
 
-/* Takes the core to work out boxes. Without wait, not while the worker is
- * recognising text (it's asked to stop, and 0 is returned): that can take
- * seconds to stop, and the desktop would stop with it. */
+/* Takes the core to work out boxes. Without wait, not while the worker has
+ * a job (0 is returned, and it's tried again on a later poll): stopping
+ * recognising can take seconds, and the desktop would stop with it. */
 static int sel_lock(int wait)
 {
 	const render_job *j = worker_current();
-	if (!wait && j && j->kind == JOB_OCR) {
-		worker_abort_current();
+	if (!wait && worker_busy()) {
+		/* Pages being drawn finish first (stopping them each time only
+		 * meant they were never drawn); recognising is asked to stop. */
+		if (j && j->kind == JOB_OCR)
+			worker_abort_current();
 		return 0;
 	}
 	core_now();
@@ -1904,7 +1911,7 @@ static void sel_clear(docwin *w)
 	w->sel = 0;
 	w->sel_stale = 0;
 	w->sel_word[0] = 0;
-	w->dragging = 0;
+	drag_stop(w);
 }
 
 /* EOR the selection over page i (screen origin of the page at x0, y1). */
@@ -2048,6 +2055,7 @@ void docwin_click(docwin *w, int *b)
 		 * (it isn't started again while the drag goes on), so it's done by
 		 * the time the drag needs the core; don't wait for it here. */
 		worker_abort_current();
+		drag_start(w);
 		tb_update(w);
 	} else if (buttons == 0x100 || buttons == 0x10) { /* Adjust: extend */
 		if (!w->sel)
@@ -2057,6 +2065,8 @@ void docwin_click(docwin *w, int *b)
 			return;
 		w->sel_word[0] = 0;
 		w->dragging = buttons == 0x10;
+		if (w->dragging)
+			drag_start(w);
 		sel_set_end(w, page, pt, 1);
 	} else if (buttons == 4) {               /* Select double-click: a word */
 		folio_loc loc;
@@ -2079,32 +2089,87 @@ void docwin_click(docwin *w, int *b)
 	}
 }
 
+/* A selection drag is a Wimp user drag (an invisible point), so the Wimp
+ * says when the button is let go (Wimp_EUserDrag), wherever the pointer is. */
+static void drag_start(docwin *w)
+{
+	int b[10], ptr[5];
+	_swix(Wimp_GetPointerInfo, _IN(1), ptr);
+	b[0] = w->wimp;
+	b[1] = 7;                         /* point drag, nothing drawn */
+	b[2] = b[4] = ptr[0];
+	b[3] = b[5] = ptr[1];
+	b[6] = -0x10000;                  /* anywhere on the screen */
+	b[7] = -0x10000;
+	b[8] = 0x10000;
+	b[9] = 0x10000;
+	_swix(Wimp_DragBox, _IN(1), b);
+	_swix(OS_ReadMonotonicTime, _OUT(0), &w->drag_cs);
+}
+
+static void drag_stop(docwin *w)
+{
+	if (!w->dragging)
+		return;
+	w->dragging = 0;
+	_swix(Wimp_DragBox, _IN(1), 0);   /* cancel, if it's still going */
+	app_log("%s: selection pages %d to %d", w->title, w->sel_page + 1, w->sel_end + 1);
+}
+
+/* Wimp_EUserDrag: the button was let go. */
+void docwin_user_drag_done(void)
+{
+	docwin *w;
+	for (w = windows; w; w = w->next)
+		if (w->dragging) {
+			w->dragging = 0;          /* the Wimp's drag is over already */
+			app_log("%s: selection pages %d to %d", w->title, w->sel_page + 1, w->sel_end + 1);
+		}
+}
+
 /* While dragging (null polls): follow the pointer, onto the pages before
- * and after, scrolling near the window's edges. Returns 1 while a drag goes
- * on. Recognising isn't started during a drag, and the boxes of a page are
- * only worked out once it's drawn (sel_lock): before, scrolling met pages
- * being recognised, and the desktop all but stopped (Chris, test34). */
+ * and after, scrolling while it's near or past the top or bottom of the
+ * window. The scroll goes by time, not by poll: from 1/5 of the window's
+ * height a second near the edge to one window a second well past it.
+ * Recognising isn't started during a drag, and the boxes of a page are only
+ * worked out while the worker has nothing to do (sel_lock), so pages being
+ * drawn get drawn, and the desktop keeps going. */
 static int sel_drag_tick(docwin *w)
 {
-	int ptr[5], st[9], page;
+	int ptr[5], st[9], page, vis_h, top, bot, d = 0;
+	unsigned now, dt;
 	folio_point pt;
 	sel_catch_up(w);
 	if (!w->dragging)
 		return w->sel_stale;
 	_swix(Wimp_GetPointerInfo, _IN(1), ptr);
-	if (!(ptr[2] & 5)) {
-		w->dragging = 0;
+	if (!(ptr[2] & 5)) {              /* in case the Wimp's word is lost */
+		drag_stop(w);
 		return w->sel_stale;
 	}
 	get_state(w, st);
-	/* Faster the further past the edge the pointer is. */
-	if (ptr[1] < st[2] + 48) {
-		int d = st[2] + 48 - ptr[1];
-		scroll_to(w, st[6] - (d < 48 ? 24 : d > 400 ? 200 : d / 2));
-	} else if (ptr[1] > st[4] - 48) {
-		int d = ptr[1] - (st[4] - 48);
-		int y = st[6] + (d < 48 ? 24 : d > 400 ? 200 : d / 2);
-		scroll_to(w, y > 0 ? 0 : y);
+	_swix(OS_ReadMonotonicTime, _OUT(0), &now);
+	dt = now - w->drag_cs;
+	if (dt > 10)
+		dt = 10;                      /* a slow poll doesn't make a jump */
+	vis_h = st[4] - st[2];
+	top = st[4] - w->top;             /* below the toolbar */
+	bot = st[2];
+	if (ptr[1] < bot + 48)
+		d = -(bot + 48 - ptr[1]);
+	else if (ptr[1] > top - 48)
+		d = ptr[1] - (top - 48);
+	if (d && dt) {
+		int dist = d < 0 ? -d : d;
+		/* OS units a second: vis_h/5 at the edge, vis_h at 400 past. */
+		int speed = vis_h / 5 + (dist > 448 ? 448 : dist) * (vis_h - vis_h / 5) / 448;
+		int step = speed * (int)dt / 100;
+		if (step < 4)
+			step = 4;
+		w->drag_cs = now;
+		scroll_to(w, d < 0 ? st[6] - step : (st[6] + step > 0 ? 0 : st[6] + step));
+	} else if (!d) {
+		w->drag_cs = now;
 	}
 	page = point_at(w, ptr[0], ptr[1], &pt, -1);
 	if (page < 0)

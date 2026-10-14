@@ -570,6 +570,10 @@ int main(int argc, char **argv)
 				bookshelf_close(block[0]);
 			break;
 		}
+		case Wimp_EUserDrag:
+			/* A selection drag's button was let go. */
+			docwin_user_drag_done();
+			break;
 		case Wimp_EScrollRequest:
 			/* The mouse wheel over a toolbar. */
 			toolbar_scroll_request(block);
