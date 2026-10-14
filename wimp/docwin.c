@@ -1928,8 +1928,17 @@ static void eor_quads_in(docwin *w, const folio_quad *quads, int count, int x0, 
 		float qx1 = q->ur.x > q->lr.x ? q->ur.x : q->lr.x;
 		float qy0 = q->ul.y < q->ur.y ? q->ul.y : q->ur.y;
 		float qy1 = q->ll.y > q->lr.y ? q->ll.y : q->lr.y;
-		int rx0 = x0 + (int)(qx0 * k), rx1 = x0 + (int)(qx1 * k + 0.999f);
-		int ry1 = y1 - (int)(qy0 * k), ry0 = y1 - (int)(qy1 * k + 0.999f);
+		/* Edges rounded the same way on both sides, so a strip between two
+		 * boxes (sel_eor_change) meets them exactly. */
+		int rx0 = x0 + (int)(qx0 * k + 0.5f), rx1 = x0 + (int)(qx1 * k + 0.5f);
+		int ry1 = y1 - (int)(qy0 * k + 0.5f), ry0 = y1 - (int)(qy1 * k + 0.5f);
+		/* ...and on whole pixels, so neither covers half of one. */
+		rx0 = (rx0 >> app.xeig) << app.xeig;
+		rx1 = (rx1 >> app.xeig) << app.xeig;
+		ry0 = (ry0 >> app.yeig) << app.yeig;
+		ry1 = (ry1 >> app.yeig) << app.yeig;
+		if (rx1 <= rx0 || ry1 <= ry0)
+			continue;
 		_swix(OS_Plot, _INR(0, 2), 4, rx0, ry0);
 		_swix(OS_Plot, _INR(0, 2), 96 + 5, rx1 - 1, ry1 - 1);
 	}
@@ -2007,9 +2016,48 @@ static void sel_catch_up(docwin *w)
 static void sel_eor_change(docwin *w, int page, const folio_quad *oldq, int n_old,
 		const folio_quad *newq, int n_new)
 {
-	int b[11], more = 0;
+	int b[11], more = 0, k = 0;
+	/* Only the boxes that differ: the lines both have in common, at the
+	 * start and at the end, stay as they are. (EORing them all off and on
+	 * again made a selection of whole pages flash at each move: test37.) */
+	while (k < n_old && k < n_new && !memcmp(&oldq[k], &newq[k], sizeof oldq[0]))
+		k++;
+	oldq += k;
+	newq += k;
+	n_old -= k;
+	n_new -= k;
+	while (n_old > 0 && n_new > 0 &&
+			!memcmp(&oldq[n_old - 1], &newq[n_new - 1], sizeof oldq[0])) {
+		n_old--;
+		n_new--;
+	}
 	if ((n_old == 0 && n_new == 0) || !cache_find(w, page))
 		return;
+	/* One line that only grew or shrank at one end: just the strip between
+	 * (EORing the old line off and the new one on blinked it). */
+	if (n_old == 1 && n_new == 1 && oldq->ul.y == newq->ul.y && oldq->ll.y == newq->ll.y &&
+			oldq->ur.y == newq->ur.y && oldq->lr.y == newq->lr.y &&
+			oldq->ul.y == oldq->ur.y && oldq->ll.y == oldq->lr.y &&
+			oldq->ul.x == oldq->ll.x && oldq->ur.x == oldq->lr.x &&
+			newq->ul.x == newq->ll.x && newq->ur.x == newq->lr.x) {
+		static folio_quad strip;
+		strip = *oldq;
+		if (oldq->ul.x == newq->ul.x) {
+			float a = oldq->ur.x, c = newq->ur.x;
+			strip.ul.x = strip.ll.x = a < c ? a : c;
+			strip.ur.x = strip.lr.x = a < c ? c : a;
+		} else if (oldq->ur.x == newq->ur.x) {
+			float a = oldq->ul.x, c = newq->ul.x;
+			strip.ul.x = strip.ll.x = a < c ? a : c;
+			strip.ur.x = strip.lr.x = a < c ? c : a;
+		} else {
+			goto both;
+		}
+		oldq = &strip;
+		newq = NULL;
+		n_new = 0;
+	}
+both:
 	b[0] = w->wimp;
 	b[1] = page_left(w, page);
 	b[2] = page_top(w, page) - slot_h(w, page);
