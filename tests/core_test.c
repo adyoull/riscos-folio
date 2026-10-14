@@ -387,6 +387,22 @@ static void test_pdf(folio_ctx *fc, const char *dir)
 		rc = folio_link_at(d, (folio_loc){ 0, 0 }, (folio_point){ 100, 130 }, &link);
 		CHECK(rc == 1 && link.dest.page < 0 && link.uri && !strcmp(link.uri, "https://example.org/"),
 			"web link (%d: %s)", rc, rc == 1 && link.uri ? link.uri : "");
+		/* Links underlined in blue when asked for, and only then. */
+		if (rc == 1) {
+			static uint32_t px[300 * 300];
+			folio_irect t = { 0, 0, 300, 300 };
+			int i, blue[2] = { 0, 0 }, k;
+			for (k = 0; k < 2; k++) {
+				folio_render_tile(d, (folio_loc){ 0, 0 }, 1.0f, t, FOLIO_PAGE_NORMAL,
+					FOLIO_RENDER_ANNOTS | (k ? FOLIO_RENDER_LINKS : 0), px, 300 * 4);
+				for (i = 0; i < 300 * 300; i++) {
+					const unsigned char *c = (const unsigned char *)&px[i];
+					if (c[0] == 0x1a && c[1] == 0x5f && c[2] == 0xc8)
+						blue[k]++;
+				}
+			}
+			CHECK(blue[0] == 0 && blue[1] > 50, "link underlines: %d without, %d with", blue[0], blue[1]);
+		}
 	}
 
 	{

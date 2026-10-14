@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test41 (14-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test42 (14-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -65,6 +65,7 @@ typedef struct {
 	int ocr_auto;               /* recognise scanned pages while reading */
 	int obey_restrictions;      /* a PDF's "no printing / no copying" */
 	int ask_links;              /* ask before following links out of a document */
+	int underline_links;        /* draw a line under links */
 	int warn_content;           /* say when a PDF has scripts, attachments, actions */
 	int run_js;                 /* let forms' JavaScript run */
 } choices;

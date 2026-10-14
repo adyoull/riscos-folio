@@ -11,7 +11,7 @@
 #include <swis.h>
 
 enum {
-	C_BOX_NEW = 0, C_SCALE_L, C_SCALE, C_PC, C_NORMAL, C_DARK, C_SEPIA, C_TWO, C_TOOLBAR,
+	C_BOX_NEW = 0, C_SCALE_L, C_SCALE, C_PC, C_NORMAL, C_DARK, C_SEPIA, C_TWO, C_TOOLBAR, C_LINKS,
 	C_BOX_SPEECH, C_SLOW, C_MEDIUM, C_FAST,
 	C_BOX_OCR, C_ACCURATE, C_QUICK, C_AUTO,
 	C_BOX_SEC, C_OBEY, C_ASK, C_WARN, C_JS,
@@ -51,7 +51,7 @@ static struct {
 	range_gadget scale;
 	label_gadget pc;
 	radio_gadget normal, dark, sepia;
-	option_gadget two, toolbar;
+	option_gadget two, toolbar, links;
 	box_gadget box_speech;
 	radio_gadget slow, medium, fast;
 	box_gadget box_ocr;
@@ -148,6 +148,8 @@ static ObjectId create_window(void)
 		"Click to choose whether new documents show two pages side by side.");
 	option(&g.toolbar, C_TOOLBAR, 496, -212, 880, "Show the toolbar",
 		"Click to choose whether new document windows have the toolbar.");
+	option(&g.links, C_LINKS, 496, -72, 880, "Underline links",
+		"Click to choose whether links in documents have a blue line under them.");
 	/* Reading aloud. */
 	box(&g.box_speech, C_BOX_SPEECH, -324, -444, "Reading aloud");
 	radio(&g.slow, C_SLOW, 2, 48, -372, 304, "Slower",
@@ -233,6 +235,7 @@ static void fill(const choices *c)
 	set_radio(c->mode == FOLIO_PAGE_DARK ? C_DARK : c->mode == FOLIO_PAGE_SEPIA ? C_SEPIA : C_NORMAL);
 	set_option(C_TWO, c->cols == 2);
 	set_option(C_TOOLBAR, c->toolbar);
+	set_option(C_LINKS, c->underline_links);
 	set_radio(c->speed == SPEED_SLOW ? C_SLOW : c->speed == SPEED_FAST ? C_FAST : C_MEDIUM);
 	set_radio(c->ocr_fast ? C_QUICK : C_ACCURATE);
 	set_option(C_AUTO, c->ocr_auto);
@@ -278,6 +281,7 @@ void choices_event(int code)
 		FOLIO_PAGE_NORMAL;
 	c.cols = get_option(C_TWO) ? 2 : 1;
 	c.toolbar = get_option(C_TOOLBAR);
+	c.underline_links = get_option(C_LINKS);
 	c.speed = get_radio(C_SLOW) ? SPEED_SLOW : get_radio(C_FAST) ? SPEED_FAST : SPEED_NORMAL;
 	c.ocr_fast = get_radio(C_QUICK);
 	c.ocr_auto = get_option(C_AUTO);
@@ -306,6 +310,7 @@ void choices_defaults(choices *c)
 	c->ocr_auto = 1;
 	c->obey_restrictions = 1;
 	c->ask_links = 1;
+	c->underline_links = 1;
 	c->warn_content = 1;
 	c->run_js = 0;
 }
@@ -341,6 +346,8 @@ void choices_load(void)
 					c->ocr_auto = v != 0;
 				else if (sscanf(line, "obey-restrictions %d", &v) == 1)
 					c->obey_restrictions = v != 0;
+				else if (sscanf(line, "underline-links %d", &v) == 1)
+					c->underline_links = v != 0;
 				else if (sscanf(line, "ask-links %d", &v) == 1)
 					c->ask_links = v != 0;
 				else if (sscanf(line, "warn-content %d", &v) == 1)
@@ -376,13 +383,13 @@ void choices_save(void)
 	}
 	fprintf(f, "folio-choices 1\nzoom %d\npage %s\ncolumns %d\ntoolbar %d\nspeed %s\n"
 		"ocr %s\nocr-auto %d\nobey-restrictions %d\nask-links %d\nwarn-content %d\n"
-		"run-javascript %d\n",
+		"run-javascript %d\nunderline-links %d\n",
 		(int)(c->zoom * 100 + 0.5f),
 		c->mode == FOLIO_PAGE_DARK ? "dark" : c->mode == FOLIO_PAGE_SEPIA ? "sepia" : "normal",
 		c->cols, c->toolbar,
 		c->speed == SPEED_SLOW ? "slower" : c->speed == SPEED_FAST ? "faster" : "normal",
 		c->ocr_fast ? "fast" : "accurate", c->ocr_auto, c->obey_restrictions, c->ask_links,
-		c->warn_content, c->run_js);
+		c->warn_content, c->run_js, c->underline_links);
 	fclose(f);
 	_swix(OS_File, _INR(0, 2), 18, path, 0xfff);
 }
@@ -390,7 +397,10 @@ void choices_save(void)
 void choices_apply(const choices *c)
 {
 	int ocr_changed = c->ocr_fast != app.ch.ocr_fast || c->ocr_auto != app.ch.ocr_auto;
+	int links_changed = c->underline_links != app.ch.underline_links;
 	app.ch = *c;
+	if (links_changed)
+		docwin_mode_changed();       /* the pages drawn again */
 	speech_set_speed(c->speed);
 	if (ocr_changed)
 		docwin_ocr_settings_changed();

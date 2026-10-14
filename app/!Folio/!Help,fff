@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test41)
+Folio (test build 0.0.1-test42)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -155,7 +155,8 @@ Security
 
 Choices
   Choices... on Folio's icon bar menu opens the Choices window: how new
-  documents open (scale, page colour, two pages, the toolbar), the
+  documents open (scale, page colour, two pages, the toolbar), whether
+  links are underlined, the
   reading-aloud speed, text recognition (Accurate or Fast, and whether
   scanned pages are recognised as they're shown), and the security
   choices above. Save uses and keeps them (in
@@ -199,6 +200,8 @@ Opening at a page
   same. (A book's later pages are counted first, so it may take a moment.)
 
 Links, Contents and Find
+  Links have a blue line under them (untick "Underline links" in the
+  Choices window to have them as the document draws them).
   Click a link to follow it: a link to another part of the document goes
   there; a web or email link opens in your browser or mail program.
   Dragging from a link selects text as usual. Navigate > Back (Ctrl-Left)

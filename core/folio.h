@@ -160,6 +160,10 @@ typedef enum {
  * page's zoomed space (page origin at 0,0). The output is RISC OS 32bpp
  * sprite pixels: one word per pixel, &00BBGGRR (bytes R, G, B, 0), rows
  * 'stride' bytes apart (a multiple of 4). annots: 1 to draw annotations. */
+/* folio_render_tile's flags: annotations and form fields drawn; the page's
+ * links underlined (in blue, light blue on a dark page). */
+#define FOLIO_RENDER_ANNOTS 1
+#define FOLIO_RENDER_LINKS  2
 int folio_render_tile(folio_doc *doc, folio_loc loc, float zoom,
 		folio_irect tile, folio_page_mode mode, int annots,
 		uint32_t *pixels, int stride);

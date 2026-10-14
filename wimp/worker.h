@@ -32,6 +32,8 @@ typedef struct {
 	char datadir[256];
 	char lang[16];
 	int only_scans;
+	/* JOB_PAGE: underline the page's links. */
+	int links;
 	int chars;
 	/* results */
 	int ok, aborted, cs;

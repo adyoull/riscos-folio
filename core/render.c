@@ -97,6 +97,43 @@ static void restore_pictures(folio_doc *doc, folio_cpage *cp, fz_pixmap *pix,
 		fz_rethrow(ctx);
 }
 
+/* A line under each link (its box's bottom edge), so links stand out from
+ * the text around them, as on a web page. Drawn into the tile's pixels. */
+static void underline_links(folio_doc *doc, folio_cpage *cp, fz_pixmap *pix, fz_matrix ctm,
+		float zoom, int dark)
+{
+	fz_context *ctx = doc->ctx;
+	fz_link *l;
+	int t = (int)(zoom * 0.75f + 0.5f);
+	unsigned char r = dark ? 0x80 : 0x1a, g = dark ? 0xb4 : 0x5f, b = dark ? 0xff : 0xc8;
+	if (t < 1)
+		t = 1;
+	if (!cp->links_loaded) {
+		cp->links = fz_load_links(ctx, cp->page);
+		cp->links_loaded = 1;
+	}
+	for (l = cp->links; l; l = l->next) {
+		fz_irect d = fz_round_rect(fz_transform_rect(l->rect, ctm));
+		int x, y, y0 = d.y1 - t, x0 = d.x0, x1 = d.x1;
+		if (d.x1 - d.x0 < 2 || d.y1 - d.y0 < 2 || (!l->uri))
+			continue;
+		if (x0 < pix->x) x0 = pix->x;
+		if (x1 > pix->x + pix->w) x1 = pix->x + pix->w;
+		for (y = y0; y < y0 + t; y++) {
+			unsigned char *row;
+			if (y < pix->y || y >= pix->y + pix->h)
+				continue;
+			row = pix->samples + (size_t)(y - pix->y) * pix->stride;
+			for (x = x0; x < x1; x++) {
+				unsigned char *px = row + (size_t)(x - pix->x) * pix->n;
+				px[0] = r;
+				px[1] = g;
+				px[2] = b;
+			}
+		}
+	}
+}
+
 int folio_render_tile(folio_doc *doc, folio_loc loc, float zoom,
 		folio_irect tile, folio_page_mode mode, int annots,
 		uint32_t *pixels, int stride)
@@ -132,8 +169,10 @@ int folio_render_tile(folio_doc *doc, folio_loc loc, float zoom,
 			fz_tint_pixmap(ctx, pix, SEPIA_INK, SEPIA_PAPER);
 			restore_pictures(doc, cp, pix, ctm, itile);
 		}
-		if (annots)
+		if (annots & FOLIO_RENDER_ANNOTS)
 			draw_list(ctx, cp->annots, pix, ctm, scissor, &doc->cookie);
+		if (annots & FOLIO_RENDER_LINKS)
+			underline_links(doc, cp, pix, ctm, zoom, mode == FOLIO_PAGE_DARK);
 		folio_check_abort(doc);
 		clear_alpha(pix);
 	}

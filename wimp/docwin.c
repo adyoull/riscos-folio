@@ -406,6 +406,7 @@ static int submit_page(docwin *w, int page)
 	j.gen = w->gen;
 	j.mode = w->mode;
 	j.ppp = px_per_pt(w);
+	j.links = app.ch.underline_links;
 	j.px_w = px_w(w, page);
 	j.px_h = px_h(w, page);
 	if (worker_submit(&j)) {
@@ -650,6 +651,7 @@ static int row_step(docwin *w, int by)
 
 static void scroll_to(docwin *w, int y)
 {
+	formui_commit(w);
 	int st[9];
 	get_state(w, st);
 	st[6] = y;
@@ -3219,6 +3221,7 @@ int docwin_toolbar_key(docwin *w, int key)
 /* An Open_Window_Request (moved, resized, scrolled, brought to the front). */
 void docwin_open_request(docwin *w, int *b)
 {
+	formui_commit(w);         /* a field being typed in: kept, as the page moves */
 	if (w->full) {
 		/* Full screen stays over the whole screen. */
 		b[1] = 0;

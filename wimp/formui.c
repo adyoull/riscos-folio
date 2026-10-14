@@ -211,13 +211,20 @@ static void edit(docwin *w, int page, const folio_field *f)
 		ic[6] = (int)fe.valid;
 		ic[7] = f->max_len > 0 && f->max_len < LINE_LEN ? f->max_len + 1 : LINE_LEN;
 	}
-	if (_swix(Wimp_CreateWindow, _IN(1) | _OUT(0), wb, &fe.handle)) {
-		fe.handle = 0;
-		fe.w = NULL;
-		return;
-	}
-	/* Open inside the document window, moving with its work area. */
 	{
+		_kernel_oserror *e = _swix(Wimp_CreateWindow, _IN(1) | _OUT(0), wb, &fe.handle);
+		if (e) {
+			app_log("form: can't make the editing window: %s", e->errmess);
+			fe.handle = 0;
+			fe.w = NULL;
+			return;
+		}
+	}
+	/* Over the field, in front. (A window of its own on top, not one inside
+	 * the document window: test41's nested one never took the caret. If the
+	 * document window moves or scrolls, what's typed is kept and it goes.) */
+	{
+		_kernel_oserror *e;
 		int ob[8];
 		ob[0] = fe.handle;
 		ob[1] = box[0];
@@ -227,10 +234,18 @@ static void edit(docwin *w, int page, const folio_field *f)
 		ob[5] = 0;
 		ob[6] = 0;
 		ob[7] = -1;
-		_swix(Wimp_OpenWindow, _INR(1, 4), ob, 0x4b534154 /* "TASK" */, docwin_wimp(w), 0);
+		e = _swix(Wimp_OpenWindow, _IN(1), ob);
+		if (e)
+			app_log("form: can't open the editing window: %s", e->errmess);
 	}
-	_swix(Wimp_SetCaretPosition, _INR(0, 5), fe.handle, 0, 0, 0, -1, (int)strlen(fe.buf[0]));
-	app_log("form: editing '%s' on page %d", f->name, page + 1);
+	{
+		_kernel_oserror *e = _swix(Wimp_SetCaretPosition, _INR(0, 5), fe.handle, 0, 0, 0, -1,
+			(int)strlen(fe.buf[0]));
+		if (e)
+			app_log("form: can't put the caret in it: %s", e->errmess);
+	}
+	app_log("form: editing '%s' on page %d (window &%x at %d,%d %d,%d, %d line%s)", f->name,
+		page + 1, fe.handle, box[0], box[1], box[2], box[3], fe.lines, fe.lines == 1 ? "" : "s");
 }
 
 /* The next (or previous) text field on the page after index, or -1. */

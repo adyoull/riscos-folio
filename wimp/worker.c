@@ -132,7 +132,8 @@ static void run_job(void)
 	tile.x1 = job.px_w;
 	tile.y1 = job.px_h;
 	core_lock();
-	rc = folio_render_tile(job.doc, job.loc, job.ppp, tile, job.mode, 1,
+	rc = folio_render_tile(job.doc, job.loc, job.ppp, tile, job.mode,
+			FOLIO_RENDER_ANNOTS | (job.kind == JOB_PAGE && job.links ? FOLIO_RENDER_LINKS : 0),
 			(uint32_t *)(job.area + 4 + 11), job.px_w * 4);
 	job.ok = rc == 0;
 	job.aborted = rc != 0 && folio_aborted(job.doc);
