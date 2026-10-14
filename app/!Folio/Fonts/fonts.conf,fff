@@ -1,11 +1,11 @@
 <?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
 <!-- Folio's own fontconfig setup, used when PackMan's fontconfig (UnixFC)
-     isn't installed: the fonts in this folder, with the cache in Folio's
-     choices. With UnixFC, Folio uses UnixFC's setup and fonts instead, and
-     the fonts here are added to them. Paths are UnixLib paths. -->
+     isn't installed. The fonts in this folder are added by Folio itself,
+     each time it starts (with or without UnixFC), not listed here: RISC OS
+     doesn't change a folder's date when fonts are added, so a cache of the
+     folder would never see them. Paths are UnixLib paths. -->
 <fontconfig>
-  <dir>/&lt;Folio$Dir&gt;/Fonts</dir>
   <cachedir>/&lt;Choices$Write&gt;/Folio/FontCache</cachedir>
   <config><rescan><int>0</int></rescan></config>
 </fontconfig>

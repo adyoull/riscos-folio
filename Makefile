@@ -49,7 +49,7 @@ WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c wimp/clip.c wimp/
 	wimp/readtext.c wimp/speaker.c wimp/speech.c wimp/print.c wimp/printlay.c wimp/export.c wimp/ocrui.c wimp/gotopage.c wimp/docinfo.c wimp/choices.c wimp/ask.c wimp/formui.c wimp/fontsetup.c
 WIMP_HDR := wimp/app.h wimp/tbx.h wimp/worker.h wimp/shelfdata.h wimp/readtext.h wimp/speaker.h \
 	core/folio.h core/dict.h
-VERSION ?= 0.0.1-test45
+VERSION ?= 0.0.1-test46
 
 all: build/ro/libfolio.a build/al/libfolio.a build/al/core_test build/ro/core_test.elf build/ro/folio.elf
 

@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <dirent.h>
 
 #ifdef FOLIO_FONTCONFIG
 #include <fontconfig/fontconfig.h>
@@ -44,13 +45,34 @@ static FcConfig *fc(void)
 		started = 1;
 		config = FcInitLoadConfigAndFonts();
 		if (config) {
-			/* The program's own fonts on top of the system's (FOLIO_APPFONTS). */
+			/* The program's own fonts on top of the system's (FOLIO_APPFONTS),
+			 * file by file, without a cache: RISC OS doesn't change a
+			 * directory's date when files are added to it, so fontconfig's
+			 * cache of the folder would never see new fonts. */
 			const char *app = getenv("FOLIO_APPFONTS");
-			if (app && *app)
-				FcConfigAppFontAddDir(config, (const FcChar8 *)app);
-			FcFontSet *set = FcConfigGetFonts(config, FcSetSystem);
-			snprintf(status, sizeof status, "fontconfig %d.%d.%d: %d fonts",
-				FC_MAJOR, FC_MINOR, FC_REVISION, set ? set->nfont : 0);
+			int added = 0;
+			FcFontSet *set, *own;
+			if (app && *app) {
+				DIR *d = opendir(app);
+				struct dirent *e;
+				while (d && (e = readdir(d)) != NULL) {
+					char path[512];
+					if (e->d_name[0] == '.' || !strcmp(e->d_name, "fonts.conf") ||
+							!strcmp(e->d_name, "ReadMe") || !strcmp(e->d_name, "FontLicence"))
+						continue;
+					snprintf(path, sizeof path, "%s/%s", app, e->d_name);
+					if (FcConfigAppFontAddFile(config, (const FcChar8 *)path))
+						added++;
+				}
+				if (d)
+					closedir(d);
+			}
+			set = FcConfigGetFonts(config, FcSetSystem);
+			own = FcConfigGetFonts(config, FcSetApplication);
+			snprintf(status, sizeof status, "fontconfig %d.%d.%d: %d fonts, %d of Folio's own",
+				FC_MAJOR, FC_MINOR, FC_REVISION, (set ? set->nfont : 0) + (own ? own->nfont : 0),
+				own ? own->nfont : 0);
+			(void)added;
 		} else {
 			snprintf(status, sizeof status, "fontconfig couldn't start (no fonts.conf?)");
 		}
