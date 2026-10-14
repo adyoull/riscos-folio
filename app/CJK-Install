@@ -1,0 +1,11 @@
+Folio CJK font pack
+===================
+
+Droid Sans Fallback: a font with Chinese, Japanese and Korean characters,
+for PDFs and ebooks whose text in those languages doesn't carry its own
+font (Apache License 2.0, The Android Open Source Project; FontLicence).
+
+To install: drag the !Folio in this zip over your own !Folio. The Filer
+puts the font in !Folio.Fonts, where Folio finds it the next time it
+starts. (If you have PackMan's FontConfig installed, Folio uses its fonts
+as well as these.)

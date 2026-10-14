@@ -91,7 +91,17 @@ static void close_editor(void)
 }
 
 /* Keeps what's typed, if it changed. */
-static void commit(void)
+static void commit_now(void);
+/* Keeps what's typed (and says why, in the log). */
+static void commit_why(const char *why)
+{
+	if (fe.w)
+		app_log("form: '%s' closed: %s", fe.f.name, why);
+	commit_now();
+}
+#define commit() commit_why(__func__)
+
+static void commit_now(void)
 {
 	char value[MAX_LINES * LINE_LEN];
 	docwin *w = fe.w;
@@ -273,8 +283,10 @@ int formui_key(int *block)
 	int page = fe.page, index = fe.index;
 	if (!fe.handle || block[0] != fe.handle)
 		return 0;
+	app_log("form: key &%x in icon %d", key, icon);
 	switch (key) {
 	case 0x1b:                        /* Escape: as it was */
+		app_log("form: '%s' closed: Escape", fe.f.name);
 		close_editor();
 		return 1;
 	case 0x0d:                        /* Return */

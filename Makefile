@@ -49,7 +49,7 @@ WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c wimp/clip.c wimp/
 	wimp/readtext.c wimp/speaker.c wimp/speech.c wimp/print.c wimp/printlay.c wimp/export.c wimp/ocrui.c wimp/gotopage.c wimp/docinfo.c wimp/choices.c wimp/ask.c wimp/formui.c wimp/fontsetup.c
 WIMP_HDR := wimp/app.h wimp/tbx.h wimp/worker.h wimp/shelfdata.h wimp/readtext.h wimp/speaker.h \
 	core/folio.h core/dict.h
-VERSION ?= 0.0.1-test42
+VERSION ?= 0.0.1-test43
 
 all: build/ro/libfolio.a build/al/libfolio.a build/al/core_test build/ro/core_test.elf build/ro/folio.elf
 
@@ -152,6 +152,16 @@ ocrplugin:
 	cp app/OCR-Install build/ocrplugin/ReadMe,fff
 	python3 $(RCD_DIR)/package/rozip.py build/FolioOCR-$(VERSION).zip -C build/ocrplugin '!Folio' 'ReadMe,fff'
 	@ls -l build/FolioOCR-$(VERSION).zip
+
+# The CJK font pack: Droid Sans Fallback (from MuPDF's sources) for
+# !Folio.Fonts, for text in Chinese, Japanese and Korean that isn't embedded.
+cjkpack:
+	rm -rf build/cjkpack && mkdir -p build/cjkpack/!Folio/Fonts
+	cp $(MUPDF)/resources/fonts/droid/DroidSansFallbackFull.ttf 'build/cjkpack/!Folio/Fonts/DroidSansFallbackFull.ttf'
+	cp $(MUPDF)/resources/fonts/droid/NOTICE 'build/cjkpack/!Folio/Fonts/FontLicence,fff'
+	cp app/CJK-Install build/cjkpack/ReadMe,fff
+	python3 $(RCD_DIR)/package/rozip.py build/FolioCJK-$(VERSION).zip -C build/cjkpack '!Folio' 'ReadMe,fff'
+	@ls -l build/FolioCJK-$(VERSION).zip
 
 tests/data/stamp: tests/make-data.sh tests/make-epub.py tests/make-form.py
 	tests/make-data.sh $(MU_AL)/mutool $(RCD_DIR)/qemu/aligntrap.sh
