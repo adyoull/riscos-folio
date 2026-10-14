@@ -26,6 +26,9 @@
 #ifdef FOLIO_FONTCONFIG
 #include <fontconfig/fontconfig.h>
 #include <mupdf/ucdn.h>
+#ifdef __riscos__
+#include <swis.h>
+#endif
 
 static FcConfig *config;
 static int started;            /* 1: tried; config NULL if it failed */
@@ -39,40 +42,114 @@ static struct {
 	fz_font *font;
 } kept[KEEP];
 
+/* ---- Folio's own fonts ----------------------------------------------------
+ * The fonts in FOLIO_APPFONTS (!Folio.Fonts) are opened by MuPDF itself and
+ * asked directly whether they have a character, without fontconfig: on the
+ * Pi, fontconfig took none of them (test46: "0 of Folio's own"), and a
+ * folder's cache never sees fonts added later on RISC OS anyway. */
+#define APPFONTS 16
+static struct {
+	char path[300];
+	fz_font *font;
+	int failed;
+} appf[APPFONTS];
+static int appn, app_listed;
+static char app_note[120] = "";
+
+static int skip_name(const char *n)
+{
+	return n[0] == '.' || !strcmp(n, "fonts.conf") || !strcmp(n, "ReadMe") ||
+		!strcmp(n, "FontLicence") || !strncmp(n, "fonts/", 6);
+}
+
+static void add_app_font(const char *dir, const char *leaf)
+{
+	if (appn >= APPFONTS || skip_name(leaf))
+		return;
+	snprintf(appf[appn].path, sizeof appf[appn].path, "%s/%s", dir, leaf);
+	appn++;
+}
+
+static void list_app_fonts(void)
+{
+	const char *app = getenv("FOLIO_APPFONTS");
+	if (app_listed)
+		return;
+	app_listed = 1;
+	if (!app || !*app)
+		return;
+#ifdef __riscos__
+	{
+		/* The folder by its RISC OS name (FOLIO_APPFONTS_RO); the files are
+		 * then opened by their UnixLib names, '/' in a leaf being '.'. */
+		const char *ro = getenv("FOLIO_APPFONTS_RO");
+		char buf[256];
+		int next = 0, n;
+		while (ro && next != -1) {
+			char *p;
+			int i;
+			n = 0;
+			if (_swix(OS_GBPB, _INR(0, 6) | _OUTR(3, 4), 9, ro, buf, 8, next, sizeof buf, "*",
+					&n, &next)) {
+				snprintf(app_note, sizeof app_note, " (can't read %.80s)", ro);
+				break;
+			}
+			for (p = buf, i = 0; i < n; i++) {
+				char leaf[100];
+				size_t k;
+				snprintf(leaf, sizeof leaf, "%.99s", p);
+				for (k = 0; leaf[k]; k++)
+					if (leaf[k] == '/')
+						leaf[k] = '.';
+				add_app_font(app, leaf);
+				p += strlen(p) + 1;
+			}
+		}
+	}
+#else
+	{
+		DIR *d = opendir(app);
+		struct dirent *e;
+		if (!d)
+			snprintf(app_note, sizeof app_note, " (can't read %.80s)", app);
+		while (d && (e = readdir(d)) != NULL)
+			add_app_font(app, e->d_name);
+		if (d)
+			closedir(d);
+	}
+#endif
+}
+
+/* The first of Folio's own fonts with character c, or NULL. */
+static fz_font *app_font_with(fz_context *ctx, int c)
+{
+	int i;
+	list_app_fonts();
+	for (i = 0; i < appn; i++) {
+		if (!appf[i].font && !appf[i].failed) {
+			fz_try(ctx)
+				appf[i].font = fz_new_font_from_file(ctx, NULL, appf[i].path, 0, 0);
+			fz_catch(ctx) {
+				appf[i].failed = 1;
+				snprintf(app_note, sizeof app_note, " (couldn't open %.90s)", appf[i].path);
+			}
+		}
+		if (appf[i].font && fz_encode_character(ctx, appf[i].font, c) > 0)
+			return fz_keep_font(ctx, appf[i].font);
+	}
+	return NULL;
+}
+
 static FcConfig *fc(void)
 {
 	if (!started) {
 		started = 1;
+		list_app_fonts();
 		config = FcInitLoadConfigAndFonts();
 		if (config) {
-			/* The program's own fonts on top of the system's (FOLIO_APPFONTS),
-			 * file by file, without a cache: RISC OS doesn't change a
-			 * directory's date when files are added to it, so fontconfig's
-			 * cache of the folder would never see new fonts. */
-			const char *app = getenv("FOLIO_APPFONTS");
-			int added = 0;
-			FcFontSet *set, *own;
-			if (app && *app) {
-				DIR *d = opendir(app);
-				struct dirent *e;
-				while (d && (e = readdir(d)) != NULL) {
-					char path[512];
-					if (e->d_name[0] == '.' || !strcmp(e->d_name, "fonts.conf") ||
-							!strcmp(e->d_name, "ReadMe") || !strcmp(e->d_name, "FontLicence"))
-						continue;
-					snprintf(path, sizeof path, "%s/%s", app, e->d_name);
-					if (FcConfigAppFontAddFile(config, (const FcChar8 *)path))
-						added++;
-				}
-				if (d)
-					closedir(d);
-			}
-			set = FcConfigGetFonts(config, FcSetSystem);
-			own = FcConfigGetFonts(config, FcSetApplication);
-			snprintf(status, sizeof status, "fontconfig %d.%d.%d: %d fonts, %d of Folio's own",
-				FC_MAJOR, FC_MINOR, FC_REVISION, (set ? set->nfont : 0) + (own ? own->nfont : 0),
-				own ? own->nfont : 0);
-			(void)added;
+			FcFontSet *set = FcConfigGetFonts(config, FcSetSystem);
+			snprintf(status, sizeof status, "fontconfig %d.%d.%d: %d fonts; %d of Folio's own%s",
+				FC_MAJOR, FC_MINOR, FC_REVISION, set ? set->nfont : 0, appn, app_note);
 		} else {
 			snprintf(status, sizeof status, "fontconfig couldn't start (no fonts.conf?)");
 		}
@@ -166,12 +243,22 @@ static fz_font *by_lang(fz_context *ctx, const char *lang, int serif)
 	return match(ctx, p, has_lang, (void *)lang);
 }
 
+/* A character each CJK language's fonts have and the others' may not. */
+static int lang_sample(const char *lang)
+{
+	return !strcmp(lang, "ja") ? 0x3042 : !strcmp(lang, "ko") ? 0xac00 :
+		!strcmp(lang, "zh-cn") ? 0x8fd9 : 0x9019;
+}
+
 static fz_font *load_cjk(fz_context *ctx, const char *name, int ordering, int serif)
 {
 	const char *lang = ordering == FZ_ADOBE_JAPAN ? "ja" : ordering == FZ_ADOBE_KOREA ? "ko" :
 		ordering == FZ_ADOBE_GB ? "zh-cn" : "zh-tw";
+	fz_font *f = by_lang(ctx, lang, serif);
 	(void)name;
-	return by_lang(ctx, lang, serif);
+	if (!f)
+		f = app_font_with(ctx, lang_sample(lang));
+	return f;
 }
 
 /* ---- By script: fallback ------------------------------------------------- */
@@ -236,10 +323,10 @@ static fz_font *load_fallback(fz_context *ctx, int script, int language, int ser
 		return NULL;
 	if (script == UCDN_SCRIPT_HAN) {
 		switch (language) {
-		case FZ_LANG_ja: return by_lang(ctx, "ja", serif);
-		case FZ_LANG_ko: return by_lang(ctx, "ko", serif);
-		case FZ_LANG_zh_Hant: return by_lang(ctx, "zh-tw", serif);
-		case FZ_LANG_zh_Hans: return by_lang(ctx, "zh-cn", serif);
+		case FZ_LANG_ja: return load_cjk(ctx, NULL, FZ_ADOBE_JAPAN, serif);
+		case FZ_LANG_ko: return load_cjk(ctx, NULL, FZ_ADOBE_KOREA, serif);
+		case FZ_LANG_zh_Hant: return load_cjk(ctx, NULL, FZ_ADOBE_CNS, serif);
+		case FZ_LANG_zh_Hans: return load_cjk(ctx, NULL, FZ_ADOBE_GB, serif);
 		}
 	}
 	ch = sample(script);
@@ -258,7 +345,10 @@ static fz_font *load_fallback(fz_context *ctx, int script, int language, int ser
 	FcPatternAddCharSet(p, FC_CHARSET, cs);
 	FcCharSetDestroy(cs);
 	FcPatternAddString(p, FC_FAMILY, (const FcChar8 *)(serif ? "serif" : "sans-serif"));
-	return match(ctx, p, has_char, (void *)(size_t)ch);
+	{
+		fz_font *f = match(ctx, p, has_char, (void *)(size_t)ch);
+		return f ? f : app_font_with(ctx, ch);
+	}
 }
 
 /* ---- By name ------------------------------------------------------------- */
@@ -335,6 +425,13 @@ void folio_fonts_drop(fz_context *ctx)
 			fz_drop_font(ctx, kept[i].font);
 			kept[i].font = NULL;
 		}
+	for (i = 0; i < appn; i++)
+		if (appf[i].font) {
+			fz_drop_font(ctx, appf[i].font);
+			appf[i].font = NULL;
+		}
+	appn = 0;
+	app_listed = 0;
 	if (config) {
 		FcConfigDestroy(config);
 		config = NULL;

@@ -80,7 +80,7 @@ int main(int argc, char **argv)
 	printf("CJK\n");
 	font = fz_load_system_cjk_font(ctx, "MS-Mincho", FZ_ADOBE_JAPAN, 1);
 	printf("  %s\n", folio_fonts_status());
-	CHECK(strstr(folio_fonts_status(), "fontconfig 2.14.1: 1 fonts") != NULL || strstr(folio_fonts_status(), ": 2 fonts"),
+	CHECK(strstr(folio_fonts_status(), "fontconfig 2.14.1: 1 fonts") != NULL,
 		"status '%s'", folio_fonts_status());
 	CHECK(is_droid(ctx, font), "Japanese: %s", font ? fz_font_name(ctx, font) : "none");
 	fz_drop_font(ctx, font);
@@ -119,6 +119,26 @@ int main(int argc, char **argv)
 			fz_drop_document(ctx, doc);
 		}
 	}
+	folio_fonts_drop(ctx);
+
+	/* Folio's own fonts (FOLIO_APPFONTS), with no font folder in the
+	 * configuration: found without fontconfig. */
+	printf("Folio's own fonts\n");
+	f = fopen(conf, "w");
+	if (f) {
+		fprintf(f, "<?xml version=\"1.0\"?>\n<fontconfig>\n  <cachedir>%s/tests/out/fonts/cache</cachedir>\n"
+			"</fontconfig>\n", cwd);
+		fclose(f);
+	}
+	setenv("FOLIO_APPFONTS", fontdir, 1);
+	font = fz_load_system_cjk_font(ctx, "MS-Gothic", FZ_ADOBE_JAPAN, 0);
+	printf("  %s\n", folio_fonts_status());
+	CHECK(strstr(folio_fonts_status(), ": 0 fonts; 1 of Folio's own") != NULL, "status '%s'", folio_fonts_status());
+	CHECK(is_droid(ctx, font), "Japanese from Folio's own: %s", font ? fz_font_name(ctx, font) : "none");
+	fz_drop_font(ctx, font);
+	font = fz_load_system_cjk_font(ctx, "Batang", FZ_ADOBE_KOREA, 0);
+	CHECK(is_droid(ctx, font), "Korean from Folio's own: %s", font ? fz_font_name(ctx, font) : "none");
+	fz_drop_font(ctx, font);
 	folio_fonts_drop(ctx);
 	fz_drop_context(ctx);
 	printf("%d checks, %d failed\n", checks, fails);

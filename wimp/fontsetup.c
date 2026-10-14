@@ -31,11 +31,13 @@ void fontsetup(void)
 		setenv("FONTCONFIG_FILE", UNIXFC_CONF, 1);
 		setenv("FONTCONFIG_PATH", "/<UnixFC$Dir>/fonts", 1);
 		setenv("FOLIO_APPFONTS", "/<Folio$Dir>/Fonts", 1);
+		setenv("FOLIO_APPFONTS_RO", "<Folio$Dir>.Fonts", 1);
 		app_log("fonts: PackMan's fontconfig setup (UnixFC)");
 	} else {
 		setenv("FONTCONFIG_FILE", "/<Folio$Dir>/Fonts/fonts.conf", 1);
 		unsetenv("FONTCONFIG_PATH");
 		setenv("FOLIO_APPFONTS", "/<Folio$Dir>/Fonts", 1);
+		setenv("FOLIO_APPFONTS_RO", "<Folio$Dir>.Fonts", 1);
 		app_log("fonts: Folio's own fontconfig setup (!Folio.Fonts)");
 	}
 	unsetenv("FONTCONFIG_SYSROOT");
