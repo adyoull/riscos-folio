@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test44 (14-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test45 (14-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -350,6 +350,7 @@ int formui_menu_selection(int *block);
 void formui_menus_deleted(int tree);
 void formui_commit(docwin *w);
 void formui_raise(docwin *w);
+int formui_on_field(docwin *w, int page, folio_point p);
 void formui_forget(docwin *w);
 
 /* docwin.c, for formui.c and security. */

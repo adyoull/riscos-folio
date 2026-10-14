@@ -2097,9 +2097,19 @@ void docwin_click(docwin *w, int *b)
 	/* Any click in the window takes the input focus (no caret), so the keys
 	 * work (Style Guide p69). Button type 10: click = x256, drag = x16,
 	 * double-click = x1; Select = 4, Adjust = 1. */
-	_swix(Wimp_SetCaretPosition, _INR(0, 5), w->wimp, -1, 0, 0, 1 << 25, -1);
 	if (buttons != 0x400)
 		w->link_down = 0;                     /* a drag or double-click: not a link */
+	/* The Wimp follows a click with a drag (or a double-click) if the button
+	 * is held a moment or clicked again: on the field just opened for
+	 * typing, that's the same click, not a new one (test44 closed the
+	 * editor and started a selection). */
+	if (buttons != 0x400 && (page = point_at(w, b[0], b[1], &pt, -1)) >= 0 &&
+			formui_on_field(w, page, pt)) {
+		app_log("form: %s on the field being typed in: ignored",
+			buttons == 0x40 ? "drag" : buttons == 4 ? "double-click" : "click");
+		return;
+	}
+	_swix(Wimp_SetCaretPosition, _INR(0, 5), w->wimp, -1, 0, 0, 1 << 25, -1);
 	formui_commit(w);                        /* a field being typed in: keep it */
 	if (buttons == 0x400) {                  /* Select click: a form field, an annotation, a link, or deselect */
 		sel_clear(w);

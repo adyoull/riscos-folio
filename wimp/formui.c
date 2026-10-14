@@ -144,6 +144,13 @@ void formui_commit(docwin *w)
 		commit();
 }
 
+/* Is p on page the field being typed in? */
+int formui_on_field(docwin *w, int page, folio_point p)
+{
+	return fe.w == w && fe.handle && page == fe.page &&
+		p.x >= fe.f.rect.x0 && p.x <= fe.f.rect.x1 && p.y >= fe.f.rect.y0 && p.y <= fe.f.rect.y1;
+}
+
 int formui_owns(int handle)
 {
 	return fe.handle && handle == fe.handle;
