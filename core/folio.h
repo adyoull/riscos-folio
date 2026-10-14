@@ -267,6 +267,63 @@ int folio_get_info(folio_doc *doc, folio_info *in);
 /* A PDF date ("D:20230115093000+01'00'") for people: "15 Jan 2023, 09:30". */
 void folio_pdf_date(const char *d, char *out, size_t size);
 
+/* What a PDF holds that a careful reader may want to know of (counts). */
+typedef struct {
+	int pdf;            /* 0: not a PDF, the rest are 0 */
+	int javascript;     /* scripts: document, page, field and link actions */
+	int files;          /* attached files */
+	int fields;         /* form fields */
+	int xfa;            /* an XFA form (Folio shows its ordinary form, if any) */
+	int launch;         /* actions that start another program or open a file */
+	int submit;         /* actions that send the form, or read data in */
+	int other_files;    /* links into other PDF files */
+	int uri;            /* links to web pages and email */
+} folio_content;
+int folio_get_content(folio_doc *doc, folio_content *c);
+
+/* ---- System fonts (fonts.c) ---------------------------------------------- */
+/* What fontconfig found when it started (on the first font asked for), for
+ * the log: "fontconfig 2.14.1: 61 fonts", or why not. */
+const char *folio_fonts_status(void);
+
+/* ---- Forms (PDFs; form.c) ------------------------------------------------ */
+
+typedef enum {
+	FOLIO_FIELD_NONE, FOLIO_FIELD_TEXT, FOLIO_FIELD_CHECK, FOLIO_FIELD_RADIO,
+	FOLIO_FIELD_COMBO, FOLIO_FIELD_LIST, FOLIO_FIELD_BUTTON, FOLIO_FIELD_SIGNATURE
+} folio_field_kind;
+
+typedef struct {
+	folio_field_kind kind;
+	int index;          /* its number on the page (the order Tab goes in) */
+	folio_rect rect;    /* page points from the top left */
+	char name[128];     /* UTF-8, the full field name */
+	char value[1024];   /* UTF-8: the text, the chosen option, or the on state */
+	int on;             /* check box or radio button: this one is on */
+	int read_only;
+	int multiline, password, max_len;   /* text fields (max_len 0: none) */
+	int options;        /* combo and list boxes: how many */
+} folio_field;
+
+int folio_field_count(folio_doc *doc, folio_loc loc);
+/* 1 and *f for the page's field 'index' (or the one at p); 0 if none; -1. */
+int folio_field_get(folio_doc *doc, folio_loc loc, int index, folio_field *f);
+int folio_field_at(folio_doc *doc, folio_loc loc, folio_point p, folio_field *f);
+/* A combo or list box's option i, as shown. 0 or -1. */
+int folio_field_option(folio_doc *doc, folio_loc loc, int index, int i, char *buf, size_t size);
+/* Changes (one undoable operation each). set_text: 0 taken, 1 turned down by
+ * the form's script, -1 an error. */
+int folio_field_set_text(folio_doc *doc, folio_loc loc, int index, const char *utf8);
+int folio_field_toggle(folio_doc *doc, folio_loc loc, int index);
+int folio_field_choose(folio_doc *doc, folio_loc loc, int index, int option);
+/* A push button: its script runs (only with JavaScript on). 1 ran, 0 not. */
+int folio_field_press(folio_doc *doc, folio_loc loc, int index);
+/* Turns on the form's JavaScript (it can't be turned off again for this
+ * document). 1 if it's on. What the scripts ask for is kept to be taken. */
+int folio_form_js(folio_doc *doc, int on);
+int folio_form_take_alert(folio_doc *doc, char *buf, size_t size);
+int folio_form_take_url(folio_doc *doc, char *buf, size_t size);
+
 /* ---- Links ------------------------------------------------------------ */
 
 typedef struct {
@@ -342,7 +399,8 @@ int folio_get_security(folio_doc *doc, folio_security *sec);
 typedef enum {
 	FOLIO_PERM_PRINT, FOLIO_PERM_COPY,
 	FOLIO_PERM_ACCESSIBILITY,   /* text for screen readers (reading aloud) */
-	FOLIO_PERM_ANNOTATE
+	FOLIO_PERM_ANNOTATE,
+	FOLIO_PERM_FORM             /* filling in its form */
 } folio_permission;
 int folio_permitted(folio_doc *doc, folio_permission what);
 /* Is this the document's owner password? 1 (and the document now has full

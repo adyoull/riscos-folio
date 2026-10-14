@@ -1,0 +1,48 @@
+diff -u a/src/fccache.c b/src/fccache.c
+--- a/src/fccache.c
++++ b/src/fccache.c
+@@ -1192,6 +1192,10 @@
+     FcBool  ret = FcTrue;
+     FcCache	c;
+ 
++#ifdef __riscos__
++    /* RISC OS: touch the stack buffer before a SWI fills it (see fcxml.c). */
++    memset (&c, 0, sizeof (c));
++#endif
+     if (read (fd, &c, sizeof (FcCache)) != sizeof (FcCache))
+ 	ret = FcFalse;
+     else if (c.magic != FC_CACHE_MAGIC_MMAP)
+diff -u a/src/fcint.h b/src/fcint.h
+--- a/src/fcint.h
++++ b/src/fcint.h
+@@ -74,6 +74,12 @@
+ #  define FC_SEARCH_PATH_SEPARATOR ';'
+ #  define FC_DIR_SEPARATOR         '\\'
+ #  define FC_DIR_SEPARATOR_S       "\\"
++#elif defined(__riscos__)
++/* RISC OS paths can contain ':' (UnixFont:truetype), so lists of folders
++ * (FONTCONFIG_PATH) are separated by ';', as in GCCSDK's port (fcint.p). */
++#  define FC_SEARCH_PATH_SEPARATOR ';'
++#  define FC_DIR_SEPARATOR         '/'
++#  define FC_DIR_SEPARATOR_S       "/"
+ #else
+ #  define FC_SEARCH_PATH_SEPARATOR ':'
+ #  define FC_DIR_SEPARATOR         '/'
+diff -u a/src/fcxml.c b/src/fcxml.c
+--- a/src/fcxml.c
++++ b/src/fcxml.c
+@@ -3652,6 +3652,14 @@
+     }
+ 
+     do {
++#ifdef __riscos__
++	/* RISC OS: ARMEABISupport maps the stack a page at a time when USR
++	 * mode touches it. read() fills buf with a SWI (OS_GBPB), whose
++	 * writes from SVC mode don't map a new page: an untouched stack page
++	 * aborts, which UnixLib reports as an EMT trap. Touch the buffer
++	 * first (as GCCSDK's own fontconfig port does). */
++	memset (buf, 0, BUFSIZ);
++#endif
+ 	len = read (fd, buf, BUFSIZ);
+ 	if (len < 0)
+ 	{

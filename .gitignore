@@ -10,3 +10,7 @@ tests/out/
 handoffs/
 .DS_Store
 config.mk
+fontconfig/src
+fontconfig/out
+fontconfig/dl
+tests/data/fonts/

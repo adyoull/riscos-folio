@@ -1,0 +1,19 @@
+Fonts for Folio
+===============
+
+PDFs usually carry their own fonts. When one doesn't (and for ebooks in
+scripts Folio has no font for, such as Chinese, Japanese and Korean), Folio
+looks for a font on your computer through fontconfig:
+
+- With PackMan's FontConfig (UnixFC) installed, Folio uses its fonts and
+  settings, like other programs that use fontconfig. Fonts installed with
+  PackMan (into UnixFont:truetype) are found there.
+- Without it, Folio uses the TrueType and OpenType fonts (.ttf, .otf, .ttc)
+  you put in this folder.
+
+For Chinese, Japanese and Korean, the Noto Sans CJK or Droid Sans Fallback
+fonts (both free, SIL Open Font Licence / Apache) work well.
+
+The first time Folio needs a font after new ones are added, it takes a
+moment to look through them; what it finds is kept in
+<Choices$Write>.Folio.FontCache (or UnixFC's own cache).

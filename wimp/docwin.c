@@ -101,7 +101,13 @@ struct docwin {
 	ocr_win *ocr;             /* text recognition (NULL without the plugin) */
 	/* What the author allows (a PDF's permissions; read with the core lock
 	 * after opening, saving and the owner password). */
-	int perm_print, perm_copy, perm_access;
+	int perm_print, perm_copy, perm_access, perm_form;
+	/* Full screen: the window fills the screen with no title bar or scroll
+	 * bars; what it was is kept to go back to. */
+	int full;
+	int fs_box[4];
+	unsigned fs_flags;
+	int fs_toolbar, fs_thumbs;
 	/* The window's place as it was left (load_place), screen OS units. */
 	int have_view, view[4];
 };
@@ -422,6 +428,15 @@ static void markup(docwin *w, folio_annot_kind kind);
 static void new_note(docwin *w);
 static void undo_redo(docwin *w, int redo);
 static void sel_forget(docwin *w);
+static void security_on_open(docwin *w);
+/* A link out of the document waiting for the reader's answer. */
+typedef struct {
+	docwin *w;
+	char uri[512];
+	char path[512];          /* a document to open, or "" */
+	int page;                /* its page (from #page=N), or -1 */
+} pending_link;
+static pending_link pend;
 static int sel_drag_tick(docwin *w);
 static void drag_start(docwin *w);
 static void drag_stop(docwin *w);
@@ -492,6 +507,7 @@ static void read_perms(docwin *w)
 	w->perm_print = folio_permitted(w->doc, FOLIO_PERM_PRINT);
 	w->perm_copy = folio_permitted(w->doc, FOLIO_PERM_COPY);
 	w->perm_access = folio_permitted(w->doc, FOLIO_PERM_ACCESSIBILITY) || w->perm_copy;
+	w->perm_form = folio_permitted(w->doc, FOLIO_PERM_FORM);
 	if (!w->perm_print || !w->perm_copy)
 		app_log("%s: the author allows%s%s%s", leafname(w->path), w->perm_print ? " printing" : "",
 			w->perm_copy ? " copying" : "", w->perm_access ? " reading aloud" : "");
@@ -503,7 +519,7 @@ static void read_perms(docwin *w)
 static int allowed(docwin *w, int event)
 {
 	const char *what = NULL;
-	if (!app.obey_restrictions)
+	if (!app.ch.obey_restrictions)
 		return 1;
 	switch (event) {
 	case EV_PRINT:
@@ -520,6 +536,10 @@ static int allowed(docwin *w, int event)
 		if (!w->perm_access)
 			what = "its text to be read aloud";
 		break;
+	case EV_FILL_FORM:
+		if (!w->perm_form)
+			what = "its form to be filled in";
+		break;
 	}
 	if (!what)
 		return 1;
@@ -530,12 +550,13 @@ static int allowed(docwin *w, int event)
 
 int docwin_allows(docwin *w, int event)
 {
-	if (!app.obey_restrictions)
+	if (!app.ch.obey_restrictions)
 		return 1;
 	switch (event) {
 	case EV_PRINT: return w->perm_print;
 	case EV_COPY: case EV_EXPORT_DRAW: return w->perm_copy;
 	case EV_READ_ALOUD: case EV_SPEAK_SEL: return w->perm_access;
+	case EV_FILL_FORM: return w->perm_form;
 	}
 	return 1;
 }
@@ -581,12 +602,22 @@ static void set_extent(docwin *w)
 
 static void layout(docwin *w)
 {
+	formui_commit(w);         /* the field being typed in moves */
 	float widest = w->max_pw > w->page.x1 ? w->max_pw : w->page.x1;
 	int sw = (int)(widest * px_per_pt(w) + 0.5f) << app.xeig;
 	w->ext_w = w->cols * sw + (w->cols + 1) * GAP;
-	if (w->ext_w < 640)
-		w->ext_w = 640;
-	w->ext_w += w->left;
+	if (w->full) {
+		/* The pages in the middle of the screen, the work area at least as
+		 * wide as it (the Wimp won't make a window wider than that). */
+		w->left = w->ext_w < app.screen_w ? (app.screen_w - w->ext_w) / 2 : 0;
+		w->ext_w += w->left;
+		if (w->ext_w < app.screen_w)
+			w->ext_w = app.screen_w;
+	} else {
+		if (w->ext_w < 640)
+			w->ext_w = 640;
+		w->ext_w += w->left;
+	}
 	set_extent(w);
 	w->gen++;
 }
@@ -666,62 +697,10 @@ static unsigned hash_string(const char *s)
 }
 
 /* ---- Choices ------------------------------------------------------------ */
-/* <Choices$Write>.Folio.Choices: "folio-choices 1", then "zoom <percent>".
- * Read back through Choices: (Style Guide p92). */
-
-void choices_load(void)
-{
-	FILE *f = fopen("Choices:Folio.Choices", "r");
-	char line[80];
-	app.default_zoom = 1.0f;
-	app.ocr_fast = 0;
-	app.ocr_auto = 1;
-	app.obey_restrictions = 1;
-	if (!f)
-		return;
-	if (fgets(line, sizeof line, f) && !strncmp(line, "folio-choices 1", 15))
-		while (fgets(line, sizeof line, f)) {
-			int pc;
-			if (sscanf(line, "zoom %d", &pc) == 1 && pc >= (int)(MIN_ZOOM * 100) && pc <= (int)(MAX_ZOOM * 100))
-				app.default_zoom = pc / 100.0f;
-			else if (!strncmp(line, "ocr fast", 8))
-				app.ocr_fast = 1;
-			else if (!strncmp(line, "ocr accurate", 12))
-				app.ocr_fast = 0;
-			else if (sscanf(line, "ocr-auto %d", &pc) == 1)
-				app.ocr_auto = pc != 0;
-			else if (sscanf(line, "obey-restrictions %d", &pc) == 1)
-				app.obey_restrictions = pc != 0;
-		}
-	fclose(f);
-	app_log("choices: new documents at %d%%", (int)(app.default_zoom * 100 + 0.5f));
-}
-
-void choices_save(void)
-{
-	const char *cw = getenv("Choices$Write");
-	char path[220];
-	FILE *f;
-	if (!cw || !*cw)
-		return;
-	snprintf(path, sizeof path, "%s.Folio", cw);
-	_swix(OS_File, _INR(0, 1) | _IN(4), 8, path, 0);
-	snprintf(path, sizeof path, "%s.Folio.Choices", cw);
-	f = fopen(path, "w");
-	if (!f) {
-		tbx_report("Folio couldn't save its choices.");
-		return;
-	}
-	fprintf(f, "folio-choices 1\nzoom %d\nocr %s\nocr-auto %d\nobey-restrictions %d\n",
-		(int)(app.default_zoom * 100 + 0.5f), app.ocr_fast ? "fast" : "accurate", app.ocr_auto,
-		app.obey_restrictions);
-	fclose(f);
-	_swix(OS_File, _INR(0, 2), 18, path, 0xfff);
-}
 
 static void choices_set_zoom(float z)
 {
-	app.default_zoom = z;
+	app.ch.zoom = z;
 	choices_save();
 	app_log("choices: new documents at %d%%", (int)(z * 100 + 0.5f));
 }
@@ -817,6 +796,13 @@ static void save_place(docwin *w)
 	{
 		int st[9];
 		get_state(w, st);
+		if (w->full) {
+			/* Kept as the window was before full screen. */
+			st[1] = w->fs_box[0];
+			st[2] = w->fs_box[1];
+			st[3] = w->fs_box[2];
+			st[4] = w->fs_box[3];
+		}
 		fprintf(f, "folio-place 2\n%d %.5f\n%s\nview %.4f %d %d %d %d %d %d\n", m.chapter, m.fraction,
 			m.text, w->zoom, w->cols, w->cover, st[1], st[2], st[3], st[4]);
 	}
@@ -855,6 +841,7 @@ static tbx_shortcut shortcuts[] = {
 	{ 0, 0x1ac, EV_BACK, 0 },       /* Ctrl-Left: back from a link */
 	{ 0, 0x180, EV_PRINT, 0 },      /* Print (SG p84) */
 	{ 0, 0x185, EV_GOTO, 0 },       /* F5: Go to page */
+	{ 0, 0x1cb, EV_FULL_SCREEN, 0 },/* F11: full screen (F12 is the OS's) */
 };
 
 static ObjectId create_window(docwin *w)
@@ -938,9 +925,9 @@ docwin *docwin_open_password(const char *path, const char *password)
 	}
 	snprintf(w->path, sizeof w->path, "%s", path);
 	snprintf(w->title, sizeof w->title, "%s", leafname(path));
-	w->zoom = app.default_zoom > 0 ? app.default_zoom : 1.0f;
-	w->mode = FOLIO_PAGE_NORMAL;
-	w->cols = 1;
+	w->zoom = app.ch.zoom > 0 ? app.ch.zoom : 1.0f;
+	w->mode = app.ch.mode;
+	w->cols = app.ch.cols == 2 ? 2 : 1;
 	w->cover = 1;
 	w->goto_page = -1;
 
@@ -999,7 +986,7 @@ docwin *docwin_open_password(const char *path, const char *password)
 	window_set_menu(w->obj, app.doc_menu);
 	w->toolbar = toolbar_create(w);
 	w->thumbs = thumbs_new(w);
-	w->show_toolbar = w->toolbar != 0;
+	w->show_toolbar = w->toolbar != 0 && app.ch.toolbar;
 	if (w->show_toolbar)
 		toolbar_attach(w->obj, w->toolbar, 1);
 	w->top = w->show_toolbar ? toolbar_height() : 0;
@@ -1067,6 +1054,7 @@ docwin *docwin_open_password(const char *path, const char *password)
 	bookshelf_note(w->path, 0, 0, folio_title(w->doc), folio_author(w->doc));
 	app_log("opened %s: %s, %d chapter(s), page %gx%g pt", path, folio_format(w->doc),
 		folio_chapters(w->doc), w->page.x1, w->page.y1);
+	security_on_open(w);
 	return w;
 }
 
@@ -1080,6 +1068,10 @@ void docwin_close(docwin *w)
 		}
 	drag_stop(w);
 	sel_forget(w);
+	formui_forget(w);
+	if (pend.w == w)
+		pend.w = NULL;
+	ask_forget(w);
 	find_forget(w);
 	gotopage_forget(w);
 	docinfo_forget(w);
@@ -1402,6 +1394,15 @@ int docwin_background(void)
 	render_job r;
 	int busy = 0;
 	unsigned t0, t;
+	/* fontconfig's start (on the first font asked for), for the log. */
+	{
+		static char last[200];
+		const char *st = folio_fonts_status();
+		if (strcmp(st, last)) {
+			snprintf(last, sizeof last, "%s", st);
+			app_log("fonts: %s", st);
+		}
+	}
 
 	if (worker_take(&r))
 		take_result(&r);
@@ -1531,6 +1532,12 @@ void docwin_mode_changed(void)
 		abort_for(w);
 		cache_forget(w);
 		layout(w);
+		if (w->full) {
+			int st[9];
+			get_state(w, st);
+			st[7] = -1;
+			docwin_open_request(w, st);
+		}
 		go_to_page(w, page);
 		redraw_all(w);
 	}
@@ -2090,8 +2097,12 @@ void docwin_click(docwin *w, int *b)
 	_swix(Wimp_SetCaretPosition, _INR(0, 5), w->wimp, -1, 0, 0, 1 << 25, -1);
 	if (buttons != 0x400)
 		w->link_down = 0;                     /* a drag or double-click: not a link */
-	if (buttons == 0x400) {                  /* Select click: an annotation, a link, or deselect */
+	formui_commit(w);                        /* a field being typed in: keep it */
+	if (buttons == 0x400) {                  /* Select click: a form field, an annotation, a link, or deselect */
 		sel_clear(w);
+		if (w->can_annotate && (page = point_at(w, b[0], b[1], &pt, -1)) >= 0 &&
+				formui_click(w, page, pt, b[0], b[1]))
+			return;
 		asel_click(w, b);
 		if (w->asel_page < 0)
 			link_press(w, b);
@@ -2423,6 +2434,87 @@ static void make_room_for_drawer(docwin *w, int opening)
 	tbx_show(w->obj, 0, 1, st + 1, 0, -1);
 }
 
+/* Full screen (View > Full screen, F11): the window opened over the whole
+ * screen, above everything (the icon bar too), with its title bar, scroll
+ * bars and toolbar taken away, and the pages in the middle. F11 or Escape
+ * puts back the window as it was. (F12 is left to the OS: the command line.) */
+static void full_screen(docwin *w, int on)
+{
+	int st[9], ob[9], page;
+	if (!on == !w->full)
+		return;
+	formui_commit(w);
+	page = current_page(w);
+	get_state(w, st);
+	if (on) {
+		int info[24];
+		w->fs_box[0] = st[1];
+		w->fs_box[1] = st[2];
+		w->fs_box[2] = st[3];
+		w->fs_box[3] = st[4];
+		info[0] = w->wimp;
+		_swix(Wimp_GetWindowInfo, _IN(1), (int)info | 1);   /* the header only */
+		w->fs_flags = (unsigned)info[8];
+		w->fs_toolbar = w->show_toolbar;
+		w->fs_thumbs = w->show_thumbs;
+		if (w->show_thumbs) {
+			thumbs_show(w->thumbs, 0, w->top);
+			w->show_thumbs = 0;
+		}
+		if (w->show_toolbar) {
+			w->show_toolbar = 0;
+			toolbar_attach(w->obj, w->toolbar, 0);
+		}
+		w->full = 1;
+		relayout_furniture(w);
+		ob[0] = w->wimp;
+		ob[1] = 0;
+		ob[2] = 0;
+		ob[3] = app.screen_w;
+		ob[4] = app.screen_h;
+		ob[5] = 0;
+		ob[6] = st[6];
+		ob[7] = -1;
+		/* No back, close, title, toggle, scroll bars or adjust icons. */
+		ob[8] = (int)(w->fs_flags & ~((1u << 24) | (1u << 25) | (1u << 26) | (1u << 27) |
+			(1u << 28) | (1u << 29) | (1u << 30)));      /* bit 31 stays: new-format flags */
+		_swix(Wimp_OpenWindow, _INR(1, 4), ob, 0x4b534154 /* "TASK" */, -1, 1);
+		app_log("%s: full screen", w->title);
+	} else {
+		w->full = 0;
+		ob[0] = w->wimp;
+		ob[1] = w->fs_box[0];
+		ob[2] = w->fs_box[1];
+		ob[3] = w->fs_box[2];
+		ob[4] = w->fs_box[3];
+		ob[5] = 0;
+		ob[6] = st[6];
+		ob[7] = -1;
+		ob[8] = (int)w->fs_flags;
+		if (w->fs_toolbar && w->toolbar) {
+			w->show_toolbar = 1;
+			toolbar_attach(w->obj, w->toolbar, 1);
+		}
+		w->show_thumbs = w->fs_thumbs && w->thumbs;
+		relayout_furniture(w);
+		_swix(Wimp_OpenWindow, _INR(1, 4), ob, 0x4b534154, -1, 1);
+		/* And through the Toolbox, so the toolbar comes back with it. */
+		get_state(w, st);
+		st[7] = -1;
+		tbx_show(w->obj, 0, 1, st + 1, 0, -1);
+		if (w->show_thumbs)
+			thumbs_show(w->thumbs, 1, w->top);
+		w->fit_polls = 25;
+		app_log("%s: back from full screen", w->title);
+	}
+	go_to_page(w, page);
+	redraw_all(w);
+	w->want_render = 1;
+	/* The keys (Page Down, Escape, F11) go to the window. */
+	_swix(Wimp_SetCaretPosition, _INR(0, 5), w->wimp, -1, 0, 0, 1 << 25, -1);
+	tb_update(w);
+}
+
 static void toggle_thumbs(docwin *w)
 {
 	if (!w->thumbs)
@@ -2557,7 +2649,14 @@ void docwin_event(docwin *w, int code)
 	case EV_CLOSE: docwin_close(w); break;
 	case EV_COPY: if (allowed(w, code)) sel_copy(w); break;
 	case EV_SELECT_ALL: sel_all(w); break;
-	case EV_CLEAR_SEL: sel_clear(w); break;
+	case EV_CLEAR_SEL:
+		/* Escape: clears the selection; with none, leaves full screen. */
+		if (w->full && !w->sel)
+			full_screen(w, 0);
+		else
+			sel_clear(w);
+		break;
+	case EV_FULL_SCREEN: full_screen(w, !w->full); break;
 	case EV_DEFINE: define(w); break;
 	case EV_FIND: find_open(w); break;
 	case EV_TOOLBAR: toggle_toolbar(w); break;
@@ -2598,12 +2697,13 @@ void docwin_view_menu_shown(docwin *w)
 	menu_set_tick(app.view_menu, VIEW_ZOOM_100, w->zoom > 0.999f && w->zoom < 1.001f);
 	menu_set_tick(app.view_menu, VIEW_TOOLBAR, w->show_toolbar);
 	menu_set_tick(app.view_menu, VIEW_THUMBS, w->show_thumbs);
-	menu_set_tick(app.view_menu, VIEW_DEFAULT_ZOOM, fabsf(w->zoom - app.default_zoom) < 0.005f);
+	menu_set_tick(app.view_menu, VIEW_FULL_SCREEN, w->full);
+	menu_set_fade(app.view_menu, VIEW_TOOLBAR, !w->toolbar || w->full);
+	menu_set_fade(app.view_menu, VIEW_THUMBS, !w->thumbs || w->full);
+	menu_set_tick(app.view_menu, VIEW_DEFAULT_ZOOM, fabsf(w->zoom - app.ch.zoom) < 0.005f);
 	menu_set_tick(app.view_menu, VIEW_TWO_PAGES, w->cols == 2);
 	menu_set_tick(app.view_menu, VIEW_COVER_ALONE, w->cover);
 	menu_set_fade(app.view_menu, VIEW_COVER_ALONE, w->cols != 2);
-	menu_set_fade(app.view_menu, VIEW_TOOLBAR, !w->toolbar);
-	menu_set_fade(app.view_menu, VIEW_THUMBS, !w->thumbs);
 	menu_set_fade(app.view_menu, VIEW_ZOOM_IN, w->zoom >= MAX_ZOOM);
 	menu_set_fade(app.view_menu, VIEW_ZOOM_OUT, w->zoom <= MIN_ZOOM);
 }
@@ -2911,16 +3011,146 @@ static void follow_link(docwin *w)
 		app_log("link: %s -> page %d, y %g", w->link_uri, page + 1, (double)w->link_y);
 		return;
 	}
-	if (!strncmp(w->link_uri, "http://", 7) || !strncmp(w->link_uri, "https://", 8) ||
-			!strncmp(w->link_uri, "mailto:", 7)) {
-		_kernel_oserror *e = _swix(URI_Dispatch, _INR(0, 2), 0, w->link_uri, app.task);
-		app_log("link: open %s%s%s", w->link_uri, e ? ": " : "", e ? e->errmess : "");
+	docwin_follow_uri(w, w->link_uri, 0);
+}
+
+/* ---- Links out of the document -------------------------------------------
+ * Web and email links go to the browser or mail program (URI_Dispatch).
+ * Links to another document Folio reads (a relative path, or file:) open it
+ * in Folio; Folio never starts other programs. With Choices > Ask before
+ * following links (and always for one a form's script asks for), a box asks
+ * first, showing where the link goes. */
+
+
+static void go_out(docwin *w, const char *uri, const char *path, int page)
+{
+	if (path[0]) {
+		docwin *o;
+		app_log("link: open %s%s", path, page >= 0 ? " at a page" : "");
+		o = docwin_open(path);
+		if (o && page >= 0)
+			docwin_open_page(o, page);
+		return;
+	}
+	{
+		_kernel_oserror *e = _swix(URI_Dispatch, _INR(0, 2), 0, uri, app.task);
+		app_log("link: open %s%s%s", uri, e ? ": " : "", e ? e->errmess : "");
 		if (e)
 			tbx_report("Folio couldn't open the link: no web browser has been seen by the Filer yet.");
-	} else {
-		app_log("link: not followed: %s", w->link_uri);
-		tbx_report("Folio can't follow links to other files yet.");
 	}
+	(void)w;
+}
+
+static void link_answer(void *data, int ok)
+{
+	pending_link *p = data;
+	if (ok && (is_window(p->w) || !p->path[0]))
+		go_out(p->w, p->uri, p->path, p->page);
+	else
+		app_log("link: not followed: %s", p->uri);
+	p->w = NULL;
+}
+
+/* A link to a file: the RISC OS path of a document Folio can open, beside
+ * this one, or "" (and -1 page). */
+static void link_file(docwin *w, const char *uri, char *path, size_t size, int *page)
+{
+	char rel[400], *hash;
+	const char *u = uri;
+	int i, j;
+	path[0] = 0;
+	*page = -1;
+	if (!strncmp(u, "file://", 7))
+		u += 7;
+	else if (!strncmp(u, "file:", 5))
+		u += 5;
+	else if (strchr(u, ':') || u[0] == '/' || !u[0])
+		return;                  /* another scheme, or an absolute Unix path */
+	snprintf(rel, sizeof rel, "%s", u);
+	if ((hash = strchr(rel, '#')) != NULL) {
+		int n = 0;
+		if (sscanf(hash, "#page=%d", &n) == 1 && n > 0)
+			*page = n - 1;
+		*hash = 0;
+	}
+	/* Unix-style relative path to RISC OS: '/' to '.', '.' to '/', ".." to '^'. */
+	{
+		char ro[400];
+		for (i = 0, j = 0; rel[i] && j < (int)sizeof ro - 2; i++) {
+			if (rel[i] == '.' && rel[i + 1] == '.' && (rel[i + 2] == '/' || !rel[i + 2])) {
+				ro[j++] = '^';
+				i++;
+			} else if (rel[i] == '/')
+				ro[j++] = '.';
+			else if (rel[i] == '.')
+				ro[j++] = '/';
+			else if (rel[i] == '%' && rel[i + 1] && rel[i + 2]) {
+				int c = 0;
+				sscanf(rel + i + 1, "%2x", &c);
+				ro[j++] = c == '.' ? '/' : (char)c;
+				i += 2;
+			} else
+				ro[j++] = rel[i];
+		}
+		ro[j] = 0;
+		{
+			char dir[400];
+			const char *dot;
+			snprintf(dir, sizeof dir, "%s", w->path);
+			dot = strrchr(dir, '.');
+			if (!dot)
+				return;
+			dir[dot - dir] = 0;
+			snprintf(path, size, "%.250s.%.250s", dir, ro);
+		}
+	}
+	/* Only an existing file. */
+	{
+		int type = 0;
+		if (_swix(OS_File, _INR(0, 1) | _OUT(0), 17, path, &type) || type != 1)
+			path[0] = 0;
+	}
+}
+
+void docwin_follow_uri(docwin *w, const char *uri, int from_script)
+{
+	char msg[700], shown[200];
+	int web = !strncmp(uri, "http://", 7) || !strncmp(uri, "https://", 8) ||
+		!strncmp(uri, "mailto:", 7);
+	if (!is_window(w))
+		return;
+	pend.w = w;
+	snprintf(pend.uri, sizeof pend.uri, "%s", uri);
+	pend.path[0] = 0;
+	pend.page = -1;
+	if (!web) {
+		link_file(w, uri, pend.path, sizeof pend.path, &pend.page);
+		if (!pend.path[0]) {
+			app_log("link: not followed: %s", uri);
+			tbx_report("Folio doesn't follow this link: it leads to a file Folio can't find, "
+				"or to another program.");
+			return;
+		}
+	}
+	if (!app.ch.ask_links && !from_script) {
+		link_answer(&pend, 1);
+		return;
+	}
+	{
+		char *d = app_desktop_text(pend.path[0] ? pend.path : uri);
+		snprintf(shown, sizeof shown, "%.190s", d ? d : uri);
+		free(d);
+	}
+	if (pend.path[0])
+		snprintf(msg, sizeof msg, "%s leads to another document:\n%s\nOpen it in Folio?",
+			from_script ? "The form's script" : "This link", shown);
+	else if (!strncmp(uri, "mailto:", 7))
+		snprintf(msg, sizeof msg, "%s writes an email:\n%s\nOpen your email program?",
+			from_script ? "The form's script" : "This link", shown);
+	else
+		snprintf(msg, sizeof msg, "%s goes to a web page:\n%s\nOpen it in your web browser?",
+			from_script ? "The form's script" : "This link", shown);
+	ask_show("Follow link", msg, "Open", "Cancel", link_answer, &pend);
 }
 
 /* Null polls while Select is down on a link: follow it on release. */
@@ -2989,6 +3219,15 @@ int docwin_toolbar_key(docwin *w, int key)
 /* An Open_Window_Request (moved, resized, scrolled, brought to the front). */
 void docwin_open_request(docwin *w, int *b)
 {
+	if (w->full) {
+		/* Full screen stays over the whole screen. */
+		b[1] = 0;
+		b[2] = 0;
+		b[3] = app.screen_w;
+		b[4] = app.screen_h;
+		_swix(Wimp_OpenWindow, _IN(1), b);
+		return;
+	}
 	/* The toolbar is a pane: open it along the top of where the window is
 	 * going, then the window just behind it, with plain Wimp_OpenWindow
 	 * calls. (Until test32 this went through Toolbox_ShowObject on every
@@ -3390,4 +3629,136 @@ int docwin_save(docwin *w, const char *path)
 	go_to_page(w, page);
 	tb_update(w);
 	return 0;
+}
+
+/* ---- Forms and security ------------------------------------------------------ */
+
+int is_docwin(docwin *w) { return is_window(w); }
+float docwin_zoom(docwin *w) { return w->zoom; }
+
+void docwin_page_origin(docwin *w, int page, int *sx, int *sy)
+{
+	int st[9];
+	get_state(w, st);
+	*sx = st[1] - st[5] + page_left(w, page);
+	*sy = st[4] - st[6] + page_top(w, page);
+}
+
+/* After a change to the form: every page drawn again (a total on one page
+ * can change a field on another), and the title's '*'. */
+static void form_changed(docwin *w)
+{
+	page_changed(w, -1);
+	update_title(w);
+	tb_update(w);
+}
+
+int docwin_form_set_text(docwin *w, int page, int index, const char *utf8)
+{
+	folio_loc loc;
+	int rc;
+	if (!is_window(w) || folio_loc_from_number(w->doc, page, &loc))
+		return -1;
+	core_now();
+	rc = folio_field_set_text(w->doc, loc, index, utf8);
+	core_unlock();
+	if (rc < 0)
+		app_log("form: %s", folio_error(app.fc));
+	app_log("form: field %d on page %d %s", index, page + 1, rc == 0 ? "set" : "not set");
+	form_changed(w);
+	return rc;
+}
+
+int docwin_form_toggle(docwin *w, int page, int index)
+{
+	folio_loc loc;
+	int rc;
+	if (!is_window(w) || folio_loc_from_number(w->doc, page, &loc))
+		return -1;
+	core_now();
+	rc = folio_field_toggle(w->doc, loc, index);
+	core_unlock();
+	app_log("form: field %d on page %d toggled%s", index, page + 1, rc ? " (failed)" : "");
+	form_changed(w);
+	return rc;
+}
+
+int docwin_form_choose(docwin *w, int page, int index, int option)
+{
+	folio_loc loc;
+	int rc;
+	if (!is_window(w) || folio_loc_from_number(w->doc, page, &loc))
+		return -1;
+	core_now();
+	rc = folio_field_choose(w->doc, loc, index, option);
+	core_unlock();
+	app_log("form: field %d on page %d: choice %d%s", index, page + 1, option, rc ? " (failed)" : "");
+	form_changed(w);
+	return rc;
+}
+
+int docwin_form_press(docwin *w, int page, int index)
+{
+	folio_loc loc;
+	int rc;
+	if (!is_window(w) || folio_loc_from_number(w->doc, page, &loc))
+		return -1;
+	core_now();
+	rc = folio_field_press(w->doc, loc, index);
+	core_unlock();
+	if (rc > 0)
+		form_changed(w);
+	return rc;
+}
+
+void docwin_ask_permission(docwin *w, int event)
+{
+	allowed(w, event);
+}
+
+/* On opening a PDF: its form's JavaScript, if Choices allow, and a word
+ * about what's in it that may matter (Choices > Warn about scripts...). */
+static void security_on_open(docwin *w)
+{
+	folio_content c;
+	char msg[600], line[100];
+	int n = 0;
+	core_now();
+	folio_get_content(w->doc, &c);
+	if (c.pdf && app.ch.run_js && (c.fields || c.javascript))
+		folio_form_js(w->doc, 1);
+	core_unlock();
+	if (!c.pdf)
+		return;
+	app_log("%s: javascript %d, files %d, fields %d%s, launch %d, submit %d, other files %d, web %d",
+		w->title, c.javascript, c.files, c.fields, c.xfa ? " (XFA)" : "", c.launch, c.submit,
+		c.other_files, c.uri);
+	if (!app.ch.warn_content || !(c.javascript || c.files || c.launch || c.submit))
+		return;
+	snprintf(msg, sizeof msg, "%.60s has:", w->title);
+	if (c.javascript) {
+		snprintf(line, sizeof line, "\n- JavaScript (%s)", app.ch.run_js ?
+			"its form may use it; it can't reach your files" : "not run");
+		strcat(msg, line);
+		n++;
+	}
+	if (c.files) {
+		snprintf(line, sizeof line, "\n- %d attached file%s (Folio doesn't open them)", c.files,
+			c.files == 1 ? "" : "s");
+		strcat(msg, line);
+		n++;
+	}
+	if (c.launch) {
+		snprintf(line, sizeof line, "\n- %d link%s to start a program (Folio won't)", c.launch,
+			c.launch == 1 ? "" : "s");
+		strcat(msg, line);
+		n++;
+	}
+	if (c.submit && n < 4) {
+		snprintf(line, sizeof line, "\n- a way to send the form away (Folio won't)");
+		strcat(msg, line);
+		n++;
+	}
+	strcat(msg, "\nChoices... on Folio's icon bar menu can turn this warning off.");
+	ask_show("Security", msg, "OK", NULL, NULL, NULL);
 }

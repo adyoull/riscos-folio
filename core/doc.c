@@ -35,6 +35,8 @@ folio_ctx *folio_new(size_t store_limit)
 	/* Warnings go nowhere: the Wimp front end has no stderr to show. */
 	fz_set_warning_callback(fc->ctx, NULL, NULL);
 	fz_set_error_callback(fc->ctx, NULL, NULL);
+	/* Fonts MuPDF doesn't have built in come from the system (fonts.c). */
+	folio_fonts_install(fc->ctx);
 	return fc;
 }
 
@@ -120,6 +122,14 @@ folio_cpage *folio_get_page(folio_doc *doc, folio_loc loc)
 		fz_drop_device(ctx, dev);
 		dev = NULL;
 		folio_check_abort(doc);
+		/* PDFs: fields and annotations without an appearance of their own
+		 * (or whose value changed while the page wasn't loaded) get one
+		 * made now, so they're drawn as they are. */
+		{
+			pdf_page *pp = pdf_page_from_fz_page(ctx, cp->page);
+			if (pp && (pp->widgets || pp->annots))
+				pdf_update_page(ctx, pp);
+		}
 		cp->annots = fz_new_display_list(ctx, cp->bounds);
 		dev = fz_new_list_device(ctx, cp->annots);
 		fz_run_page_annots(ctx, cp->page, dev, fz_identity, &doc->cookie);

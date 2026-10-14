@@ -100,7 +100,7 @@ static void entry(menu_block *b, int i, int comp, const char *text, int flags,
 
 static void create_objects(void)
 {
-	static menu_block ib, dm, em, vm, nm, sm, om, cm;
+	static menu_block ib, dm, em, vm, nm, sm, om;
 	int ndm;
 	static tbx_proginfo pi;
 	static tbx_iconbar icon;
@@ -116,16 +116,11 @@ static void create_objects(void)
 	/* Icon bar menu: Info, Help..., Quit (Style Guide p46). */
 	entry(&ib, 0, 0, "Info", MENU_SUBMENU, 0, "Move right to see information about this version of Folio.");
 	entry(&ib, 1, 3, "Bookshelf...", 0, EV_BOOKSHELF, "Click to see your bookshelf.");
-	entry(&ib, 2, 4, "Choices", MENU_SUBMENU, 0, "Move right for Folio's choices.");
+	entry(&ib, 2, 4, "Choices...", 0, EV_CHOICES, "Click to change Folio's choices.");
 	entry(&ib, 3, 1, "Help...", 0, EV_HELP, "Click to read Folio's help.");
 	entry(&ib, 4, 2, "Quit", 0, EV_QUIT, "Click to leave Folio.");
 	app.iconbar_menu = make_menu(&ib, "Folio", 5, 0);
 	check(menu_set_submenu(app.iconbar_menu, 0, app.proginfo));
-	entry(&cm, 0, 1, "Obey document restrictions", 0, EV_OBEY,
-		"Click to choose whether Folio keeps to a PDF's \"no printing\" and \"no copying\" settings. "
-		"When ticked, its owner password lifts them.");
-	app.choices_menu = make_menu(&cm, "Choices", 1, EV_CHOICES_SHOWN);
-	check(menu_set_submenu(app.iconbar_menu, 4, app.choices_menu));
 
 	/* Document menu: View and Navigate submenus. */
 	entry(&vm, 0, VIEW_DARK, "Dark page        ^N", 0, EV_DARK, "Click for a black page with light text. Pictures keep their colours.");
@@ -138,8 +133,9 @@ static void create_objects(void)
 	entry(&vm, 7, VIEW_TWO_PAGES, "Two pages", 0, EV_TWO_PAGES, "Click to show the pages two side by side, or one at a time.");
 	entry(&vm, 8, VIEW_COVER_ALONE, "First page alone", MENU_DOTTED, EV_COVER_ALONE, "Click to show the first page on its own, so facing pages pair up as in a book.");
 	entry(&vm, 9, VIEW_TOOLBAR, "Toolbar", 0, EV_TOOLBAR, "Click to show or hide the toolbar.");
-	entry(&vm, 10, VIEW_THUMBS, "Thumbnails", 0, EV_THUMBS, "Click to show or hide the page thumbnails at the left.");
-	app.view_menu = make_menu(&vm, "View", 11, EV_VIEW_SHOWN);
+	entry(&vm, 10, VIEW_THUMBS, "Thumbnails", MENU_DOTTED, EV_THUMBS, "Click to show or hide the page thumbnails at the left.");
+	entry(&vm, 11, VIEW_FULL_SCREEN, "Full screen      F11", 0, EV_FULL_SCREEN, "Click to read with the document filling the screen. F11 or Escape returns to the desktop.");
+	app.view_menu = make_menu(&vm, "View", 12, EV_VIEW_SHOWN);
 
 	entry(&nm, 0, 1, "Next page    PageDown", 0, EV_NEXT, "Click to go to the next page.");
 	entry(&nm, 1, 2, "Previous page  PageUp", 0, EV_PREV, "Click to go to the previous page.");
@@ -260,6 +256,9 @@ static int message(int *b)
 	if (clip_message(b))
 		return 0;
 	switch (b[4]) {
+	case 0x400c9:                 /* Message_MenusDeleted */
+		formui_menus_deleted(b[5]);
+		break;
 	case Message_Quit:
 		docwin_close_all();
 		return 1;
@@ -371,36 +370,46 @@ static int toolbox_event(int *b)
 	case EV_GOTO_CANCEL:
 		gotopage_event(code);
 		break;
-	case EV_SPEED_SLOW: speech_set_speed(SPEED_SLOW); break;
-	case EV_SPEED_NORMAL: speech_set_speed(SPEED_NORMAL); break;
-	case EV_SPEED_FAST: speech_set_speed(SPEED_FAST); break;
+	case EV_SPEED_SLOW:
+	case EV_SPEED_NORMAL:
+	case EV_SPEED_FAST:
+		/* Kept with the choices. */
+		app.ch.speed = code == EV_SPEED_SLOW ? SPEED_SLOW : code == EV_SPEED_FAST ? SPEED_FAST :
+			SPEED_NORMAL;
+		speech_set_speed(app.ch.speed);
+		choices_save();
+		break;
 	case EV_SPEED_SHOWN:
 		menu_set_tick(app.speed_menu, SPEED_SLOW, speech_speed() == SPEED_SLOW);
 		menu_set_tick(app.speed_menu, SPEED_NORMAL, speech_speed() == SPEED_NORMAL);
 		menu_set_tick(app.speed_menu, SPEED_FAST, speech_speed() == SPEED_FAST);
 		break;
-	case EV_OBEY:
-		app.obey_restrictions = !app.obey_restrictions;
-		app_log("choices: %s document restrictions", app.obey_restrictions ? "obey" : "ignore");
-		choices_save();
+	case EV_CHOICES:
+		choices_open();
 		break;
-	case EV_CHOICES_SHOWN:
-		menu_set_tick(app.choices_menu, 1, app.obey_restrictions);
+	case EV_ASK_OK:
+	case EV_ASK_CANCEL:
+		ask_event(code);
+		break;
+	case EV_CHOICES_DEFAULT:
+	case EV_CHOICES_CANCEL:
+	case EV_CHOICES_SAVE:
+		choices_event(code);
 		break;
 	case EV_OCR_AUTO:
-		app.ocr_auto = !app.ocr_auto;
+		app.ch.ocr_auto = !app.ch.ocr_auto;
 		choices_save();
 		break;
 	case EV_OCR_ACCURATE:
 	case EV_OCR_FAST:
-		app.ocr_fast = code == EV_OCR_FAST;
+		app.ch.ocr_fast = code == EV_OCR_FAST;
 		choices_save();
 		docwin_ocr_settings_changed();
 		break;
 	case EV_OCR_SHOWN:
-		menu_set_tick(app.ocr_menu, OCR_AUTO, app.ocr_auto);
-		menu_set_tick(app.ocr_menu, OCR_ACCURATE, ocr_has_accurate() && (!app.ocr_fast || !ocr_has_fast()));
-		menu_set_tick(app.ocr_menu, OCR_FAST, ocr_has_fast() && (app.ocr_fast || !ocr_has_accurate()));
+		menu_set_tick(app.ocr_menu, OCR_AUTO, app.ch.ocr_auto);
+		menu_set_tick(app.ocr_menu, OCR_ACCURATE, ocr_has_accurate() && (!app.ch.ocr_fast || !ocr_has_fast()));
+		menu_set_tick(app.ocr_menu, OCR_FAST, ocr_has_fast() && (app.ch.ocr_fast || !ocr_has_accurate()));
 		menu_set_fade(app.ocr_menu, OCR_ACCURATE, !ocr_has_accurate());
 		menu_set_fade(app.ocr_menu, OCR_FAST, !ocr_has_fast());
 		docwin_ocr_menu_shown(docwin_from_object(app.menu_window));
@@ -435,7 +444,8 @@ int main(int argc, char **argv)
 {
 	static const int messages[] = {
 		Message_DataLoad, Message_DataOpen, Message_PreQuit, Message_ModeChange,
-		Message_DataSaveAck, Message_DataLoadAck, 0xf /* ClaimEntity */, 0x10 /* DataRequest */, 0
+		Message_DataSaveAck, Message_DataLoadAck, 0xf /* ClaimEntity */, 0x10 /* DataRequest */,
+		0x400c9 /* MenusDeleted */, 0
 	};
 	int block[64];
 	int quit = 0, busy = 0;
@@ -468,6 +478,7 @@ int main(int argc, char **argv)
 	if (_swix(0x50b00 /* MimeMap_Translate */, _INR(0, 2) | _OUT(3), 3, "epub", 0, &app.epub_type))
 		app.epub_type = -1;
 
+	fontsetup();
 	app.fc = folio_new(64 << 20);
 	if (!app.fc) {
 		tbx_report("Folio couldn't start MuPDF (not enough memory?).");
@@ -476,6 +487,7 @@ int main(int argc, char **argv)
 	if (worker_init())
 		app_log("no worker thread: pages will be drawn in the poll loop");
 	speech_init();
+	speech_set_speed(app.ch.speed);
 	ocr_plugin_init();
 	create_objects();
 	bookshelf_init();
@@ -553,7 +565,9 @@ int main(int argc, char **argv)
 			break;
 		}
 		case Wimp_EOpenWindow:
-			if (docwin_from_wimp(block[0]))
+			if (formui_owns(block[0]))
+				_swix(Wimp_OpenWindow, _IN(1), block);
+			else if (docwin_from_wimp(block[0]))
 				docwin_open_request(docwin_from_wimp(block[0]), block);
 			else if (dict_owns(block[0]))
 				_swix(Wimp_OpenWindow, _IN(1), block);
@@ -570,6 +584,12 @@ int main(int argc, char **argv)
 				bookshelf_close(block[0]);
 			break;
 		}
+		case Wimp_ELoseCaret:
+			formui_lose_caret(block[0]);
+			break;
+		case Wimp_EMenuSelection:
+			formui_menu_selection(block);
+			break;
 		case Wimp_EUserDrag:
 			/* A selection drag's button was let go. */
 			docwin_user_drag_done();
@@ -606,6 +626,8 @@ int main(int argc, char **argv)
 			/* Return or Escape in the toolbar's page field; other keys the
 			 * window's shortcuts didn't take go on to other tasks. */
 			docwin *w = docwin_from_toolbar(app.idb.self_id);
+			if (formui_key(block))
+				break;
 			if (bookshelf_key(block))
 				break;
 			if (!(w && docwin_toolbar_key(w, block[6])))

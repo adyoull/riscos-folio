@@ -106,7 +106,7 @@ int ocr_has_fast(void) { return ocr.has_fast; }
 /* The data folder for the chosen speed (the other if only it is there). */
 static int use_fast(void)
 {
-	return ocr.has_fast && (app.ocr_fast || !ocr.has_accurate);
+	return ocr.has_fast && (app.ch.ocr_fast || !ocr.has_accurate);
 }
 
 static void data_dir(char *out, size_t size)
@@ -316,7 +316,7 @@ int ocr_win_next(ocr_win *o)
 	/* Reading aloud is short of time: only what it's waiting for. */
 	if (app.speech_urgent)
 		return 0;
-	if (app.ocr_auto) {
+	if (app.ch.ocr_auto) {
 		cur = docwin_current_page(o->w);
 		dir = docwin_reading_dir(o->w);
 		for (k = 0; k <= 2; k++)

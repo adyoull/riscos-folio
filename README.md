@@ -5,7 +5,7 @@ It's built on [MuPDF](https://mupdf.com) with a native front end that follows
 the RISC OS Style Guide, and takes its ideas for markup and reading from
 Flexcil. "Folio" is a working name.
 
-Status: **test builds** (0.0.1-test40). It's used day to day on a Raspberry Pi
+Status: **test builds** (0.0.1-test41). It's used day to day on a Raspberry Pi
 running RISC OS 5, but expect rough edges. The design is in
 [`docs/DESIGN.md`](docs/DESIGN.md).
 
@@ -36,9 +36,23 @@ running RISC OS 5, but expect rough edges. The design is in
   signatures survive); Discard/Cancel/Save on closing with changes.
 - **Passwords (PDFs):** Folio asks for the password of a protected PDF,
   and can put a password on a PDF (AES-256) or take one off.
-  It keeps to a PDF's "no printing" and "no copying" restrictions (the
-  owner password lifts them; Choices > Obey document restrictions turns
+  It keeps to a PDF's "no printing", "no copying" and "no filling in"
+  restrictions (the owner password lifts them; the Choices window can turn
   this off).
+- **Forms (PDFs):** fill in text fields (typed over the page), check boxes,
+  radio buttons, lists and drop-downs, with undo, and save them into the
+  PDF. A form's JavaScript (totals, checks as you type) runs only if
+  Choices allow it, through MuPDF's sandbox; forms are never sent anywhere.
+- **Security:** Folio asks before following a link out of a document,
+  showing where it goes, never starts other programs, and says when a PDF
+  it opens has JavaScript, attached files or actions that would.
+- **Full screen** reading (F11; F12 stays the command line).
+- **Choices window:** how new documents open, reading-aloud speed, text
+  recognition and the security choices.
+- **Fonts through fontconfig:** for PDFs that don't embed their fonts and
+  for scripts Folio has no font of its own for (Chinese, Japanese, Korean),
+  the computer's fonts: PackMan's FontConfig (UnixFC) setup if it's
+  installed, else the fonts in `!Folio.Fonts`.
 - **Document info:** the file, title, author, dates, PDF version, page
   size, security and permissions, forms, attachments and JavaScript.
 - **Reading aloud** (with the Speech plugin, a separate download: drag the
@@ -60,8 +74,8 @@ running RISC OS 5, but expect rough edges. The design is in
   recent, title or author; drag books to it, or drag directories to have
   Folio watch them for new documents when it starts and on Refresh.
 
-Not yet: annotations in ebooks, fonts through fontconfig (so CJK text that
-isn't embedded shows as boxes), a Choices window.
+Not yet: annotations in ebooks, bookmarks, exporting pages as SVG, text,
+HTML or PDF.
 
 ## Running it
 
@@ -86,7 +100,7 @@ Needs: the riscos-crossdev toolchain and a riscos-crossdev checkout, a
 [riscos-pvoice](https://github.com/adyoull/riscos-pvoice) checkout built
 with its `tools/build-espeak.sh` and `make` (`PVOICE_DIR`),
 `gcc-arm-linux-gnueabihf`, `g++-arm-linux-gnueabihf`, `qemu-user`, `gawk`,
-`python3` with Pillow.
+`python3` with Pillow, `gperf`.
 
     # config.mk (not in git), or pass these on the command line
     RCD_DIR = /path/to/riscos-crossdev
@@ -95,6 +109,7 @@ with its `tools/build-espeak.sh` and `make` (`PVOICE_DIR`),
     TESSDATA = /path/to/tessdata      # from tools/get-tessdata.sh
 
     mupdf/build.sh      # fetches MuPDF 1.28.5, applies mupdf/patches, builds for RISC OS and ARM Linux
+    fontconfig/build.sh # expat 2.2.9 and fontconfig 2.14.1 against MuPDF's FreeType (sources in fontconfig/dl)
     make test           # the tests, under qemu-arm-aligntrap
     make app            # !Folio, checked, zipped with RISC OS filetypes: build/Folio-<version>.zip
     make plugin         # the Speech plugin: build/FolioSpeech-<version>.zip
@@ -108,12 +123,13 @@ of the program stays VFPv3.
 
 | Directory | What's there |
 |---|---|
-| `core/` | MuPDF wrapped for the reader, with no Wimp code: documents, layout and counting, reading positions, drawing tiles into 32bpp sprite pixels (normal, dark, sepia), text selection and find, links, annotations and saving, passwords, the dictionary's URLs and HTML, text recognition (OCR) and keeping its results |
+| `core/` | MuPDF wrapped for the reader, with no Wimp code: documents, layout and counting, reading positions, drawing tiles into 32bpp sprite pixels (normal, dark, sepia), text selection and find, links, annotations and saving, passwords, the dictionary's URLs and HTML, text recognition (OCR) and keeping its results, forms, what a PDF holds, system fonts through fontconfig |
 | `wimp/` | The RISC OS front end: a Toolbox application through a thin layer of our own (`tbx.h`, objects from in-memory templates), the page worker thread, document windows, toolbar, thumbnail drawer, Contents, Find, the dictionary pop-up, annotation and password dialogues and the Bookshelf |
 | `app/!Folio` | The application's files |
 | `tests/` | Tests for the core, the worker, the dictionary, Find, annotations, passwords and the Bookshelf's data, run under qemu |
 | `tools/` | The icon and toolbar sprites, drawn by script |
 | `mupdf/` | MuPDF's build script and patches |
+| `fontconfig/` | fontconfig and expat's build script and patch (the Warzone 2100 port's RISC OS changes) |
 | `third/cjson` | cJSON 1.7.18 (MIT), for the dictionary's JSON |
 
 ## Licence

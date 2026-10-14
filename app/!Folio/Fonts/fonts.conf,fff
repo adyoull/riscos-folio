@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<!-- Folio's own fontconfig setup, used when PackMan's fontconfig (UnixFC)
+     isn't installed: the fonts in this folder, with the cache in Folio's
+     choices. With UnixFC, Folio uses UnixFC's setup and fonts instead, and
+     the fonts here are added to them. Paths are UnixLib paths. -->
+<fontconfig>
+  <dir>/&lt;Folio$Dir&gt;/Fonts</dir>
+  <cachedir>/&lt;Choices$Write&gt;/Folio/FontCache</cachedir>
+  <config><rescan><int>0</int></rescan></config>
+</fontconfig>

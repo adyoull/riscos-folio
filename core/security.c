@@ -179,6 +179,7 @@ int folio_permitted(folio_doc *doc, folio_permission what)
 	case FOLIO_PERM_COPY: p = FZ_PERMISSION_COPY; break;
 	case FOLIO_PERM_ACCESSIBILITY: p = FZ_PERMISSION_ACCESSIBILITY; break;
 	case FOLIO_PERM_ANNOTATE: p = FZ_PERMISSION_ANNOTATE; break;
+	case FOLIO_PERM_FORM: p = FZ_PERMISSION_FORM; break;
 	default: return 1;
 	}
 	fz_var(r);

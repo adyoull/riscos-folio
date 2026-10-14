@@ -8,6 +8,35 @@ MUTOOL=$1; AT=$2
 D=$(cd "$(dirname "$0")" && pwd)/data
 mkdir -p "$D"; cd "$D"
 python3 -I ../make-epub.py book.epub
+python3 -I ../make-form.py form.pdf
+# A Japanese PDF whose font isn't embedded, and a font for fontconfig to
+# find (fonts_test).
+mkdir -p fonts
+cp ../../mupdf/src/resources/fonts/droid/DroidSansFallback.ttf fonts/
+python3 -I - <<'PY'
+objs = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 6 0 R >>",
+    "<< /Type /Font /Subtype /Type0 /BaseFont /MS-Mincho /Encoding /UniJIS-UCS2-H /DescendantFonts [5 0 R] >>",
+    "<< /Type /Font /Subtype /CIDFontType0 /BaseFont /MS-Mincho /CIDSystemInfo << /Registry (Adobe) /Ordering (Japan1) /Supplement 2 >> "
+    "/FontDescriptor << /Type /FontDescriptor /FontName /MS-Mincho /Flags 6 /FontBBox [0 -141 1000 859] /ItalicAngle 0 "
+    "/Ascent 859 /Descent -141 /CapHeight 700 /StemV 80 >> /DW 1000 >>",
+]
+text = "BT /F1 48 Tf 72 700 Td <65E5672C8A9E> Tj ET"
+objs.append("<< /Length %d >>\nstream\n%s\nendstream" % (len(text), text))
+out = bytearray(b"%PDF-1.4\n")
+offs = []
+for i, o in enumerate(objs):
+    offs.append(len(out))
+    out += ("%d 0 obj\n%s\nendobj\n" % (i + 1, o)).encode()
+x = len(out)
+out += ("xref\n0 %d\n0000000000 65535 f \n" % (len(objs) + 1)).encode()
+for o in offs:
+    out += ("%010d 00000 n \n" % o).encode()
+out += ("trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objs) + 1, x)).encode()
+open("cjk.pdf", "wb").write(out)
+PY
 python3 -I - <<'PY'
 import zlib, struct
 def png(w, h):

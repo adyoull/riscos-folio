@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test40 (14-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test41 (14-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -33,7 +33,10 @@ enum {
 	EV_SPEED_SLOW = 0x250, EV_SPEED_NORMAL, EV_SPEED_FAST, EV_SPEED_SHOWN,
 	EV_OCR_AUTO = 0x260, EV_OCR_ACCURATE, EV_OCR_FAST, EV_OCR_SHOWN,
 	EV_GOTO_OK = 0x270, EV_GOTO_CANCEL,
-	EV_OBEY = 0x280, EV_CHOICES_SHOWN
+	EV_CHOICES = 0x280, EV_CHOICES_DEFAULT, EV_CHOICES_CANCEL, EV_CHOICES_SAVE,
+	EV_ASK_OK = 0x290, EV_ASK_CANCEL,
+	EV_FILL_FORM = 0x2a0,   /* not a menu entry: filling in a form (docwin_allows) */
+	EV_FULL_SCREEN = 0x2b0
 };
 
 /* View menu entries (component ids). */
@@ -49,7 +52,22 @@ enum { SPEED_SLOW = 1, SPEED_NORMAL, SPEED_FAST };
 /* Navigate menu entries. */
 enum { NAV_CONTENTS = 5, NAV_BACK = 6, NAV_GOTO = 7 };
 enum { VIEW_DARK = 1, VIEW_SEPIA, VIEW_ZOOM_IN, VIEW_ZOOM_OUT, VIEW_ZOOM_100, VIEW_FIT_WIDTH,
-	VIEW_TOOLBAR, VIEW_THUMBS, VIEW_TWO_PAGES, VIEW_COVER_ALONE, VIEW_DEFAULT_ZOOM };
+	VIEW_TOOLBAR, VIEW_THUMBS, VIEW_TWO_PAGES, VIEW_COVER_ALONE, VIEW_DEFAULT_ZOOM, VIEW_FULL_SCREEN };
+
+/* The Choices (choices.c; <Choices$Write>.Folio.Choices). */
+typedef struct {
+	float zoom;                 /* new documents open at this scale */
+	folio_page_mode mode;       /* ... with this page colour */
+	int cols;                   /* ... one or two pages across */
+	int toolbar;                /* ... with the toolbar */
+	int speed;                  /* reading aloud: SPEED_* */
+	int ocr_fast;               /* text recognition: Fast rather than Accurate */
+	int ocr_auto;               /* recognise scanned pages while reading */
+	int obey_restrictions;      /* a PDF's "no printing / no copying" */
+	int ask_links;              /* ask before following links out of a document */
+	int warn_content;           /* say when a PDF has scripts, attachments, actions */
+	int run_js;                 /* let forms' JavaScript run */
+} choices;
 
 typedef struct {
 	tbx_idblock idb;
@@ -63,11 +81,8 @@ typedef struct {
 	int epub_type;              /* RISC OS filetype for EPUB, or -1 */
 	FILE *log;
 	void *sprites;              /* <Folio$Dir>.Sprites, loaded by the Toolbox (1 = none) */
-	float default_zoom;         /* new documents open at this scale (Choices) */
-	int ocr_fast;               /* text recognition: Fast rather than Accurate */
-	int ocr_auto;               /* recognise scanned pages while reading */
-	int obey_restrictions;      /* a PDF's "no printing / no copying" (Choices) */
-	ObjectId ocr_menu, choices_menu;
+	choices ch;                 /* the Choices (choices.c) */
+	ObjectId ocr_menu;
 	int speech_urgent;          /* reading aloud is close to running out: background
 	                             * work (drawing pages ahead, thumbnails, measuring,
 	                             * text recognition) waits, as the worker thread
@@ -98,7 +113,6 @@ void docwin_redraw(docwin *w, int *block);
 void docwin_event(docwin *w, int code);
 void docwin_view_menu_shown(docwin *w);
 /* Choices: the default scale (<Choices$Write>.Folio.Choices). */
-void choices_load(void);
 void docwin_edit_menu_shown(docwin *w);
 void docwin_nav_menu_shown(docwin *w);
 /* Background work for every window; returns 1 if more remains. */
@@ -129,7 +143,6 @@ void docwin_text_changed(docwin *w, int page);   /* recognised */
 int docwin_ocr_wait(docwin *w, int page);  /* reading aloud: wait for OCR */
 void docwin_ocr_menu_shown(docwin *w);   /* w may be NULL */
 void docwin_ocr_settings_changed(void);
-void choices_save(void);
 void docwin_refresh_toolbar(docwin *w);
 int docwin_read_start(docwin *w, int *page, folio_point *a, int *end_page, folio_point *b);
 void docwin_set_spoken(docwin *w, const int *pages, const folio_quad *q, int n);
@@ -308,5 +321,47 @@ void dcs_open(docwin *w);
 int annotui_event(int *block);           /* 1 if it was theirs */
 void annotui_forget(docwin *w);
 int clip_message(int *block);
+
+/* choices.c */
+void choices_defaults(choices *c);
+void choices_load(void);
+void choices_save(void);
+void choices_apply(const choices *c);   /* use these now */
+void choices_open(void);
+void choices_event(int code);
+
+/* fontsetup.c: which fontconfig setup (before folio_new). */
+void fontsetup(void);
+
+/* ask.c: a question or notice that doesn't stop the desktop. */
+typedef void ask_done_fn(void *data, int ok);
+void ask_show(const char *title, const char *desktop_text, const char *ok, const char *cancel,
+		ask_done_fn *done, void *data);
+void ask_event(int code);
+void ask_forget(void *data);
+
+/* formui.c: filling in PDF forms. */
+int formui_click(docwin *w, int page, folio_point p, int x, int y);
+int formui_key(int *block);
+int formui_owns(int handle);
+void formui_lose_caret(int handle);
+int formui_menu_selection(int *block);
+void formui_menus_deleted(int tree);
+void formui_commit(docwin *w);
+void formui_forget(docwin *w);
+
+/* docwin.c, for formui.c and security. */
+int is_docwin(docwin *w);
+float docwin_zoom(docwin *w);
+void docwin_page_origin(docwin *w, int page, int *sx, int *sy);   /* screen, top left */
+int docwin_form_set_text(docwin *w, int page, int index, const char *utf8);
+int docwin_form_toggle(docwin *w, int page, int index);
+int docwin_form_choose(docwin *w, int page, int index, int option);
+int docwin_form_press(docwin *w, int page, int index);
+void docwin_ask_permission(docwin *w, int event);
+int docwin_allows(docwin *w, int event);
+/* Follows a link out of the document (a web page, email or file), asking
+ * first if Choices say so (always for one a script asks for). */
+void docwin_follow_uri(docwin *w, const char *uri, int from_script);
 
 #endif

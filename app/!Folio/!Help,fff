@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test40)
+Folio (test build 0.0.1-test41)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -37,12 +37,14 @@ In a document window
                  moves above, Go to page, Contents and Back. Find... and
                  Define "word".
   Close with Adjust also opens the document's directory.
+  F11 (or View > Full screen) fills the screen with the document, with no
+  title bar, scroll bars or toolbar; F11 or Escape returns to the desktop.
   Pages of different sizes are each shown at their own size (a book
   whose cover is smaller than its pages, a landscape page among upright
   ones). Folio measures the pages in the background after opening.
   Default scale: zoom a window to the scale you like, then choose View >
   Use this scale for new documents. Every document opens at that scale
-  from then on (kept in <Choices$Write>.Folio.Choices).
+  from then on (also in the Choices window).
 
 The toolbar and thumbnails
   The toolbar along the top of each document window has, from the left:
@@ -104,6 +106,17 @@ Scanned pages (with the OCR plugin)
   takes about half as long. What's recognised is kept, so it isn't done
   again next time. OCR.ReadMe has more.
 
+Filling in forms (PDFs)
+  Click on a field to fill it in. A text field opens for typing over the
+  page: Return or Tab keeps what you type (Tab then goes to the next
+  field, Shift-Tab back), Escape leaves it as it was. In a field of several
+  lines, Return and the arrow keys move between them. A click on a check
+  box or radio button ticks it; a list or drop-down field shows its
+  choices as a menu. Ctrl-Z undoes each change; F3 saves the PDF with
+  what you've filled in. Fields worked out by the form (totals, dates
+  checked as you type) need its JavaScript, which is off unless Choices
+  turn it on; Folio never sends a form anywhere.
+
 Printing
   Print... on the document's menu (or the Print key) opens the Print box:
   all pages or some, copies, scale, upright or sideways, and draft. It
@@ -124,12 +137,35 @@ Document info
   has a form, attached files or JavaScript.
 
 Restrictions (PDFs)
-  A PDF's author can say it mustn't be printed or copied from. Folio keeps
-  to that: Print, Copy, Export page as Draw and (if the author doesn't
-  allow text for screen readers either) Read aloud say so instead, and
-  offer to lift it with the document's owner password. To have Folio
-  ignore such restrictions, untick Choices > Obey document restrictions on
-  the icon bar menu (kept in <Choices$Write>.Folio.Choices).
+  A PDF's author can say it mustn't be printed, copied from or filled in.
+  Folio keeps to that: Print, Copy, Export page as Draw, filling in its
+  form and (if the author doesn't allow text for screen readers either)
+  Read aloud say so instead, and offer to lift it with the document's
+  owner password. To have Folio ignore such restrictions, untick "Keep to
+  a PDF's limits on printing and copying" in the Choices window.
+
+Security
+  Folio asks before following a link out of a document (to a web page, an
+  email or another file), showing where it goes; links to other programs
+  are never followed. When it opens a PDF with JavaScript, attached files,
+  or actions that would start a program or send the form somewhere, it
+  says so; it doesn't do any of those things. A form's JavaScript runs
+  only if the Choices window allows it, and can't reach your files or the
+  network.
+
+Choices
+  Choices... on Folio's icon bar menu opens the Choices window: how new
+  documents open (scale, page colour, two pages, the toolbar), the
+  reading-aloud speed, text recognition (Accurate or Fast, and whether
+  scanned pages are recognised as they're shown), and the security
+  choices above. Save uses and keeps them (in
+  <Choices$Write>.Folio.Choices); Default fills in Folio's own settings.
+
+Fonts
+  PDFs usually carry their fonts. For one that doesn't, and for scripts
+  Folio has no font of its own for (Chinese, Japanese, Korean), it uses
+  the computer's fonts through fontconfig: PackMan's FontConfig setup if
+  it's installed, else the fonts in !Folio.Fonts (Fonts.ReadMe says more).
 
 Passwords (PDFs)
   Password... on a PDF's menu shows whether it has a password, and puts
