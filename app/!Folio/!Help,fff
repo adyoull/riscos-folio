@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test36)
+Folio (test build 0.0.1-test37)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -70,7 +70,8 @@ Two pages side by side
 
 Notes and markings (PDFs)
   Select some text, then click Highlight, Underline or Strike out on the
-  toolbar (or use the Edit menu). Note adds a note at the selection, or at
+  toolbar (or use the Edit menu). A selection over several pages is marked
+  on each of them (Ctrl-Z then undoes one page at a time). Note adds a note at the selection, or at
   the top of the page; click on a note to read, change or delete it.
   Click on a highlight to select it; Delete removes it.
   Ctrl-Z undoes the last change and Ctrl-Y redoes it.
@@ -179,7 +180,9 @@ Links, Contents and Find
 
 Selecting text and looking words up
   Drag with Select to select text; double-click a word to select it;
-  Adjust extends the selection. Ctrl-C copies it to the clipboard,
+  Adjust extends the selection. A selection can run on over the next
+  pages (or back over earlier ones): drag past the window's top or bottom
+  and it scrolls, faster the further out you go. Ctrl-C copies it to the clipboard,
   Ctrl-A selects the whole page, Escape clears the selection.
   With one word selected, Menu shows Define "word": its meanings from
   Wiktionary (CC BY-SA) appear in a small box near the word. Copy copies

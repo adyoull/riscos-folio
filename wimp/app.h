@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test36 (14-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test37 (14-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -130,7 +130,7 @@ void docwin_ocr_menu_shown(docwin *w);   /* w may be NULL */
 void docwin_ocr_settings_changed(void);
 void choices_save(void);
 void docwin_refresh_toolbar(docwin *w);
-int docwin_read_start(docwin *w, int *page, folio_point *a, folio_point *b);
+int docwin_read_start(docwin *w, int *page, folio_point *a, int *end_page, folio_point *b);
 void docwin_set_spoken(docwin *w, const int *pages, const folio_quad *q, int n);
 const char *docwin_path(docwin *w);
 int docwin_save(docwin *w, const char *path);            /* 0 if saved */

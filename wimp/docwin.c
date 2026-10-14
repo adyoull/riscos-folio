@@ -59,10 +59,12 @@ struct docwin {
 	int goto_page;            /* page asked for on opening, once counted; -1 none */
 	folio_mark mark;
 	char place[256];          /* where the reading position is kept */
-	/* Selection (one page). */
-	int sel, sel_page, sel_n, dragging;
+	/* Selection: from sel_a on page sel_page (where it was started) to
+	 * sel_b on page sel_end; it can run over several pages. Its boxes on
+	 * each page are kept in selslot[] below. */
+	int sel, sel_page, sel_end, dragging;
+	int sel_stale;            /* a page showing still needs its boxes drawn */
 	folio_point sel_a, sel_b;
-	folio_quad sel_q[SEL_QUADS];
 	char sel_word[64];        /* set by a double-click on a word */
 	/* Toolbar and thumbnail drawer. */
 	ObjectId toolbar;
@@ -414,10 +416,11 @@ static void spk_draw(docwin *w, int i, int x0, int y1);
 static void asel_draw(docwin *w, int i, int x0, int y1);
 static void sel_eor_change(docwin *w, int page, const folio_quad *oldq, int n_old,
 		const folio_quad *newq, int n_new);
-static folio_quad old_q[SEL_QUADS];   /* the selection as last drawn, for sel_update */
+static folio_quad old_q[SEL_QUADS];   /* a page's selection as last drawn */
 static void markup(docwin *w, folio_annot_kind kind);
 static void new_note(docwin *w);
 static void undo_redo(docwin *w, int redo);
+static void sel_forget(docwin *w);
 static int sel_drag_tick(docwin *w);
 static int current_page(docwin *w);
 static void go_to_page(docwin *w, int i);
@@ -1072,6 +1075,7 @@ void docwin_close(docwin *w)
 			*p = w->next;
 			break;
 		}
+	sel_forget(w);
 	find_forget(w);
 	gotopage_forget(w);
 	docinfo_forget(w);
@@ -1582,35 +1586,323 @@ static void redraw_page(docwin *w, int i)
 	_swix(Wimp_ForceRedraw, _INR(0, 4), w->wimp, x0, y1 - slot_h(w, i), x0 + slot_w(w, i), y1);
 }
 
-/* Recompute the selection's quads (snapping to 'mode') and redraw. */
-static void sel_update(docwin *w, folio_select_mode mode)
+/* ---- The selection's boxes, page by page -------------------------------------
+ * A slot holds what's drawn of a window's selection on one page: the part of
+ * the page it covers (s to e) and its boxes. A page showing in its window has
+ * a slot while the selection is on it; when it can't be worked out at once
+ * (the worker is recognising text, which can't stop quickly) the slot is
+ * stale, with nothing drawn, and the next null poll does it. */
+#define SEL_SLOTS 40
+
+typedef struct {
+	docwin *w;                /* NULL: free */
+	int page, n, stale;
+	unsigned used;
+	folio_point s, e;
+	folio_quad q[SEL_QUADS];
+} selslot;
+
+static selslot selslots[SEL_SLOTS];
+static unsigned sel_clock;
+
+/* The selection's span: from point *s on page *lo to point *e on page *hi. */
+static void sel_span(docwin *w, int *lo, int *hi, folio_point *s, folio_point *e)
+{
+	if (w->sel_end < w->sel_page) {
+		*lo = w->sel_end;
+		*s = w->sel_b;
+		*hi = w->sel_page;
+		*e = w->sel_a;
+	} else {
+		*lo = w->sel_page;
+		*s = w->sel_a;
+		*hi = w->sel_end;
+		*e = w->sel_b;
+	}
+}
+
+/* The part of page p the selection covers: 1 and *s to *e, or 0. Pages in
+ * the middle are covered from their top left to their bottom right. */
+static int sel_bounds(docwin *w, int p, folio_point *s, folio_point *e)
+{
+	int lo, hi;
+	folio_point a, b;
+	if (!w->sel)
+		return 0;
+	sel_span(w, &lo, &hi, &a, &b);
+	if (p < lo || p > hi)
+		return 0;
+	s->x = s->y = 0;
+	e->x = pt_w(w, p);
+	e->y = pt_h(w, p);
+	if (p == lo)
+		*s = a;
+	if (p == hi)
+		*e = b;
+	return 1;
+}
+
+static selslot *slot_of(docwin *w, int p)
+{
+	int i;
+	for (i = 0; i < SEL_SLOTS; i++)
+		if (selslots[i].w == w && selslots[i].page == p)
+			return &selslots[i];
+	return NULL;
+}
+
+/* Is page p rendered and (at least partly) in view? */
+static int page_showing(docwin *w, int p)
+{
+	int st[9], top, bot;
+	if (!cache_find(w, p))
+		return 0;
+	get_state(w, st);
+	top = st[6];
+	bot = st[6] - (st[4] - st[2]);
+	return page_top(w, p) > bot && page_top(w, p) - slot_h(w, p) < top;
+}
+
+/* A slot for page p of w: its own, a free one, or the one used longest ago
+ * (that page is drawn again, as its boxes are no longer known). */
+static selslot *slot_new(docwin *w, int p)
+{
+	selslot *t = slot_of(w, p), *old = NULL;
+	int i;
+	if (t)
+		return t;
+	for (i = 0; i < SEL_SLOTS && !t; i++)
+		if (!selslots[i].w)
+			t = &selslots[i];
+	if (!t) {
+		for (i = 0; i < SEL_SLOTS; i++)
+			if (!old || selslots[i].used < old->used)
+				old = &selslots[i];
+		t = old;
+		if (is_window(t->w) && page_showing(t->w, t->page))
+			redraw_page(t->w, t->page);
+	}
+	memset(t, 0, offsetof(selslot, q));
+	t->w = w;
+	t->page = p;
+	t->used = ++sel_clock;
+	return t;
+}
+
+static void sel_forget(docwin *w)
+{
+	int i;
+	for (i = 0; i < SEL_SLOTS; i++)
+		if (selslots[i].w == w)
+			selslots[i].w = NULL;
+}
+
+/* Takes the core to work out boxes. Without wait, not while the worker is
+ * recognising text (it's asked to stop, and 0 is returned): that can take
+ * seconds to stop, and the desktop would stop with it. */
+static int sel_lock(int wait)
+{
+	const render_job *j = worker_current();
+	if (!wait && j && j->kind == JOB_OCR) {
+		worker_abort_current();
+		return 0;
+	}
+	core_now();
+	return 1;
+}
+
+/* Works out slot t's boxes for s to e on its page (core held). */
+static void slot_fill(docwin *w, selslot *t, folio_point s, folio_point e)
 {
 	folio_loc loc;
-	int n_old = w->sel_n;
-	if (!w->sel || folio_loc_from_number(w->doc, w->sel_page, &loc)) {
-		w->sel_n = 0;
-		return;
+	t->s = s;
+	t->e = e;
+	t->stale = 0;
+	t->n = 0;
+	t->used = ++sel_clock;
+	if (folio_loc_from_number(w->doc, t->page, &loc) == 0) {
+		t->n = folio_selection_quads(w->doc, loc, s, e, t->q, SEL_QUADS);
+		if (t->n < 0)
+			t->n = 0;
 	}
-	memcpy(old_q, w->sel_q, (size_t)n_old * sizeof old_q[0]);
-	core_now();
-	if (mode != FOLIO_SELECT_CHARS)
-		folio_snap(w->doc, loc, &w->sel_a, &w->sel_b, mode);
-	w->sel_n = folio_selection_quads(w->doc, loc, w->sel_a, w->sel_b, w->sel_q, SEL_QUADS);
-	if (w->sel_n < 0)
-		w->sel_n = 0;
+}
+
+static int same_pt(folio_point a, folio_point b)
+{
+	return a.x == b.x && a.y == b.y;
+}
+
+/* Moves the selection's end to point b on page end, changing what's drawn
+ * page by page. Returns 0 if it couldn't now (see sel_lock): nothing
+ * changes, and the caller tries again. */
+static int sel_set_end(docwin *w, int end, folio_point b, int wait)
+{
+	int lo0, hi0, lo1, hi1, lo, hi, p;
+	folio_point s, e;
+	if (!w->sel)
+		return 1;
+	if (!sel_lock(wait))
+		return 0;
+	sel_span(w, &lo0, &hi0, &s, &e);
+	w->sel_end = end;
+	w->sel_b = b;
+	sel_span(w, &lo1, &hi1, &s, &e);
+	lo = lo0 < lo1 ? lo0 : lo1;
+	hi = hi0 > hi1 ? hi0 : hi1;
+	for (p = lo; p <= hi; p++) {
+		selslot *t = slot_of(w, p);
+		int n_old = 0, in_new = sel_bounds(w, p, &s, &e);
+		if (!page_showing(w, p)) {
+			/* Worked out when it's drawn. */
+			if (t)
+				t->w = NULL;
+			continue;
+		}
+		if (t && !t->stale) {
+			if (in_new && same_pt(t->s, s) && same_pt(t->e, e))
+				continue;
+			n_old = t->n;
+			memcpy(old_q, t->q, (size_t)n_old * sizeof old_q[0]);
+		}
+		if (in_new) {
+			if (!t)
+				t = slot_new(w, p);
+			slot_fill(w, t, s, e);
+			if (n_old != t->n || memcmp(old_q, t->q, (size_t)n_old * sizeof old_q[0]))
+				sel_eor_change(w, p, old_q, n_old, t->q, t->n);
+		} else {
+			sel_eor_change(w, p, old_q, n_old, NULL, 0);
+			if (t)
+				t->w = NULL;
+		}
+	}
 	core_unlock();
-	if (n_old != w->sel_n || memcmp(old_q, w->sel_q, (size_t)n_old * sizeof old_q[0]))
-		sel_eor_change(w, w->sel_page, old_q, n_old, w->sel_q, w->sel_n);
 	tb_update(w);
+	return 1;
+}
+
+/* Shows a new selection (sel_page, sel_a to sel_end, sel_b set). */
+static void sel_show(docwin *w)
+{
+	sel_set_end(w, w->sel_end, w->sel_b, 1);
+}
+
+/* The boxes of the selection on page p (worked out if need be). */
+static int sel_quads_of(docwin *w, int p, const folio_quad **q)
+{
+	folio_point s, e;
+	selslot *t;
+	int drawn;
+	*q = NULL;
+	if (!sel_bounds(w, p, &s, &e))
+		return 0;
+	t = slot_of(w, p);
+	if (t && !t->stale && same_pt(t->s, s) && same_pt(t->e, e)) {
+		*q = t->q;
+		return t->n;
+	}
+	drawn = t && !t->stale;
+	if (!t)
+		t = slot_new(w, p);
+	core_now();
+	slot_fill(w, t, s, e);
+	core_unlock();
+	if (!drawn && page_showing(w, p))
+		sel_eor_change(w, p, NULL, 0, t->q, t->n);
+	*q = t->q;
+	return t->n;
+}
+
+/* Is anything selected? (Cheap: what's known.) */
+static int sel_any(docwin *w)
+{
+	selslot *t;
+	if (!w->sel)
+		return 0;
+	if (w->sel_page != w->sel_end)
+		return 1;
+	t = slot_of(w, w->sel_page);
+	return !t || t->stale || t->n > 0;
+}
+
+/* The first and last boxes of the selection, and their pages. 0 if none. */
+static int sel_ends(docwin *w, int *p0, folio_quad *first, int *p1, folio_quad *last)
+{
+	int lo, hi, p, n;
+	folio_point s, e;
+	const folio_quad *q;
+	if (!w->sel)
+		return 0;
+	sel_span(w, &lo, &hi, &s, &e);
+	for (p = lo; p <= hi; p++)
+		if ((n = sel_quads_of(w, p, &q)) > 0) {
+			*p0 = p;
+			*first = q[0];
+			break;
+		}
+	if (p > hi)
+		return 0;
+	for (p = hi; p >= lo; p--)
+		if ((n = sel_quads_of(w, p, &q)) > 0) {
+			*p1 = p;
+			*last = q[n - 1];
+			break;
+		}
+	return 1;
+}
+
+/* The selected text, page after page (malloc'd), or NULL. */
+static char *sel_text(docwin *w)
+{
+	int lo, hi, p;
+	folio_point s, e;
+	char *out = NULL;
+	size_t len = 0;
+	if (!w->sel)
+		return NULL;
+	sel_span(w, &lo, &hi, &s, &e);
+	if (hi > lo)
+		app_log("%s: copying pages %d to %d", w->title, lo + 1, hi + 1);
+	for (p = lo; p <= hi; p++) {
+		folio_loc loc;
+		char *t = NULL, *more;
+		size_t n;
+		if (!sel_bounds(w, p, &s, &e) || folio_loc_from_number(w->doc, p, &loc))
+			continue;
+		core_now();
+		t = folio_selection_text(w->doc, loc, s, e);
+		core_unlock();
+		if (!t)
+			continue;
+		n = strlen(t);
+		if (n && (more = realloc(out, len + n + 2)) != NULL) {
+			out = more;
+			if (len && out[len - 1] != '\n')
+				out[len++] = '\n';
+			memcpy(out + len, t, n);
+			len += n;
+			out[len] = 0;
+		}
+		folio_free(w->doc, t);
+	}
+	return out;
 }
 
 static void sel_clear(docwin *w)
 {
+	int i;
 	if (!w->sel)
 		return;
-	sel_eor_change(w, w->sel_page, w->sel_q, w->sel_n, NULL, 0);
+	for (i = 0; i < SEL_SLOTS; i++) {
+		selslot *t = &selslots[i];
+		if (t->w == w) {
+			if (!t->stale && page_showing(w, t->page))
+				sel_eor_change(w, t->page, t->q, t->n, NULL, 0);
+			t->w = NULL;
+		}
+	}
 	w->sel = 0;
-	w->sel_n = 0;
+	w->sel_stale = 0;
 	w->sel_word[0] = 0;
 	w->dragging = 0;
 }
@@ -1653,11 +1945,52 @@ static void spk_draw(docwin *w, int i, int x0, int y1)
 			eor_quads_in(w, &w->spk_q[k], 1, x0, y1, SPK_COLOUR);
 }
 
+/* Draws the selection on page i (while redrawing). Its boxes are worked
+ * out if they aren't known, unless the worker is recognising text: then
+ * the page is marked to have them drawn on a later poll. */
 static void sel_draw(docwin *w, int i, int x0, int y1)
 {
-	if (!w->sel || i != w->sel_page)
+	folio_point s, e;
+	selslot *t;
+	if (!sel_bounds(w, i, &s, &e))
 		return;
-	eor_quads(w, w->sel_q, w->sel_n, x0, y1);
+	t = slot_of(w, i);
+	if (!t || t->stale || !same_pt(t->s, s) || !same_pt(t->e, e)) {
+		if (!t)
+			t = slot_new(w, i);
+		if (!sel_lock(0)) {
+			t->stale = 1;
+			t->s = s;
+			t->e = e;
+			w->sel_stale = 1;
+			return;
+		}
+		slot_fill(w, t, s, e);
+		core_unlock();
+	}
+	eor_quads(w, t->q, t->n, x0, y1);
+}
+
+/* Draws what sel_draw had to leave (null polls). */
+static void sel_catch_up(docwin *w)
+{
+	int i;
+	if (!w->sel_stale || !sel_lock(0))
+		return;
+	w->sel_stale = 0;
+	for (i = 0; i < SEL_SLOTS; i++) {
+		selslot *t = &selslots[i];
+		folio_point s, e;
+		if (t->w != w || !t->stale)
+			continue;
+		if (!sel_bounds(w, t->page, &s, &e) || !page_showing(w, t->page)) {
+			t->w = NULL;
+			continue;
+		}
+		slot_fill(w, t, s, e);
+		sel_eor_change(w, t->page, NULL, 0, t->q, t->n);
+	}
+	core_unlock();
 }
 
 /* Changes what's shown of the selection on page from the quads old to new
@@ -1708,19 +2041,23 @@ void docwin_click(docwin *w, int *b)
 			return;
 		sel_clear(w);
 		w->sel = 1;
-		w->sel_page = page;
+		w->sel_page = w->sel_end = page;
 		w->sel_a = w->sel_b = pt;
 		w->dragging = 1;
-		sel_update(w, FOLIO_SELECT_CHARS);
+		/* Nothing to draw yet (it starts empty). Stop any recognising now
+		 * (it isn't started again while the drag goes on), so it's done by
+		 * the time the drag needs the core; don't wait for it here. */
+		worker_abort_current();
+		tb_update(w);
 	} else if (buttons == 0x100 || buttons == 0x10) { /* Adjust: extend */
 		if (!w->sel)
 			return;
-		if (point_at(w, b[0], b[1], &pt, w->sel_page) < 0)
+		page = point_at(w, b[0], b[1], &pt, -1);
+		if (page < 0 && (page = point_at(w, b[0], b[1], &pt, w->sel_end)) < 0)
 			return;
-		w->sel_b = pt;
 		w->sel_word[0] = 0;
 		w->dragging = buttons == 0x10;
-		sel_update(w, FOLIO_SELECT_CHARS);
+		sel_set_end(w, page, pt, 1);
 	} else if (buttons == 4) {               /* Select double-click: a word */
 		folio_loc loc;
 		char *word;
@@ -1736,58 +2073,53 @@ void docwin_click(docwin *w, int *b)
 		snprintf(w->sel_word, sizeof w->sel_word, "%s", word);
 		folio_free(w->doc, word);
 		w->sel = 1;
-		w->sel_page = page;
-		sel_update(w, FOLIO_SELECT_CHARS);
+		w->sel_page = w->sel_end = page;
+		sel_show(w);
 		app_log("word: %s", w->sel_word);
 	}
 }
 
-/* While dragging (null polls): follow the pointer, scrolling near the
- * window's edges. Returns 1 while a drag goes on. */
+/* While dragging (null polls): follow the pointer, onto the pages before
+ * and after, scrolling near the window's edges. Returns 1 while a drag goes
+ * on. Recognising isn't started during a drag, and the boxes of a page are
+ * only worked out once it's drawn (sel_lock): before, scrolling met pages
+ * being recognised, and the desktop all but stopped (Chris, test34). */
 static int sel_drag_tick(docwin *w)
 {
-	int ptr[5], st[9];
+	int ptr[5], st[9], page;
 	folio_point pt;
+	sel_catch_up(w);
 	if (!w->dragging)
-		return 0;
+		return w->sel_stale;
 	_swix(Wimp_GetPointerInfo, _IN(1), ptr);
 	if (!(ptr[2] & 5)) {
 		w->dragging = 0;
-		return 0;
+		return w->sel_stale;
 	}
 	get_state(w, st);
-	/* Scroll while the pointer is near the top or bottom, but only as far
-	 * as the page being selected goes (a selection is one page): beyond
-	 * it, scrolling on met pages still being drawn and recognised, and
-	 * the desktop all but stopped (Chris, test34). */
-	{
-		int ptop = page_top(w, w->sel_page), pbot = ptop - slot_h(w, w->sel_page);
-		int vis_top = st[6] - w->top, vis_bot = st[6] - (st[4] - st[2]);
-		if (ptr[1] < st[2] + 48 && pbot < vis_bot)
-			scroll_to(w, st[6] - 48 > pbot + (st[4] - st[2]) ? st[6] - 48 : pbot + (st[4] - st[2]));
-		else if (ptr[1] > st[4] - 48 && ptop > vis_top)
-			scroll_to(w, st[6] + 48 < ptop + w->top ? st[6] + 48 : ptop + w->top);
+	/* Faster the further past the edge the pointer is. */
+	if (ptr[1] < st[2] + 48) {
+		int d = st[2] + 48 - ptr[1];
+		scroll_to(w, st[6] - (d < 48 ? 24 : d > 400 ? 200 : d / 2));
+	} else if (ptr[1] > st[4] - 48) {
+		int d = ptr[1] - (st[4] - 48);
+		int y = st[6] + (d < 48 ? 24 : d > 400 ? 200 : d / 2);
+		scroll_to(w, y > 0 ? 0 : y);
 	}
-	if (point_at(w, ptr[0], ptr[1], &pt, w->sel_page) >= 0 &&
-			(pt.x != w->sel_b.x || pt.y != w->sel_b.y)) {
-		w->sel_b = pt;
-		sel_update(w, FOLIO_SELECT_CHARS);
-	}
+	page = point_at(w, ptr[0], ptr[1], &pt, -1);
+	if (page < 0)
+		page = point_at(w, ptr[0], ptr[1], &pt, w->sel_end);
+	if (page >= 0 && (page != w->sel_end || !same_pt(pt, w->sel_b)))
+		sel_set_end(w, page, pt, 0);
 	return 1;
 }
 
 static void sel_copy(docwin *w)
 {
-	folio_loc loc;
-	char *text;
-	if (!w->sel || folio_loc_from_number(w->doc, w->sel_page, &loc))
-		return;
-	core_now();
-	text = folio_selection_text(w->doc, loc, w->sel_a, w->sel_b);
-	core_unlock();
+	char *text = sel_text(w);
 	if (text) {
 		clip_set_text(text);
-		folio_free(w->doc, text);
+		free(text);
 	}
 }
 
@@ -1796,34 +2128,28 @@ static void sel_all(docwin *w)
 	int page = current_page(w);
 	sel_clear(w);
 	w->sel = 1;
-	w->sel_page = page;
+	w->sel_page = w->sel_end = page;
 	w->sel_a.x = 0;
 	w->sel_a.y = 0;
 	w->sel_b.x = pt_w(w, page);
 	w->sel_b.y = pt_h(w, page);
-	sel_update(w, FOLIO_SELECT_CHARS);
+	sel_show(w);
 }
 
 /* The word to define: the double-clicked word, or a selection of one word.
  * Returns 0 and fills word, or -1. */
 static int define_word(docwin *w, char *word, size_t size)
 {
-	folio_loc loc;
-	char *text = NULL;
+	char *text;
 	int rc = -1;
-	if (!w->sel || w->sel_n == 0)
+	if (!sel_any(w) || w->sel_page != w->sel_end)
 		return -1;
 	if (w->sel_word[0])
 		return folio_dict_clean_word(w->sel_word, word, size);
-	if (folio_loc_from_number(w->doc, w->sel_page, &loc))
-		return -1;
-	core_now();
-	text = folio_selection_text(w->doc, loc, w->sel_a, w->sel_b);
-	core_unlock();
+	text = sel_text(w);
 	if (text && strlen(text) < 64)
 		rc = folio_dict_clean_word(text, word, size);
-	if (text)
-		folio_free(w->doc, text);
+	free(text);
 	return rc;
 }
 
@@ -1833,7 +2159,7 @@ void docwin_doc_menu_shown(docwin *w)
 	menu_set_fade(app.doc_menu, DOC_PASSWORD, !w->can_annotate);
 	if (speech_available()) {
 		menu_set_tick(app.doc_menu, DOC_READ, speech_window() == w);
-		menu_set_fade(app.doc_menu, DOC_SPEAKSEL, !(w->sel && w->sel_n > 0));
+		menu_set_fade(app.doc_menu, DOC_SPEAKSEL, !sel_any(w));
 	}
 	menu_set_tick(app.doc_menu, DOC_SHELF, bookshelf_has(w->path));
 	if (ocr_available())
@@ -1860,13 +2186,15 @@ static void define(docwin *w)
 	get_state(w, st);
 	x = st[1] + 32;
 	y = st[4] - 32;
-	if (w->sel_n > 0) {
-		folio_quad *q = &w->sel_q[0];
-		float k = 2.5f * w->zoom;
-		float qx = q->ul.x < q->ll.x ? q->ul.x : q->ll.x;
-		float qy = q->ll.y > q->lr.y ? q->ll.y : q->lr.y;
-		x = (st[1] - st[5]) + page_left(w, w->sel_page) + (int)(qx * k);
-		y = (st[4] - st[6]) + page_top(w, w->sel_page) - (int)(qy * k) - 8;
+	{
+		const folio_quad *q;
+		if (sel_quads_of(w, w->sel_page, &q) > 0) {
+			float k = 2.5f * w->zoom;
+			float qx = q->ul.x < q->ll.x ? q->ul.x : q->ll.x;
+			float qy = q->ll.y > q->lr.y ? q->ll.y : q->lr.y;
+			x = (st[1] - st[5]) + page_left(w, w->sel_page) + (int)(qx * k);
+			y = (st[4] - st[6]) + page_top(w, w->sel_page) - (int)(qy * k) - 8;
+		}
 	}
 	app_log("define '%s' (%s)", word, folio_language(w->doc));
 	dict_define(word, folio_language(w->doc), w->mode, x, y);
@@ -1874,7 +2202,7 @@ static void define(docwin *w)
 
 void docwin_edit_menu_shown(docwin *w)
 {
-	int undo = 0, redo = 0, markup_ok = w->can_annotate && w->sel && w->sel_n > 0;
+	int undo = 0, redo = 0, markup_ok = w->can_annotate && sel_any(w);
 	if (w->can_annotate) {
 		core_now();
 		undo = folio_can_undo(w->doc);
@@ -1890,7 +2218,7 @@ void docwin_edit_menu_shown(docwin *w)
 	menu_set_fade(app.edit_menu, EDIT_DELANNOT, w->asel_page < 0);
 	/* Not faded when not allowed: choosing it says why, and offers the
 	 * owner password. */
-	menu_set_fade(app.edit_menu, EDIT_COPY, !w->sel || w->sel_n == 0);
+	menu_set_fade(app.edit_menu, EDIT_COPY, !sel_any(w));
 	menu_set_fade(app.edit_menu, EDIT_CLEAR, !w->sel);
 }
 
@@ -1909,7 +2237,7 @@ static void tb_update(docwin *w)
 		exact = !w->counting;
 	}
 	toolbar_update(w->toolbar, current_page(w), w->pages, exact, w->zoom,
-		w->mode == FOLIO_PAGE_DARK, w->show_thumbs, w->cols == 2, w->sel && w->sel_n > 0, w->can_annotate,
+		w->mode == FOLIO_PAGE_DARK, w->show_thumbs, w->cols == 2, sel_any(w), w->can_annotate,
 		speech_window() == w);
 }
 
@@ -2203,15 +2531,14 @@ static void extend_to(docwin *w, int page);
 
 /* Where to start: the selection (1: its first and last points on *page),
  * else the top of what's showing of the page being read (0). */
-int docwin_read_start(docwin *w, int *page, folio_point *a, folio_point *b)
+int docwin_read_start(docwin *w, int *page, folio_point *a, int *end_page, folio_point *b)
 {
-	if (w->sel && w->sel_n > 0) {
-		const folio_quad *f = &w->sel_q[0], *l = &w->sel_q[w->sel_n - 1];
-		*page = w->sel_page;
-		a->x = f->ul.x + 0.5f;
-		a->y = (f->ul.y + f->ll.y) / 2;
-		b->x = l->ur.x - 0.5f;
-		b->y = (l->ur.y + l->lr.y) / 2;
+	folio_quad f, l;
+	if (sel_any(w) && sel_ends(w, page, &f, end_page, &l)) {
+		a->x = f.ul.x + 0.5f;
+		a->y = (f.ul.y + f.ll.y) / 2;
+		b->x = l.ur.x - 0.5f;
+		b->y = (l.ur.y + l.lr.y) / 2;
 		return 1;
 	}
 	{
@@ -2346,7 +2673,7 @@ void docwin_show_hit(docwin *w, int page, const folio_quad *q, int n)
 	extend_to(w, page);
 	sel_clear(w);
 	w->sel = 1;
-	w->sel_page = page;
+	w->sel_page = w->sel_end = page;
 	w->sel_word[0] = 0;
 	/* The selection's ends, for Copy and Define: just inside the first and
 	 * last characters' outer edges. */
@@ -2354,9 +2681,16 @@ void docwin_show_hit(docwin *w, int page, const folio_quad *q, int n)
 	w->sel_a.y = (q[0].ul.y + q[0].ll.y) / 2;
 	w->sel_b.x = (q[n - 1].ur.x + q[n - 1].lr.x) / 2 - 0.5f;
 	w->sel_b.y = (q[n - 1].ur.y + q[n - 1].lr.y) / 2;
-	for (i = 0; i < n; i++)
-		w->sel_q[i] = q[i];
-	w->sel_n = n;
+	{
+		/* The boxes as found (the page is drawn again below). */
+		selslot *t = slot_new(w, page);
+		for (i = 0; i < n; i++)
+			t->q[i] = q[i];
+		t->n = n;
+		t->stale = 0;
+		t->s = w->sel_a;
+		t->e = w->sel_b;
+	}
 	/* The hit a third of the way down the window. */
 	top = q[0].ul.y < q[0].ur.y ? q[0].ul.y : q[0].ur.y;
 	get_state(w, st);
@@ -2679,20 +3013,30 @@ done:
 static void markup(docwin *w, folio_annot_kind kind)
 {
 	folio_loc loc;
-	int page = w->sel_page, rc;
-	if (!w->can_annotate || !w->sel || w->sel_n == 0 ||
-			folio_loc_from_number(w->doc, page, &loc))
+	folio_point s, e;
+	int lo, hi, page, rc, done = 0;
+	if (!w->can_annotate || !sel_any(w))
 		return;
-	core_now();
-	rc = folio_annot_markup(w->doc, loc, kind, w->sel_a, w->sel_b);
-	core_unlock();
-	if (rc) {
-		app_log("markup: %s", folio_error(app.fc));
-		return;
+	sel_span(w, &lo, &hi, &s, &e);
+	/* Each page's part (one undo each). */
+	for (page = lo; page <= hi; page++) {
+		const folio_quad *q;
+		if (!sel_bounds(w, page, &s, &e) || sel_quads_of(w, page, &q) == 0 ||
+				folio_loc_from_number(w->doc, page, &loc))
+			continue;
+		core_now();
+		rc = folio_annot_markup(w->doc, loc, kind, s, e);
+		core_unlock();
+		if (rc) {
+			app_log("markup: %s", folio_error(app.fc));
+			break;
+		}
+		app_log("%s: markup %d on page %d", w->title, (int)kind, page + 1);
+		done++;
 	}
-	app_log("%s: markup %d on page %d", w->title, (int)kind, page + 1);
 	sel_clear(w);
-	page_changed(w, page);
+	for (page = lo; page <= hi && done; page++)
+		page_changed(w, page);
 }
 
 /* Note: at the selection's start (just above it), else the top left of the
@@ -2703,9 +3047,10 @@ static void new_note(docwin *w)
 	int page;
 	if (!w->can_annotate)
 		return;
-	if (w->sel && w->sel_n > 0) {
-		folio_quad *q = &w->sel_q[0];
-		page = w->sel_page;
+	folio_quad f, l;
+	int p1;
+	if (sel_any(w) && sel_ends(w, &page, &f, &p1, &l)) {
+		const folio_quad *q = &f;
 		at.x = q->ul.x;
 		at.y = q->ul.y - 22;
 		if (at.y < 0)

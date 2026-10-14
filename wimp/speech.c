@@ -86,6 +86,9 @@ static struct {
 	float duty;               /* its share of each PERIOD_CS, smoothed */
 	int shown_chunk, shown_start, shown_end;   /* the sentence highlighted */
 	folio_point start_a, start_b;
+	/* Speak selection: the page its end is on, and where on it. */
+	int end_page;
+	folio_point end_b;
 } sp;
 
 static unsigned now_cs(void)
@@ -331,7 +334,7 @@ static int fetch_page(int page, int from_ch, int to_ch, int whole_sentence)
 		rt_free(&c);
 		return -1;
 	}
-	if (!sp.selection_only) {
+	if (!sp.selection_only || page < sp.end_page) {
 		int u = rt_unfinished(c.text, c.len);
 		if (u < c.len)
 			rt_split(&c, u, &sp.carry);
@@ -409,7 +412,7 @@ static void begin_at(int page, folio_point a, folio_point b);
 
 void speech_read(docwin *w, int selection_only)
 {
-	int page, sel;
+	int page, sel, end_page = 0;
 	folio_point a, b;
 	if (!sp.available)
 		return;
@@ -435,11 +438,13 @@ void speech_read(docwin *w, int selection_only)
 	speaker_clock = now_cs;
 	if (speaker_start(sp.voice, sp.data))
 		return;
-	sel = docwin_read_start(w, &page, &a, &b);
+	sel = docwin_read_start(w, &page, &a, &end_page, &b);
 	if (selection_only && !sel)
 		return;
 	sp.w = w;
 	sp.selection_only = selection_only;
+	sp.end_page = sel ? end_page : page;
+	sp.end_b = b;
 	sp.text_done = 0;
 	sp.loading_said = 0;
 	sp.start_wait = 0;
@@ -462,7 +467,7 @@ static void begin_at(int page, folio_point a, folio_point b)
 	docwin *w = sp.w;
 	int from, to = -1, selection_only = sp.selection_only;
 	from = char_at(page, a, 0);
-	if (selection_only)
+	if (selection_only && sp.end_page == page)
 		to = char_at(page, b, 1);
 	app_log("speech: reading %s from page %d character %d%s", docwin_title(w), page + 1, from,
 		selection_only ? " (the selection)" : "");
@@ -473,7 +478,7 @@ static void begin_at(int page, folio_point a, folio_point b)
 		return;
 	}
 	sp.next_page = page + 1;
-	if (selection_only)
+	if (selection_only && sp.end_page <= page)
 		sp.text_done = 1;
 	docwin_refresh_toolbar(w);
 }
@@ -508,7 +513,8 @@ static void fetch_more(void)
 {
 	if (sp.text_done || speaker_pending() > 0)
 		return;
-	if (sp.next_page >= docwin_pages(sp.w) && !docwin_is_counting(sp.w)) {
+	if ((sp.next_page >= docwin_pages(sp.w) && !docwin_is_counting(sp.w)) ||
+			(sp.selection_only && sp.next_page > sp.end_page)) {
 		/* The end: whatever was carried, then nothing more. */
 		if (sp.carry.len) {
 			rt_chunk c = sp.carry;
@@ -521,8 +527,13 @@ static void fetch_more(void)
 	/* A scanned page: wait for its text. */
 	if (sp.next_page < docwin_pages(sp.w) && docwin_ocr_wait(sp.w, sp.next_page))
 		return;
-	if (sp.next_page < docwin_pages(sp.w) && fetch_page(sp.next_page, 0, -1, 0) == 0)
-		sp.next_page++;
+	if (sp.next_page < docwin_pages(sp.w)) {
+		/* The last page of a selection: only up to its end. */
+		int to = sp.selection_only && sp.next_page == sp.end_page ?
+			char_at(sp.next_page, sp.end_b, 1) : -1;
+		if (fetch_page(sp.next_page, 0, to, 0) == 0)
+			sp.next_page++;
+	}
 }
 
 /* Sentences from the thread into the stream, a block at a time, keeping
