@@ -30,6 +30,8 @@ PV_INC := -I$(PVOICE_DIR)/src
 # tools/get-tessdata.sh: $(TESSDATA)/standard and $(TESSDATA)/fast.
 TESSDATA ?= deps/tessdata
 export PATH := $(RISCOS_TOOLCHAIN)/bin:$(PATH)
+# Python for the sprite tools: build/pydeps (make ci's Pillow) first.
+PY_PILLOW := PYTHONPATH=$(CURDIR)/build/pydeps python3
 MUPDF ?= $(CURDIR)/mupdf/src
 MU_RO := $(MUPDF)/build/ro-release-tesseract-tofu_cjk
 MU_AL := $(MUPDF)/build/armlinux-release-tesseract-tofu_cjk
@@ -111,8 +113,8 @@ app: build/ro/folio.elf
 	cp -r app/!Folio build/app/
 	$(RISCOS_TOOLCHAIN)/bin/arm-riscos-gnueabihf-strip -o build/ro/folio.stripped build/ro/folio.elf
 	$(RISCOS_TOOLCHAIN)/bin/elf2aif -e build/ro/folio.stripped 'build/app/!Folio/!RunImage,ff8'
-	python3 -I tools/mksprites.py 'build/app/!Folio/!Sprites,ff9'
-	python3 -I tools/mktoolsprites.py 'build/app/!Folio/Sprites,ff9'
+	$(PY_PILLOW) tools/mksprites.py 'build/app/!Folio/!Sprites,ff9'
+	$(PY_PILLOW) tools/mktoolsprites.py 'build/app/!Folio/Sprites,ff9'
 	cp COPYING 'build/app/!Folio/COPYING,fff'
 	cp third/cjson/LICENSE 'build/app/!Folio/cJSONLicence,fff'
 	cp $(RISCOS_TOOLCHAIN)/riscos/PThrTicker,ffa 'build/app/!Folio/PThrTicker,ffa'
@@ -250,9 +252,11 @@ check: build/ro/core_test.elf
 	RISCOS_TOOLCHAIN=$(RISCOS_TOOLCHAIN) $(RCD_DIR)/checks/check-all.sh build/ro/core_test.elf
 
 # Everything from a clean checkout (GitHub, in the riscos-crossdev image).
-# The sprite tools need Pillow: installed for this user with pip if missing.
+# The sprite tools need Pillow: if python3 hasn't got it, Pillow 12.3.0 is
+# installed into build/pydeps with pip.
 ci:
-	python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --quiet --user --break-system-packages pillow==12.3.0
+	$(PY_PILLOW) -c 'import PIL' 2>/dev/null || \
+		python3 -m pip install --quiet --no-cache-dir --disable-pip-version-check --target build/pydeps pillow==12.3.0
 	mupdf/build.sh
 	fontconfig/build.sh
 	tools/get-pvoice.sh
