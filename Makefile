@@ -255,6 +255,7 @@ check: build/ro/core_test.elf
 # The sprite tools need Pillow: if python3 hasn't got it, Pillow 12.3.0 is
 # installed into build/pydeps with pip.
 ci:
+	tools/ci-host-deps.sh
 	$(PY_PILLOW) -c 'import PIL' 2>/dev/null || \
 		python3 -m pip install --quiet --no-cache-dir --disable-pip-version-check --target build/pydeps pillow==12.3.0
 	mupdf/build.sh
