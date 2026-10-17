@@ -2,13 +2,14 @@
 # SPDX-License-Identifier: MIT
 # Copyright (C) 2026 Andrew Youll
 # Builds expat 2.2.9 and fontconfig 2.14.1 as static libraries for RISC OS
-# (riscos-crossdev 1.4) and ARM Linux (the qemu test twin), against MuPDF's
+# (riscos-crossdev) and ARM Linux (the qemu test twin), against MuPDF's
 # own FreeType, so the program has one FreeType (DESIGN.md §6).
 #   fontconfig/build.sh [riscos|linuxarm|all]      (default all)
 # The sources are the Debian tarballs that GCCSDK's autobuilder (and so
 # PackMan's FontConfig 2.14.1) uses, in fontconfig/dl/ (or DL=dir):
 #   fontconfig_2.14.1.orig.tar.xz  298e883f6e11d2c5e6d53c8a8394de58d563902cfab934e6be12fb5a5f361ef0
 #   expat_2.2.9.orig.tar.gz        c341ac8c79e021cc3392a6d76e138e62d1dd287592cb455148540331756a2208
+# Missing ones are downloaded (Debian's and Ubuntu's archives) and checked.
 # Needs: gperf, MuPDF built (mupdf/build.sh), the riscos-crossdev toolchain
 # (RISCOS_TOOLCHAIN) and gcc-arm-linux-gnueabihf.
 # Output: fontconfig/out/{ro,al}/{include,lib}: libfontconfig.a, libexpat.a
@@ -18,17 +19,35 @@ set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 DL=${DL:-$HERE/dl}
 WHAT=${1:-all}
-RISCOS_TOOLCHAIN=${RISCOS_TOOLCHAIN:-/opt/riscos-crossdev-toolchain-1.4-x86_64-linux}
+RISCOS_TOOLCHAIN=${RISCOS_TOOLCHAIN:-${RCD_DIR:-/opt/riscos-crossdev}/toolchain/env}
 export PATH=$RISCOS_TOOLCHAIN/bin:$PATH
 JOBS=${JOBS:-$(nproc)}
 MU=$HERE/../mupdf/src
 SRC=$HERE/src
 
-check() {   # file sha256
-	echo "$2  $DL/$1" | sha256sum -c --quiet - || { echo "build.sh: $DL/$1 is missing or changed" >&2; exit 1; }
+check() {   # file sha256 url...
+	local f=$1 sum=$2 u
+	shift 2
+	if [ ! -f "$DL/$f" ]; then
+		mkdir -p "$DL"
+		for u in "$@"; do
+			if curl -fsSL -o "$DL/$f.part" "$u" &&
+			   echo "$sum  $DL/$f.part" | sha256sum -c --quiet - 2>/dev/null; then
+				mv "$DL/$f.part" "$DL/$f"
+				break
+			fi
+			echo "build.sh: $f from $u: no, or not the expected file" >&2
+		done
+		rm -f "$DL/$f.part"
+	fi
+	echo "$sum  $DL/$f" | sha256sum -c --quiet - || { echo "build.sh: $DL/$f is missing or changed" >&2; exit 1; }
 }
-check fontconfig_2.14.1.orig.tar.xz 298e883f6e11d2c5e6d53c8a8394de58d563902cfab934e6be12fb5a5f361ef0
-check expat_2.2.9.orig.tar.gz c341ac8c79e021cc3392a6d76e138e62d1dd287592cb455148540331756a2208
+check fontconfig_2.14.1.orig.tar.xz 298e883f6e11d2c5e6d53c8a8394de58d563902cfab934e6be12fb5a5f361ef0 \
+	https://deb.debian.org/debian/pool/main/f/fontconfig/fontconfig_2.14.1.orig.tar.xz \
+	https://snapshot.debian.org/archive/debian/20230612T000000Z/pool/main/f/fontconfig/fontconfig_2.14.1.orig.tar.xz \
+	https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.14.1.tar.xz
+check expat_2.2.9.orig.tar.gz c341ac8c79e021cc3392a6d76e138e62d1dd287592cb455148540331756a2208 \
+	http://archive.ubuntu.com/ubuntu/pool/main/e/expat/expat_2.2.9.orig.tar.gz
 
 # MuPDF's FreeType settings (Makelists).
 FT_CFLAGS="-I$MU/thirdparty/freetype/include -I$MU/scripts/freetype"

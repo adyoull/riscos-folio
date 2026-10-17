@@ -92,28 +92,43 @@ Unzip `Folio-<version>.zip` (with filetypes) and double-click `!Folio`.
 ## Building
 
 Folio is cross-built on Linux (x86-64) with the
-[riscos-crossdev](https://github.com/adyoull/riscos-crossdev) 1.4 toolchain (GCC 10.2,
+[riscos-crossdev](https://github.com/adyoull/riscos-crossdev) toolchain (GCC 10.2,
 UnixLib, ELF to AIF). The tests run on ARM Linux under
 `qemu-arm-aligntrap`, which applies RISC OS's alignment rules.
 
-Needs: the riscos-crossdev toolchain and a riscos-crossdev checkout, a
-[riscos-pvoice](https://github.com/adyoull/riscos-pvoice) checkout built
-with its `tools/build-espeak.sh` and `make` (`PVOICE_DIR`),
-`gcc-arm-linux-gnueabihf`, `g++-arm-linux-gnueabihf`, `qemu-user`, `gawk`,
-`python3` with Pillow, `gperf`.
+The simplest way is riscos-crossdev's container image, which has the
+toolchain and everything else:
+
+    docker run --rm -v "$PWD":/src ghcr.io/adyoull/riscos-crossdev:1.8.1 make ci
+
+`make ci` does all of it from a clean checkout: MuPDF 1.28.5 (patched),
+expat and fontconfig, the [riscos-pvoice](https://github.com/adyoull/riscos-pvoice)
+devkit of the release `.riscos-deps` names, and Tesseract's English data,
+each fetched at a fixed version and checked by sha256; then the builds,
+riscos-crossdev's checks, the four zips in `build/` and the tests. GitHub
+runs the same (`.github/workflows/riscos-build.yml`). `.riscos-deps` names
+the riscos-crossdev and riscos-pvoice releases Folio is built with;
+`riscos-deps-update.yml` opens a pull request when either has a newer one
+(`ci/riscos-deps-hook.sh` moves pvoice's checksum in `tools/pvoice.sha256`).
+
+Without the image you need a riscos-crossdev checkout and its toolchain,
+`gcc-arm-linux-gnueabihf`, `g++-arm-linux-gnueabihf`, `gawk`, `gperf`,
+`git`, `curl` and `python3` with Pillow, and the steps one at a time:
 
     # config.mk (not in git), or pass these on the command line
     RCD_DIR = /path/to/riscos-crossdev
-    RISCOS_TOOLCHAIN = /path/to/riscos-crossdev-toolchain-1.4-x86_64-linux
-    PVOICE_DIR = /path/to/riscos-pvoice
-    TESSDATA = /path/to/tessdata      # from tools/get-tessdata.sh
+    RISCOS_TOOLCHAIN = /path/to/riscos-crossdev/toolchain/env
+    # PVOICE_DIR = /path/to/riscos-pvoice   # a built checkout, instead of the release
 
-    mupdf/build.sh      # fetches MuPDF 1.28.5, applies mupdf/patches, builds for RISC OS and ARM Linux
-    fontconfig/build.sh # expat 2.2.9 and fontconfig 2.14.1 against MuPDF's FreeType (sources in fontconfig/dl)
-    make test           # the tests, under qemu-arm-aligntrap
-    make app            # !Folio, checked, zipped with RISC OS filetypes: build/Folio-<version>.zip
-    make plugin         # the Speech plugin: build/FolioSpeech-<version>.zip
-    make ocrplugin      # the OCR plugin: build/FolioOCR-<version>.zip
+    mupdf/build.sh         # fetches MuPDF 1.28.5, applies mupdf/patches, builds for RISC OS and ARM Linux
+    fontconfig/build.sh    # expat 2.2.9 and fontconfig 2.14.1 against MuPDF's FreeType
+    tools/get-pvoice.sh    # the riscos-pvoice devkit, in deps/
+    tools/get-tessdata.sh  # Tesseract's English data, in deps/tessdata
+    make test              # the tests, under qemu-arm-aligntrap
+    make app               # !Folio, checked, zipped with RISC OS filetypes: build/Folio-<version>.zip
+    make plugin            # the Speech plugin: build/FolioSpeech-<version>.zip
+    make ocrplugin         # the OCR plugin: build/FolioOCR-<version>.zip
+    make cjkpack           # the CJK font pack: build/FolioCJK-<version>.zip
 
 MuPDF is built with its bundled Tesseract and Leptonica (OCR); Tesseract's
 NEON code is compiled with `-mfpu=neon` and chosen at run time, the rest

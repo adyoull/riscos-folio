@@ -5,24 +5,30 @@
 #   make            core libraries for both targets + the test program
 #   make test       run the core tests under qemu-arm-aligntrap (RISC OS rules)
 #   make check      riscos-crossdev's checks on the RISC OS test program
+#   make ci         all of it from a clean checkout, as GitHub does in the
+#                   riscos-crossdev image (.github/workflows): MuPDF,
+#                   fontconfig, pvoice and Tesseract's data fetched and
+#                   checked, every build, the tests and the four zips
 #
 # MuPDF comes from mupdf/build.sh (mupdf/src). RCD_DIR is a riscos-crossdev
-# checkout (for checks/ and qemu/aligntrap.sh); RISCOS_TOOLCHAIN is the
-# riscos-crossdev 1.4 toolchain. Set them on the command line, in the
-# environment, or in config.mk (not in git), e.g.
+# checkout (for checks/ and qemu/aligntrap.sh); RISCOS_TOOLCHAIN is its
+# toolchain. The riscos-crossdev image sets both; otherwise set them on the
+# command line, in the environment, or in config.mk (not in git), e.g.
 #   RCD_DIR = $(HOME)/riscos-crossdev
-#   RISCOS_TOOLCHAIN = /opt/riscos-crossdev-toolchain-1.4-x86_64-linux
+#   RISCOS_TOOLCHAIN = $(HOME)/riscos-crossdev/toolchain/env
 
 -include config.mk
 RCD_DIR ?= ../riscos-crossdev
-RISCOS_TOOLCHAIN ?= /opt/riscos-crossdev-toolchain-1.4-x86_64-linux
-# riscos-pvoice (Piper voices for reading aloud): built there with `make`
-# (after its tools/build-espeak.sh); Folio links its build/ro/libpvoice.a.
-PVOICE_DIR ?= ../riscos-pvoice
+RISCOS_TOOLCHAIN ?= $(RCD_DIR)/toolchain/env
+# riscos-pvoice (Piper voices for reading aloud): the devkit of the release
+# .riscos-deps names, from tools/get-pvoice.sh; or a riscos-pvoice checkout
+# built with `make`. Folio links its build/ro/libpvoice.a.
+PVOICE_TAG := $(shell awk '$$1 == "riscos-pvoice" {print $$2}' .riscos-deps)
+PVOICE_DIR ?= deps/riscos-pvoice-$(PVOICE_TAG:v%=%)
 PV_INC := -I$(PVOICE_DIR)/src
 # Tesseract's English data for the OCR plugin and its test, from
 # tools/get-tessdata.sh: $(TESSDATA)/standard and $(TESSDATA)/fast.
-TESSDATA ?= ../tessdata
+TESSDATA ?= deps/tessdata
 export PATH := $(RISCOS_TOOLCHAIN)/bin:$(PATH)
 MUPDF ?= $(CURDIR)/mupdf/src
 MU_RO := $(MUPDF)/build/ro-release-tesseract-tofu_cjk
@@ -243,7 +249,20 @@ test: build/al/core_test build/al/worker_test build/al/dict_test build/al/find_t
 check: build/ro/core_test.elf
 	RISCOS_TOOLCHAIN=$(RISCOS_TOOLCHAIN) $(RCD_DIR)/checks/check-all.sh build/ro/core_test.elf
 
+# Everything from a clean checkout (GitHub, in the riscos-crossdev image).
+# The sprite tools need Pillow: installed for this user with pip if missing.
+ci:
+	python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --quiet --user --break-system-packages pillow==12.3.0
+	mupdf/build.sh
+	fontconfig/build.sh
+	tools/get-pvoice.sh
+	tools/get-tessdata.sh $(TESSDATA)
+	$(MAKE) all
+	$(MAKE) check
+	$(MAKE) app plugin ocrplugin cjkpack
+	$(MAKE) test
+
 clean:
 	rm -rf build tests/data/*.epub tests/data/*.pdf tests/data/stamp tests/out
 
-.PHONY: all app plugin ocrplugin test check clean
+.PHONY: all app plugin ocrplugin cjkpack test check ci clean
