@@ -24,8 +24,10 @@ The bookshelf
 Opening a document
   Drag a file to Folio's icon on the icon bar, or double-click a PDF while
   Folio is running. A document that is already open comes to the front.
-  If a PDF needs a password, Folio asks for it. Drag a directory of
-  pictures there instead to make a PDF of them (see "Pictures to a PDF").
+  If a PDF needs a password, Folio asks for it. Dragging several files at
+  once opens each in its own window; to join them into one PDF, use
+  Create PDF (below). Drag a directory of pictures there instead to make
+  a PDF of them (see "Pictures to a PDF").
 
 In a document window
   Scroll as usual. Page Down / Page Up    next / previous page
@@ -223,6 +225,22 @@ Pictures to a PDF
   (F3) puts it where you want it, and Folio asks before it's closed
   unsaved. So: Save page pictures for a few pages, change the pictures in
   another program, drag the directory back to Folio, and compare.
+
+Create PDF (joining files)
+  Create PDF... on the icon bar menu opens a window to collect files in.
+  Drag PDFs, pictures (JPEG, PNG, GIF, BMP, TIFF) or other documents Folio
+  reads (CBZ, XPS, ebooks) into it, several at a time if you like; a
+  directory dragged in adds its PDFs and pictures in name order. They're
+  listed in the order they'll go. Click one to choose it; the buttons at
+  the top move it Up or Down, Remove it from the list (the file isn't
+  touched), Sort the list by name (Page2 before Page10) or Clear it.
+  Create PDF joins them into one new PDF, which opens in a window called
+  Combined, unsaved: Save... (F3) puts it where you want it. A PDF's pages
+  are copied just as they are (pictures, fonts, notes, form fields), a
+  picture becomes a page of its own size, JPEGs aren't compressed again,
+  and an ebook is laid out as Folio shows it. The list stays, so you can
+  change it and make the PDF again. A PDF that needs a password has to be
+  opened and saved without it first.
 
 Opening at a page
   To open a document at a given page, from an Obey file, a program or the

@@ -417,6 +417,26 @@ static int picture_type(int type, const char *leaf)
 	return 0;
 }
 
+int pagesave_is_pdf(int type, const char *leaf)
+{
+	const char *dot = strrchr(leaf, '/');
+	return type == 0xadf || ((type == 0xffd || type == -1) && dot &&
+		(dot[1] == 'p' || dot[1] == 'P') && (dot[2] == 'd' || dot[2] == 'D') &&
+		(dot[3] == 'f' || dot[3] == 'F') && !dot[4]);
+}
+
+static int natural_cmp(const void *pa, const void *pb);
+
+int pagesave_natural(const char *a, const char *b)
+{
+	return natural_cmp(&a, &b);
+}
+
+int pagesave_is_picture(int type, const char *leaf)
+{
+	return picture_type(type, leaf);
+}
+
 /* Names in reading order: numbers by value (Page2 before Page10), letters
  * without regard to case. */
 static int natural_cmp(const void *pa, const void *pb)
@@ -456,15 +476,14 @@ static int natural_cmp(const void *pa, const void *pb)
 	return (unsigned char)*a - (unsigned char)*b;
 }
 
-int pagesave_folder(const char *dir)
+/* The pictures (and, with pdfs, the PDFs) in dir, in name order, as full
+ * paths in *out (free with pagesave_free_list). Returns how many. */
+int pagesave_list(const char *dir, int pdfs, char ***out)
 {
-	static int made;
-	char **names = NULL, *buf = NULL, out[600], sub[300];
-	const char *scrap = getenv("Wimp$ScrapDir"), *leaf = leafname(dir);
-	int n = 0, cap = 0, next = 0, i, ok = 0;
-	docwin *w;
-
-	/* The directory's pictures (OS_GBPB 10: load address, ..., type, name). */
+	char **names = NULL, *buf;
+	int n = 0, cap = 0, next = 0, i;
+	/* OS_GBPB 10: load address, exec, length, attributes, type, name. */
+	*out = NULL;
 	buf = malloc(4096);
 	if (!buf)
 		return 0;
@@ -478,7 +497,7 @@ int pagesave_folder(const char *dir)
 			int objtype = *(int *)(p + 16);
 			const char *name = p + 20;
 			int ftype = (load & 0xfff00000u) == 0xfff00000u ? (int)((load >> 8) & 0xfff) : -1;
-			if (objtype == 1 && picture_type(ftype, name)) {
+			if (objtype == 1 && (picture_type(ftype, name) || (pdfs && pagesave_is_pdf(ftype, name)))) {
 				if (n == cap) {
 					char **nn = realloc(names, (size_t)(cap = cap ? cap * 2 : 64) * sizeof *names);
 					if (!nn)
@@ -495,6 +514,44 @@ int pagesave_folder(const char *dir)
 		}
 	}
 	free(buf);
+	if (n > 1)
+		qsort(names, (size_t)n, sizeof *names, natural_cmp);
+	*out = names;
+	return n;
+}
+
+void pagesave_free_list(char **names, int n)
+{
+	int i;
+	for (i = 0; i < n; i++)
+		free(names[i]);
+	free(names);
+}
+
+/* A new file in the scrap directory, named leaf (so that's its window's
+ * title): <Wimp$ScrapDir>.FolioNew.<n>.<leaf>. */
+void pagesave_new_path(const char *leaf, char *out, size_t size)
+{
+	static int made;
+	char sub[300];
+	const char *scrap = getenv("Wimp$ScrapDir");
+	if (!scrap || !*scrap)
+		scrap = "<Wimp$ScrapDir>";
+	snprintf(sub, sizeof sub, "%s.FolioNew", scrap);
+	_swix(OS_File, _INR(0, 1) | _IN(4), 8, sub, 0);
+	snprintf(sub, sizeof sub, "%s.FolioNew.%d", scrap, ++made);
+	_swix(OS_File, _INR(0, 1) | _IN(4), 8, sub, 0);
+	snprintf(out, size, "%s.%s", sub, leaf);
+}
+
+int pagesave_folder(const char *dir)
+{
+	char **names = NULL, out[600];
+	const char *leaf = leafname(dir);
+	int n, i, ok = 0;
+	docwin *w;
+
+	n = pagesave_list(dir, 0, &names);
 	if (n == 0) {
 		char m[300];
 		snprintf(m, sizeof m, "There are no pictures in '%s'. Folio makes a PDF from the JPEG, PNG, GIF, BMP "
@@ -503,26 +560,18 @@ int pagesave_folder(const char *dir)
 		free(names);
 		return 1;
 	}
-	qsort(names, (size_t)n, sizeof *names, natural_cmp);
 
-	/* Made in the scrap directory under the directory's name, so that's
-	 * the window's title; saving puts it where it's wanted. */
-	if (!scrap || !*scrap)
-		scrap = "<Wimp$ScrapDir>";
-	snprintf(sub, sizeof sub, "%s.FolioNew", scrap);
-	_swix(OS_File, _INR(0, 1) | _IN(4), 8, sub, 0);
-	snprintf(sub, sizeof sub, "%s.FolioNew.%d", scrap, ++made);
-	_swix(OS_File, _INR(0, 1) | _IN(4), 8, sub, 0);
-	snprintf(out, sizeof out, "%s.%s", sub, leaf);
+	/* Made in the scrap directory under the directory's name; saving puts
+	 * it where it's wanted. */
+	pagesave_new_path(leaf, out, sizeof out);
 	_swix(Hourglass_On, 0);
 	core_now();
 	ok = folio_images_to_pdf(app.fc, (const char *const *)names, n, out) == 0;
 	core_unlock();
 	_swix(Hourglass_Off, 0);
 	app_log("new PDF from %s: %d pictures%s%s", dir, n, ok ? "" : ": ", ok ? "" : folio_error(app.fc));
-	for (i = 0; i < n; i++)
-		free(names[i]);
-	free(names);
+	pagesave_free_list(names, n);
+	(void)i;
 	if (!ok) {
 		char m[400];
 		snprintf(m, sizeof m, "Folio couldn't make a PDF from '%s': %s", leaf, folio_error(app.fc));

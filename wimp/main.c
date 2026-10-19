@@ -116,10 +116,11 @@ static void create_objects(void)
 	/* Icon bar menu: Info, Help..., Quit (Style Guide p46). */
 	entry(&ib, 0, 0, "Info", MENU_SUBMENU, 0, "Move right to see information about this version of Folio.");
 	entry(&ib, 1, 3, "Bookshelf...", 0, EV_BOOKSHELF, "Click to see your bookshelf.");
-	entry(&ib, 2, 4, "Choices...", 0, EV_CHOICES, "Click to change Folio's choices.");
-	entry(&ib, 3, 1, "Help...", 0, EV_HELP, "Click to read Folio's help.");
-	entry(&ib, 4, 2, "Quit", 0, EV_QUIT, "Click to leave Folio.");
-	app.iconbar_menu = make_menu(&ib, "Folio", 5, 0);
+	entry(&ib, 2, 5, "Create PDF...", 0, EV_CREATE_PDF, "Click to open a window to drag PDFs, pictures and other documents into, in order, and join them into one new PDF.");
+	entry(&ib, 3, 4, "Choices...", 0, EV_CHOICES, "Click to change Folio's choices.");
+	entry(&ib, 4, 1, "Help...", 0, EV_HELP, "Click to read Folio's help.");
+	entry(&ib, 5, 2, "Quit", 0, EV_QUIT, "Click to leave Folio.");
+	app.iconbar_menu = make_menu(&ib, "Folio", 6, 0);
 	check(menu_set_submenu(app.iconbar_menu, 0, app.proginfo));
 
 	/* Document menu: View and Navigate submenus. */
@@ -270,6 +271,11 @@ static int message(int *b)
 			ack_load(b);
 			break;
 		}
+		/* Dropped in the Create PDF window: added to its list. */
+		if (combine_data_load(b)) {
+			ack_load(b);
+			break;
+		}
 		/* A directory of pictures: a new PDF of them. */
 		if (b[10] == 0x1000) {
 			ack_load(b);
@@ -381,6 +387,10 @@ static int toolbox_event(int *b)
 	case EV_PAGES_OK:
 	case EV_PAGES_CANCEL:
 		pagesave_event(code);
+		break;
+	case EV_CREATE_PDF: case EV_CP_UP: case EV_CP_DOWN: case EV_CP_REMOVE: case EV_CP_SORT:
+	case EV_CP_CLEAR: case EV_CP_CREATE:
+		combine_event(code);
 		break;
 	case EV_SPEED_SLOW:
 	case EV_SPEED_NORMAL:
@@ -566,6 +576,8 @@ int main(int argc, char **argv)
 				contents_redraw(block);
 			else if (docinfo_owns(block[0]))
 				docinfo_redraw(block);
+			else if (combine_owns(block[0]))
+				combine_redraw(block);
 			else if (thumbs_from_wimp(block[0]))
 				thumbs_redraw(thumbs_from_wimp(block[0]), block);
 			else if (toolbar_tip_owns(block[0]))
@@ -624,6 +636,8 @@ int main(int argc, char **argv)
 				dict_click(block);
 			else if (contents_owns(block[3]))
 				contents_click(block);
+			else if (combine_owns(block[3]))
+				combine_click(block);
 			else if (thumbs_from_wimp(block[3]))
 				thumbs_click(thumbs_from_wimp(block[3]), block);
 			else if (bookshelf_owns(block[3]))

@@ -37,7 +37,8 @@ enum {
 	EV_ASK_OK = 0x290, EV_ASK_CANCEL,
 	EV_FILL_FORM = 0x2a0,   /* not a menu entry: filling in a form (docwin_allows) */
 	EV_FULL_SCREEN = 0x2b0, EV_SAVE_PAGES, EV_SAVE_PICTURES,
-	EV_PAGES_OK = 0x2c0, EV_PAGES_CANCEL
+	EV_PAGES_OK = 0x2c0, EV_PAGES_CANCEL,
+	EV_CREATE_PDF = 0x2d0, EV_CP_UP, EV_CP_DOWN, EV_CP_REMOVE, EV_CP_SORT, EV_CP_CLEAR, EV_CP_CREATE
 };
 
 /* View menu entries (component ids). */
@@ -264,6 +265,23 @@ void pagesave_event(int code);
 int pagesave_saveas_event(int *block);
 void pagesave_forget(docwin *w);
 int pagesave_folder(const char *dir);
+/* Shared with combine.c: the pictures (and PDFs) in a directory, in name
+ * order (Page2 before Page10); a new file in the scrap directory; which
+ * files are pictures or PDFs (type -1: none, by the name's ending). */
+int pagesave_list(const char *dir, int pdfs, char ***out);
+void pagesave_free_list(char **names, int n);
+void pagesave_new_path(const char *leaf, char *out, size_t size);
+int pagesave_is_pdf(int type, const char *leaf);
+int pagesave_is_picture(int type, const char *leaf);
+int pagesave_natural(const char *a, const char *b);
+/* combine.c: the Create PDF window (icon bar menu): files dragged into it,
+ * in order, joined into one new PDF. */
+void combine_open(void);
+int combine_owns(int wimp);
+void combine_redraw(int *block);
+void combine_click(int *block);
+int combine_data_load(int *block);       /* 1 if it was dropped on it */
+void combine_event(int code);
 void export_forget(docwin *w);
 
 void print_open(docwin *w);

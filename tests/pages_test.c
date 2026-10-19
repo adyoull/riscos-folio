@@ -277,6 +277,39 @@ int main(int argc, char **argv)
 		folio_close(d);
 	}
 
+	printf("Joining files\n");
+	{
+		/* made.pdf (scan1, scan2, scan3.png), scan2.jpg alone, the CBZ
+		 * (scan1-3), hidden.pdf (scan1 + hidden text): 8 pages. */
+		const char *files[4] = { OUT "/made.pdf", OUT "/scan2.jpg", OUT "/book.cbz", OUT "/hidden.pdf" };
+		const char *bad[2] = { OUT "/made.pdf", OUT "/nosuch.pdf" };
+		static const struct { int page; const char *jpeg; } want[] = {
+			{ 0, OUT "/scan1.jpg" }, { 1, OUT "/scan2.jpg" }, { 3, OUT "/scan2.jpg" },
+			{ 4, OUT "/scan1.jpg" }, { 6, OUT "/scan3.jpg" }, { 7, OUT "/scan1.jpg" } };
+		int i;
+		CHECK(folio_combine(fc, files, 4, OUT "/joined.pdf") == 0, "joined: %s", folio_error(fc));
+		CHECK(folio_combine(fc, bad, 2, OUT "/bad2.pdf") == -1 &&
+			strstr(folio_error(fc), "nosuch.pdf") != NULL, "a missing file is named: %s", folio_error(fc));
+		CHECK(folio_combine(fc, files, 0, OUT "/none2.pdf") == -1, "no files");
+		d = folio_open(fc, OUT "/joined.pdf", NULL);
+		CHECK(d != NULL, "open joined.pdf: %s", folio_error(fc));
+		if (d) {
+			CHECK(pages(d) == 8, "8 pages (%d)", pages(d));
+			for (i = 0; i < (int)(sizeof want / sizeof want[0]); i++) {
+				char out[64];
+				snprintf(out, sizeof out, OUT "/joined%d", want[i].page + 1);
+				k = folio_save_page_image(d, L(want[i].page), 150, out);
+				CHECK(k == FOLIO_PAGEIMG_JPEG && same_file(out, want[i].jpeg),
+					"joined page %d is %s byte for byte (%d)", want[i].page + 1, want[i].jpeg, k);
+			}
+			k = folio_save_page_image(d, L(2), 150, OUT "/joined3");
+			CHECK(k == FOLIO_PAGEIMG_IMAGE_PNG, "page 3 is still the PNG picture (%d)", k);
+			CHECK(folio_page_size(d, L(3), &pw, &ph) == 0 && pw > 153.5f && pw < 154.5f,
+				"the lone JPEG's page is its size at 150 dpi (%g)", pw);
+			folio_close(d);
+		}
+	}
+
 	printf("A text page\n");
 	snprintf(pbuf[0], sizeof pbuf[0], "%s/doc.pdf", dir);
 	d = folio_open(fc, pbuf[0], NULL);

@@ -410,3 +410,108 @@ int folio_images_to_pdf(folio_ctx *fc, const char *const *paths, int n, const ch
 	}
 	return ok ? 0 : -1;
 }
+
+/* ---- Files joined into one PDF ------------------------------------------ */
+
+/* Appends every page of the document at path to dst. */
+static void combine_one(fz_context *ctx, pdf_document *dst, const char *path)
+{
+	fz_document *doc = NULL;
+	pdf_graft_map *map = NULL;
+	fz_page *page = NULL;
+	fz_buffer *contents = NULL;
+	pdf_obj *res = NULL, *obj = NULL;
+	fz_device *dev = NULL;
+	int i, n;
+	fz_var(doc);
+	fz_var(map);
+	fz_var(page);
+	fz_var(contents);
+	fz_var(res);
+	fz_var(obj);
+	fz_var(dev);
+	fz_try(ctx) {
+		pdf_document *src;
+		doc = fz_open_document(ctx, path);
+		if (fz_needs_password(ctx, doc))
+			fz_throw(ctx, FZ_ERROR_ARGUMENT, "it needs a password: open it and save it without one first");
+		src = pdf_specifics(ctx, doc);
+		if (src) {
+			/* A PDF's pages, as they are. A graft map is for one source. */
+			map = pdf_new_graft_map(ctx, dst);
+			n = pdf_count_pages(ctx, src);
+			for (i = 0; i < n; i++)
+				pdf_graft_mapped_page(ctx, map, -1, src, i);
+		} else {
+			/* Anything else (a picture, CBZ, XPS, an ebook laid out as
+			 * Folio lays it out), drawn into PDF pages: pictures go in
+			 * as they are. */
+			if (fz_is_document_reflowable(ctx, doc))
+				fz_layout_document(ctx, doc, 400, 600, 11);
+			n = fz_count_pages(ctx, doc);
+			for (i = 0; i < n; i++) {
+				fz_rect r;
+				page = fz_load_page(ctx, doc, i);
+				r = fz_bound_page(ctx, page);
+				dev = pdf_page_write(ctx, dst, fz_make_rect(0, 0, r.x1 - r.x0, r.y1 - r.y0), &res, &contents);
+				fz_run_page(ctx, page, dev, fz_translate(-r.x0, -r.y0), NULL);
+				fz_close_device(ctx, dev);
+				fz_drop_device(ctx, dev);
+				dev = NULL;
+				obj = pdf_add_page(ctx, dst, fz_make_rect(0, 0, r.x1 - r.x0, r.y1 - r.y0), 0, res, contents);
+				pdf_insert_page(ctx, dst, -1, obj);
+				pdf_drop_obj(ctx, obj);
+				obj = NULL;
+				pdf_drop_obj(ctx, res);
+				res = NULL;
+				fz_drop_buffer(ctx, contents);
+				contents = NULL;
+				fz_drop_page(ctx, page);
+				page = NULL;
+			}
+		}
+		if (n <= 0)
+			fz_throw(ctx, FZ_ERROR_FORMAT, "it has no pages");
+	}
+	fz_always(ctx) {
+		fz_drop_device(ctx, dev);
+		pdf_drop_obj(ctx, obj);
+		pdf_drop_obj(ctx, res);
+		fz_drop_buffer(ctx, contents);
+		fz_drop_page(ctx, page);
+		pdf_drop_graft_map(ctx, map);
+		fz_drop_document(ctx, doc);
+	}
+	fz_catch(ctx) {
+		fz_throw(ctx, FZ_ERROR_FORMAT, "%s: %s", path, fz_caught_message(ctx));
+	}
+}
+
+int folio_combine(folio_ctx *fc, const char *const *paths, int n, const char *path)
+{
+	fz_context *ctx = fc->ctx;
+	pdf_document *dst = NULL;
+	int i, ok = 0;
+	fz_var(dst);
+	fz_var(i);
+	fz_var(ok);
+	if (n <= 0) {
+		snprintf(fc->err, sizeof fc->err, "there are no files");
+		return -1;
+	}
+	fz_try(ctx) {
+		pdf_write_options opts = pdf_default_write_options;
+		dst = pdf_create_document(ctx);
+		for (i = 0; i < n; i++)
+			combine_one(ctx, dst, paths[i]);
+		opts.do_garbage = 1;
+		opts.do_compress = 1;
+		pdf_save_document(ctx, dst, path, &opts);
+		ok = 1;
+	}
+	fz_always(ctx)
+		pdf_drop_document(ctx, dst);
+	fz_catch(ctx)
+		folio_set_error(fc);
+	return ok ? 0 : -1;
+}
