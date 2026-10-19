@@ -58,6 +58,11 @@ WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c wimp/clip.c wimp/
 WIMP_HDR := wimp/app.h wimp/tbx.h wimp/worker.h wimp/shelfdata.h wimp/readtext.h wimp/speaker.h \
 	core/folio.h core/dict.h
 VERSION ?= 0.0.1-test50
+# The plugins and the font pack have versions of their own, raised only
+# when what's in them changes (not with each Folio build).
+SPEECH_VERSION ?= 1.0
+OCR_VERSION ?= 1.0
+CJK_VERSION ?= 1.0
 
 all: build/ro/libfolio.a build/al/libfolio.a build/al/core_test build/ro/core_test.elf build/ro/folio.elf
 
@@ -144,8 +149,8 @@ plugin:
 	cp $(PVOICE_DIR)/third/espeak-ng/COPYING build/plugin/!Folio/Plugins/Speech/eSpeakLicence,fff
 	cp $(PVOICE_DIR)/docs/VOICES.txt build/plugin/!Folio/Plugins/Speech/VoiceLicence,fff
 	cp app/Speech-Install build/plugin/ReadMe,fff
-	python3 $(RCD_DIR)/package/rozip.py build/FolioSpeech-$(VERSION).zip -C build/plugin '!Folio' 'ReadMe,fff'
-	@ls -l build/FolioSpeech-$(VERSION).zip
+	python3 $(RCD_DIR)/package/rozip.py build/FolioSpeech-$(SPEECH_VERSION).zip -C build/plugin '!Folio' 'ReadMe,fff'
+	@ls -l build/FolioSpeech-$(SPEECH_VERSION).zip
 
 # The OCR plugin: Tesseract's English data in two sizes, Accurate (the
 # standard set without its unused Tesseract 3 part, about 5 MB) and Fast
@@ -158,8 +163,8 @@ ocrplugin:
 	cp app/OCR/ReadMe 'build/ocrplugin/!Folio/Plugins/OCR/ReadMe,fff'
 	cp $(TESSDATA)/standard/LICENSE 'build/ocrplugin/!Folio/Plugins/OCR/DataLicence,fff'
 	cp app/OCR-Install build/ocrplugin/ReadMe,fff
-	python3 $(RCD_DIR)/package/rozip.py build/FolioOCR-$(VERSION).zip -C build/ocrplugin '!Folio' 'ReadMe,fff'
-	@ls -l build/FolioOCR-$(VERSION).zip
+	python3 $(RCD_DIR)/package/rozip.py build/FolioOCR-$(OCR_VERSION).zip -C build/ocrplugin '!Folio' 'ReadMe,fff'
+	@ls -l build/FolioOCR-$(OCR_VERSION).zip
 
 # The CJK font pack: Droid Sans Fallback (from MuPDF's sources) for
 # !Folio.Fonts, for text in Chinese, Japanese and Korean that isn't embedded.
@@ -168,8 +173,8 @@ cjkpack:
 	cp $(MUPDF)/resources/fonts/droid/DroidSansFallbackFull.ttf 'build/cjkpack/!Folio/Fonts/DroidSansFallbackFull.ttf'
 	cp $(MUPDF)/resources/fonts/droid/NOTICE 'build/cjkpack/!Folio/Fonts/FontLicence,fff'
 	cp app/CJK-Install build/cjkpack/ReadMe,fff
-	python3 $(RCD_DIR)/package/rozip.py build/FolioCJK-$(VERSION).zip -C build/cjkpack '!Folio' 'ReadMe,fff'
-	@ls -l build/FolioCJK-$(VERSION).zip
+	python3 $(RCD_DIR)/package/rozip.py build/FolioCJK-$(CJK_VERSION).zip -C build/cjkpack '!Folio' 'ReadMe,fff'
+	@ls -l build/FolioCJK-$(CJK_VERSION).zip
 
 tests/data/stamp: tests/make-data.sh tests/make-epub.py tests/make-form.py
 	tests/make-data.sh $(MU_AL)/mutool $(RCD_DIR)/qemu/aligntrap.sh
