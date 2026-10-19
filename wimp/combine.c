@@ -146,7 +146,9 @@ static ObjectId create_window(void)
 	ObjectId id = 0;
 	_kernel_oserror *e;
 	memset(&t, 0, sizeof t);
-	t.flags = (1 << 1) | (1 << 2);   /* the Toolbox opens and closes it */
+	/* The Toolbox closes it; Folio opens it (open requests), so the toolbar
+	 * stays a child of it (place_toolbar). */
+	t.flags = 1 << 2;
 	t.help_message = "Drag PDFs, pictures or other documents here, or a directory of them, in the order "
 		"they should go. Click one to choose it.";
 	t.max_help = (int)strlen(t.help_message) + 1;
@@ -215,6 +217,66 @@ static void update(void)
 	}
 }
 
+/* The toolbar as a child window of the list window, its left, right and
+ * top edges tied to the window's, so the Wimp moves and stacks it with the
+ * window. (The Toolbox shows an internal toolbar as a separate pane: when
+ * the new PDF's window opened over it and the list window was brought back
+ * to the front, the toolbar stayed behind and the list's white showed in
+ * its place.) If the Wimp can't nest windows, it's opened as a pane just
+ * in front of the window instead, on every open request. */
+static int nested, nest_failed;
+
+static void place_toolbar(void)
+{
+	int ps[9], st[9];
+	ps[0] = cp.wimp;
+	st[0] = cp.tb_wimp;
+	nested = 0;
+	if (!cp.tb_wimp || _swix(Wimp_GetWindowState, _IN(1), ps) || !(ps[8] & (1 << 16)) ||
+			_swix(Wimp_GetWindowState, _IN(1), st))
+		return;
+	st[1] = ps[1];
+	st[3] = ps[3];
+	st[4] = ps[4];
+	st[2] = ps[4] - TB_H;
+	st[5] = 0;
+	st[6] = 0;
+	st[7] = -1;
+	if (!nest_failed) {
+		if (!_swix(Wimp_OpenWindow, _INR(1, 4), st, 0x4b534154 /* TASK */, cp.wimp,
+				(1u << 16) | (2u << 18) | (2u << 20) | (2u << 22) | (1u << 24) | (2u << 26))) {
+			nested = 1;
+			return;
+		}
+		nest_failed = 1;
+		app_log("create PDF: the toolbar can't be nested; a pane instead");
+	}
+	/* A pane: just in front of the window. */
+	st[7] = ps[7];
+	_swix(Wimp_OpenWindow, _IN(1), st);
+	ps[7] = cp.tb_wimp;
+	_swix(Wimp_OpenWindow, _IN(1), ps);
+}
+
+void combine_open_request(int *b)
+{
+	if (!nested && cp.tb_wimp) {
+		int st[9];
+		st[0] = cp.tb_wimp;
+		if (!_swix(Wimp_GetWindowState, _IN(1), st)) {
+			st[1] = b[1];
+			st[3] = b[3];
+			st[4] = b[4];
+			st[2] = b[4] - TB_H;
+			if (b[7] != cp.tb_wimp)
+				st[7] = b[7];
+			_swix(Wimp_OpenWindow, _IN(1), st);
+			b[7] = cp.tb_wimp;
+		}
+	}
+	_swix(Wimp_OpenWindow, _IN(1), b);
+}
+
 void combine_open(void)
 {
 	int pos[2];
@@ -232,10 +294,12 @@ void combine_open(void)
 		pos[1] = app.screen_h / 2 + 300;
 		update();
 		tbx_show(cp.obj, 0, 2, pos, 0, -1);
+		place_toolbar();
 		return;
 	}
 	update();
 	tbx_show(cp.obj, 0, 0, NULL, 0, -1);
+	place_toolbar();
 }
 
 int combine_owns(int wimp)

@@ -597,6 +597,8 @@ int main(int argc, char **argv)
 				_swix(Wimp_OpenWindow, _IN(1), block);
 			else if (thumbs_from_wimp(block[0]))
 				thumbs_open_request(thumbs_from_wimp(block[0]), block);
+			else if (combine_owns(block[0]))
+				combine_open_request(block);
 			else if (bookshelf_owns(block[0]))
 				bookshelf_open_request(block);
 			break;

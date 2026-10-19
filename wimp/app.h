@@ -277,6 +277,7 @@ int pagesave_natural(const char *a, const char *b);
 /* combine.c: the Create PDF window (icon bar menu): files dragged into it,
  * in order, joined into one new PDF. */
 void combine_open(void);
+void combine_open_request(int *block);
 int combine_owns(int wimp);
 void combine_redraw(int *block);
 void combine_click(int *block);
