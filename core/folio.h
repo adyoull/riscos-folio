@@ -347,6 +347,30 @@ int folio_link_at(folio_doc *doc, folio_loc loc, folio_point p, folio_link *link
  * The caller sets the file's type (&AFF). 0, or -1 (folio_error). */
 int folio_export_draw(folio_doc *doc, folio_loc loc, const char *path);
 
+/* ---- Pages out, pictures in (pages.c) ------------------------------------ */
+
+/* A list of pages ("1-10, 15, 20-", "-5", "all"; blank = all) into sel[]:
+ * sel[i] = 1 for page i (0-based) of count. Returns the pages chosen, or -1
+ * if it can't be read or names a page past the end. */
+int folio_parse_pages(const char *spec, int count, unsigned char *sel);
+/* The chosen pages as a new PDF. A PDF's pages are copied as they are
+ * (contents, pictures, fonts, annotations); other documents' pages are
+ * drawn into PDF pages, JPEG pictures kept as they are. 0 or -1. */
+int folio_save_pages(folio_doc *doc, const unsigned char *sel, int count, const char *path);
+/* The page's picture, written to path. Returns what was written, or -1:
+ *  FOLIO_PAGEIMG_JPEG: the page is one JPEG picture: those bytes, as stored;
+ *  FOLIO_PAGEIMG_IMAGE_PNG: the page is one picture of another kind: it, at
+ *    its own size, as a PNG;
+ *  FOLIO_PAGEIMG_PAGE_PNG: the whole page drawn at dpi, as a PNG.
+ * "One picture": it covers the page and nothing visible is drawn on top
+ * (a scan's hidden recognised text is allowed). */
+enum { FOLIO_PAGEIMG_JPEG = 1, FOLIO_PAGEIMG_IMAGE_PNG = 2, FOLIO_PAGEIMG_PAGE_PNG = 3 };
+int folio_save_page_image(folio_doc *doc, folio_loc loc, int dpi, const char *path);
+/* Picture files (JPEG, PNG, GIF, BMP, TIFF...) as the pages of a new PDF, in
+ * the order given: each page the picture's size at its resolution, a JPEG
+ * put in as it is. 0 or -1 (folio_error, naming the file that failed). */
+int folio_images_to_pdf(folio_ctx *fc, const char *const *paths, int n, const char *path);
+
 /* ---- Annotations (PDFs) ------------------------------------------------ */
 
 typedef enum {

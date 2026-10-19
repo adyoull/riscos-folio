@@ -68,7 +68,7 @@ static void check(_kernel_oserror *e)
 /* A menu template: header fields then entries, in one block. */
 typedef struct {
 	tbx_menu m;
-	tbx_menu_entry e[16];
+	tbx_menu_entry e[20];
 } menu_block;
 
 static ObjectId make_menu(menu_block *b, const char *title, int n, int show_event)
@@ -162,17 +162,19 @@ static void create_objects(void)
 	entry(&dm, 0, DOC_SAVE, "Save...        F3", 0, EV_SAVE, "Click to save the document with its notes and markings (PDFs).");
 	entry(&dm, 1, DOC_PRINT, "Print...    Print", 0, EV_PRINT, "Click to print the document (with !Printers loaded).");
 	entry(&dm, 2, DOC_EXPORT_DRAW, "Export page as Draw...", 0, EV_EXPORT_DRAW, "Click to save the page you're reading as a Draw file: its text as outlines, each picture as a sprite of its own.");
-	entry(&dm, 3, DOC_PASSWORD, "Password...", 0, EV_PASSWORD, "Click to put a password on the document, or take one off (PDFs).");
-	entry(&dm, 4, DOC_INFO, "Document info...", MENU_DOTTED, EV_DOCINFO, "Click to see the document's properties: title, author, dates, page size, security and more.");
-	entry(&dm, 5, 3, "Edit", MENU_SUBMENU, 0, "Move right for undo, copying, highlighting and notes.");
-	entry(&dm, 6, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
-	entry(&dm, 7, 2, "Navigate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right for moving through the document.");
+	entry(&dm, 3, DOC_SAVE_PAGES, "Save pages as PDF...", 0, EV_SAVE_PAGES, "Click to make a new PDF of some of the pages, such as 1-10. A PDF's pages are copied just as they are.");
+	entry(&dm, 4, DOC_SAVE_PICTURES, "Save page pictures...", 0, EV_SAVE_PICTURES, "Click to save pages as picture files in a directory: a scanned page's own JPEG, unchanged; other pages drawn as PNG.");
+	entry(&dm, 5, DOC_PASSWORD, "Password...", 0, EV_PASSWORD, "Click to put a password on the document, or take one off (PDFs).");
+	entry(&dm, 6, DOC_INFO, "Document info...", MENU_DOTTED, EV_DOCINFO, "Click to see the document's properties: title, author, dates, page size, security and more.");
+	entry(&dm, 7, 3, "Edit", MENU_SUBMENU, 0, "Move right for undo, copying, highlighting and notes.");
+	entry(&dm, 8, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
+	entry(&dm, 9, 2, "Navigate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right for moving through the document.");
 	/* The context item (DESIGN §3.4): its text names the word when it's shown. */
-	entry(&dm, 8, DOC_FIND, "Find...        F4", 0, EV_FIND, "Click to find text in the document.");
-	entry(&dm, 9, DOC_DEFINE, "Define", MENU_FADED | MENU_DOTTED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
-	dm.e[9].max_text = 80;
-	entry(&dm, 10, DOC_SHELF, "On bookshelf", 0, EV_ADD_SHELF, "Click to put this document on the bookshelf, or take it off.");
-	ndm = 11;
+	entry(&dm, 10, DOC_FIND, "Find...        F4", 0, EV_FIND, "Click to find text in the document.");
+	entry(&dm, 11, DOC_DEFINE, "Define", MENU_FADED | MENU_DOTTED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
+	dm.e[11].max_text = 80;
+	entry(&dm, 12, DOC_SHELF, "On bookshelf", 0, EV_ADD_SHELF, "Click to put this document on the bookshelf, or take it off.");
+	ndm = 13;
 	/* Text recognition: only with the OCR plugin. */
 	if (ocr_available()) {
 		entry(&dm, ndm++, DOC_OCR, "Text recognition", MENU_SUBMENU, 0, "Move right to read the text in scanned pages, so it can be found, selected, copied and read aloud.");
@@ -208,10 +210,10 @@ static void create_objects(void)
 	icon.position = -1;
 	icon.sprite_name = "!folio";
 	icon.max_sprite_name = 12;
-	icon.help_message = "This is the Folio icon.|MClick Select to see your bookshelf. Drag a PDF or ebook file here to read it.";
+	icon.help_message = "This is the Folio icon.|MClick Select to see your bookshelf. Drag a PDF or ebook file here to read it, or a directory of pictures to make a PDF.";
 	icon.flags = 1 << 5;            /* an event for Select clicks (Toolbox p152) */
 	icon.select_event = EV_BOOKSHELF;
-	icon.max_help = 100;
+	icon.max_help = (int)strlen(icon.help_message) + 1;
 	check(tbx_create(Class_Iconbar, 100, 0, &icon, sizeof icon, &app.iconbar));
 	check(iconbar_set_menu(app.iconbar, app.iconbar_menu));
 	check(tbx_show(app.iconbar, 0, 0, NULL, 0, -1));
@@ -268,6 +270,12 @@ static int message(int *b)
 			ack_load(b);
 			break;
 		}
+		/* A directory of pictures: a new PDF of them. */
+		if (b[10] == 0x1000) {
+			ack_load(b);
+			pagesave_folder((const char *)(b + 11));
+			break;
+		}
 		/* Dropped on the icon bar or a document window: open it. */
 		ack_load(b);
 		open_file((const char *)(b + 11), 0);
@@ -320,7 +328,7 @@ static int toolbox_event(int *b)
 	app_log("event &%x: self &%x/%d parent &%x/%d ancestor &%x/%d", code,
 		app.idb.self_id, app.idb.self_component, app.idb.parent_id,
 		app.idb.parent_component, app.idb.ancestor_id, app.idb.ancestor_component);
-	if (export_event(b) || annotui_event(b) || passui_event(code) || print_event(b))
+	if (export_event(b) || pagesave_saveas_event(b) || annotui_event(b) || passui_event(code) || print_event(b))
 		return 0;
 	switch (code) {
 	case Toolbox_Error:
@@ -369,6 +377,10 @@ static int toolbox_event(int *b)
 	case EV_GOTO_OK:
 	case EV_GOTO_CANCEL:
 		gotopage_event(code);
+		break;
+	case EV_PAGES_OK:
+	case EV_PAGES_CANCEL:
+		pagesave_event(code);
 		break;
 	case EV_SPEED_SLOW:
 	case EV_SPEED_NORMAL:

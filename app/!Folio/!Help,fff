@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test48)
+Folio (test build 0.0.1-test49)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -24,7 +24,8 @@ The bookshelf
 Opening a document
   Drag a file to Folio's icon on the icon bar, or double-click a PDF while
   Folio is running. A document that is already open comes to the front.
-  If a PDF needs a password, Folio asks for it.
+  If a PDF needs a password, Folio asks for it. Drag a directory of
+  pictures there instead to make a PDF of them (see "Pictures to a PDF").
 
 In a document window
   Scroll as usual. Page Down / Page Up    next / previous page
@@ -138,7 +139,8 @@ Document info
 
 Restrictions (PDFs)
   A PDF's author can say it mustn't be printed, copied from or filled in.
-  Folio keeps to that: Print, Copy, Export page as Draw, filling in its
+  Folio keeps to that: Print, Copy, Export page as Draw, Save pages as
+  PDF, Save page pictures, filling in its
   form and (if the author doesn't allow text for screen readers either)
   Read aloud say so instead, and offer to lift it with the document's
   owner password. To have Folio ignore such restrictions, untick "Keep to
@@ -189,6 +191,38 @@ Export page as Draw
   take it out and save it on its own. Gradients become sprites too.
   Draw can't clip or blend, so a few things differ from the page: see-
   through effects are lost, and highlighter marks go under the text.
+
+Save pages as PDF
+  Save pages as PDF... on the document's menu makes a new PDF of some of
+  its pages. Type which: 1-10, or 1-3, 20, 45-50, or 20- for page 20 to
+  the end, or all; then Save, and drag the PDF icon to a directory. A
+  PDF's pages are copied just as they are (pictures, fonts, notes and
+  form fields), so nothing is compressed again. Other documents' pages
+  (CBZ, XPS, ebooks) are drawn into PDF pages; their JPEG pictures go in
+  unchanged, so a CBZ of JPEGs becomes a PDF of the same JPEGs.
+
+Save page pictures
+  Save page pictures... saves the chosen pages as picture files in a new
+  directory (drag its icon to where it should go): Page001, Page002...
+  numbered as the pages are. A page that is one picture, as a scanned page
+  is, gives that picture just as the PDF stores it: a JPEG comes out as
+  the same JPEG, byte for byte, not drawn again (hidden recognised text on
+  it doesn't matter). A page that is one picture of another kind gives
+  that picture, at its own size, as a PNG. Any other page (text, or
+  several pictures) is drawn at the resolution in the box, 150 dpi unless
+  you change it, as a PNG. A JPEG is saved as it is stored, which is
+  usually the page's way up; if the PDF turns it, the file isn't turned.
+
+Pictures to a PDF
+  Drag a directory of pictures (JPEG, PNG, GIF, BMP or TIFF) to Folio's
+  icon, or to a document window, and Folio makes a PDF of them, a page for
+  each, in name order (Page2 comes before Page10), and opens it. Each page
+  is the picture's size at its own resolution. A JPEG goes in as it is, not
+  compressed again; other pictures go in without losing anything. The new
+  PDF is named after the directory and isn't saved anywhere yet: Save...
+  (F3) puts it where you want it, and Folio asks before it's closed
+  unsaved. So: Save page pictures for a few pages, change the pictures in
+  another program, drag the directory back to Folio, and compare.
 
 Opening at a page
   To open a document at a given page, from an Obey file, a program or the

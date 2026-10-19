@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test48 (14-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test49 (19-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -36,7 +36,8 @@ enum {
 	EV_CHOICES = 0x280, EV_CHOICES_DEFAULT, EV_CHOICES_CANCEL, EV_CHOICES_SAVE,
 	EV_ASK_OK = 0x290, EV_ASK_CANCEL,
 	EV_FILL_FORM = 0x2a0,   /* not a menu entry: filling in a form (docwin_allows) */
-	EV_FULL_SCREEN = 0x2b0
+	EV_FULL_SCREEN = 0x2b0, EV_SAVE_PAGES, EV_SAVE_PICTURES,
+	EV_PAGES_OK = 0x2c0, EV_PAGES_CANCEL
 };
 
 /* View menu entries (component ids). */
@@ -45,7 +46,7 @@ enum { EDIT_COPY = 1, EDIT_SELECT_ALL, EDIT_CLEAR, EDIT_UNDO, EDIT_REDO, EDIT_HI
 /* Document menu entries. */
 enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6, DOC_SHELF = 7, DOC_PASSWORD = 8,
 	DOC_READ = 9, DOC_SPEAKSEL = 10, DOC_SPEED = 11, DOC_PRINT = 12, DOC_EXPORT_DRAW = 13,
-	DOC_OCR = 14, DOC_INFO = 15 };
+	DOC_OCR = 14, DOC_INFO = 15, DOC_SAVE_PAGES = 16, DOC_SAVE_PICTURES = 17 };
 /* Text recognition menu entries. */
 enum { OCR_PAGE = 1, OCR_ALL, OCR_AUTO, OCR_ACCURATE, OCR_FAST };
 enum { SPEED_SLOW = 1, SPEED_NORMAL, SPEED_FAST };
@@ -138,6 +139,9 @@ void docwin_show_hit(docwin *w, int page, const folio_quad *q, int n);
 
 docwin *docwin_from_toolbar(ObjectId id);
 int docwin_pages(docwin *w);
+/* A document Folio made (a directory of pictures as a PDF), in the scrap
+ * directory: shown as unsaved until it's saved somewhere. */
+void docwin_mark_new(docwin *w);
 int docwin_reading_dir(docwin *w);
 void docwin_page_pt(docwin *w, int page, float *pw, float *ph);   /* size in points */        /* +1 forwards, -1 backwards */
 void docwin_text_changed(docwin *w, int page);   /* recognised */
@@ -252,6 +256,14 @@ void passui_restricted(docwin *w, const char *what, int event);
 /* export.c: Export page as Draw... */
 void export_open(docwin *w);
 int export_event(int *block);            /* 1 if it was its SaveAs box's */
+/* pagesave.c: Save pages as PDF... / Save page pictures... (pictures = 1);
+ * a directory of pictures dropped on Folio made into a new PDF (returns 1
+ * if it dealt with it). */
+void pagesave_open(docwin *w, int pictures);
+void pagesave_event(int code);
+int pagesave_saveas_event(int *block);
+void pagesave_forget(docwin *w);
+int pagesave_folder(const char *dir);
 void export_forget(docwin *w);
 
 void print_open(docwin *w);

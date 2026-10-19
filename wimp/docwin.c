@@ -77,6 +77,7 @@ struct docwin {
 	folio_rect asel_rect;
 	int can_annotate;
 	int modified;             /* as last shown in the title */
+	int unsaved_new;          /* made by Folio (pictures to PDF), not saved yet */
 	int fit_polls;            /* polls left to keep checking the toolbar's width */
 	int grew_left, grew_right;  /* how much the window was widened for the drawer */
 	/* The sentence being read aloud: boxes and their pages (n 0: none). */
@@ -529,6 +530,8 @@ static int allowed(docwin *w, int event)
 		break;
 	case EV_COPY:
 	case EV_EXPORT_DRAW:
+	case EV_SAVE_PAGES:
+	case EV_SAVE_PICTURES:
 		if (!w->perm_copy)
 			what = "copying its text and pictures";
 		break;
@@ -555,7 +558,8 @@ int docwin_allows(docwin *w, int event)
 		return 1;
 	switch (event) {
 	case EV_PRINT: return w->perm_print;
-	case EV_COPY: case EV_EXPORT_DRAW: return w->perm_copy;
+	case EV_COPY: case EV_EXPORT_DRAW: case EV_SAVE_PAGES: case EV_SAVE_PICTURES:
+		return w->perm_copy;
 	case EV_READ_ALOUD: case EV_SPEAK_SEL: return w->perm_access;
 	case EV_FILL_FORM: return w->perm_form;
 	}
@@ -1083,6 +1087,7 @@ void docwin_close(docwin *w)
 	passui_forget(w);
 	print_forget(w);
 	export_forget(w);
+	pagesave_forget(w);
 	speech_forget(w);
 	worker_stop_for(w);
 	core_lock();
@@ -1125,6 +1130,10 @@ void docwin_close_all(void)
 void docwin_close_request(docwin *w)
 {
 	int ptr[5];
+	if (w->unsaved_new) {
+		dcs_open(w);
+		return;
+	}
 	if (w->can_annotate) {
 		int modified;
 		core_now();
@@ -2647,6 +2656,8 @@ void docwin_event(docwin *w, int code)
 			print_open(w);
 		break;
 	case EV_EXPORT_DRAW: if (allowed(w, code)) export_open(w); break;
+	case EV_SAVE_PAGES: if (allowed(w, code)) pagesave_open(w, 0); break;
+	case EV_SAVE_PICTURES: if (allowed(w, code)) pagesave_open(w, 1); break;
 	case EV_GOTO: gotopage_open(w); break;
 	case EV_DOCINFO: docinfo_open(w); break;
 	case EV_OCR_PAGE: ocr_win_this_page(w->ocr); break;
@@ -3288,10 +3299,17 @@ static void update_title(docwin *w)
 	} else {
 		modified = w->modified;
 	}
+	modified |= w->unsaved_new;
 	if (modified == w->modified && w->title[0])
 		return;
 	w->modified = modified;
 	set_title(w);
+}
+
+void docwin_mark_new(docwin *w)
+{
+	w->unsaved_new = 1;
+	update_title(w);
 }
 
 static void set_title(docwin *w)
@@ -3560,6 +3578,8 @@ docwin *docwin_first_modified(void)
 	docwin *w;
 	for (w = windows; w; w = w->next) {
 		int m = 0;
+		if (w->unsaved_new)
+			return w;
 		if (!w->can_annotate)
 			continue;
 		core_now();
@@ -3655,6 +3675,7 @@ int docwin_save(docwin *w, const char *path)
 	app_log("saved %s%s", path, sec.change == FOLIO_PW_SET ? " with a new password" :
 		sec.change == FOLIO_PW_REMOVE ? " without its password" : "");
 	w->asel_page = -1;
+	w->unsaved_new = 0;
 	w->modified = -1;          /* force the title to be redone */
 	update_title(w);
 	go_to_page(w, page);

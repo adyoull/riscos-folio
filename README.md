@@ -25,6 +25,12 @@ running RISC OS 5, but expect rough edges. The design is in
   (`Set Folio$OpenPage 12`, then `Filer_Run` the file).
 - **Export page as Draw:** the page as a Draw file, with text as outlines
   and each picture as a sprite of its own.
+- **Pages out, pictures in:** *Save pages as PDF* makes a new PDF of chosen
+  pages (1-10, or 1-3, 20, 45-50), a PDF's pages copied as they are; a CBZ's
+  JPEGs go in unchanged. *Save page pictures* writes the chosen pages as
+  pictures in a directory: a scanned page's own JPEG, byte for byte, else a
+  PNG. Drag a **directory of pictures** to Folio to make a PDF of them, a
+  page each in name order, JPEGs not compressed again.
 - **Printing** through the printer drivers (pages, copies, scale, sideways,
   draft), in the background, with the window's title showing the page.
 - **Text:** select by dragging, double-click a word, Copy to the global
