@@ -449,7 +449,11 @@ static int toolbox_event(int *b)
 			docwin_nav_menu_shown(w);
 		break;
 	default:
-		if (code >= EV_DARK && code < 0x200) {
+		/* A document window's: its menus' entries (below &200), and those
+		 * numbered later (test49's Save pages and Save page pictures, and
+		 * Full screen, were outside the range and did nothing). */
+		if ((code >= EV_DARK && code < 0x200) || code == EV_FULL_SCREEN || code == EV_SAVE_PAGES ||
+				code == EV_SAVE_PICTURES) {
 			if ((w = window_for_event()) != NULL)
 				docwin_event(w, code);
 			else

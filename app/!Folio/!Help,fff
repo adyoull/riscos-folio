@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test49)
+Folio (test build 0.0.1-test50)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -295,7 +295,11 @@ them in <Choices$Write>.Folio.Layouts, so it opens at once next time.
 Needs a 32 thousand or more colour screen mode in this test build.
 
 If anything goes wrong, the file <Wimp$ScrapDir>.FolioLog says what
-Folio did; please send it with your report.
+Folio did. It's started afresh each time Folio runs, so copy it somewhere
+before running Folio again. Please report problems, with the log, either
+in Folio's thread on the RISC OS Open forum (forum.riscosopen.org), or as
+an issue at github.com/adyoull/riscos-folio/issues (attach the log, or
+paste it in).
 
 Licence: AGPL-3.0 (Folio includes MuPDF, which is AGPL). Source:
 https://github.com/adyoull/riscos-folio. MuPDF is Copyright Artifex Software.

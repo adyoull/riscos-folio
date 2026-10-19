@@ -96,7 +96,7 @@ AcornSSL from !System when it first needs them.
 
 Unzip `Folio-<version>.zip` (with filetypes) and double-click `!Folio`.
 `!Folio.!Help` describes everything. If something goes wrong,
-`<Wimp$ScrapDir>.FolioLog` says what Folio did.
+`<Wimp$ScrapDir>.FolioLog` says what Folio did (it starts afresh each run). Report problems, with the log, in Folio's thread on the [RISC OS Open forum](https://www.riscosopen.org/forum/) or as a [GitHub issue](https://github.com/adyoull/riscos-folio/issues).
 
 ## Building
 
