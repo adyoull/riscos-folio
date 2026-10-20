@@ -344,6 +344,11 @@ int folio_save_page_image(folio_doc *doc, folio_loc loc, int dpi, const char *pa
 
 int folio_images_to_pdf(folio_ctx *fc, const char *const *paths, int n, const char *path)
 {
+	return folio_images_to_pdf_res(fc, paths, n, 0, path);
+}
+
+int folio_images_to_pdf_res(folio_ctx *fc, const char *const *paths, int n, int dpi, const char *path)
+{
 	fz_context *ctx = fc->ctx;
 	pdf_document *pdf = NULL;
 	fz_image *img = NULL;
@@ -357,6 +362,7 @@ int folio_images_to_pdf(folio_ctx *fc, const char *const *paths, int n, const ch
 	fz_var(page);
 	fz_var(i);
 	fz_var(ok);
+	fz_var(dpi);
 	if (n <= 0) {
 		snprintf(fc->err, sizeof fc->err, "there are no pictures");
 		return -1;
@@ -372,7 +378,12 @@ int folio_images_to_pdf(folio_ctx *fc, const char *const *paths, int n, const ch
 				img = fz_new_image_from_file(ctx, paths[i]);
 			fz_catch(ctx)
 				fz_throw(ctx, FZ_ERROR_FORMAT, "%s: %s", paths[i], fz_caught_message(ctx));
-			fz_image_resolution(img, &xres, &yres);
+			/* The resolution given (a scan's: what it was scanned at;
+			 * scanners' JPEGs don't always say), else the picture's own. */
+			if (dpi > 0)
+				xres = yres = dpi;
+			else
+				fz_image_resolution(img, &xres, &yres);
 			w = img->w * 72.0f / xres;
 			h = img->h * 72.0f / yres;
 			/* A JPEG goes in as it is (DCTDecode); other pictures are

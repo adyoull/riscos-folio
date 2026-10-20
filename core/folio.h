@@ -370,6 +370,9 @@ int folio_save_page_image(folio_doc *doc, folio_loc loc, int dpi, const char *pa
  * the order given: each page the picture's size at its resolution, a JPEG
  * put in as it is. 0 or -1 (folio_error, naming the file that failed). */
 int folio_images_to_pdf(folio_ctx *fc, const char *const *paths, int n, const char *path);
+/* The same, every picture taken as dpi (a scan's pages: the resolution
+ * scanned at, which their JPEGs don't always say); 0 = their own. */
+int folio_images_to_pdf_res(folio_ctx *fc, const char *const *paths, int n, int dpi, const char *path);
 /* Files joined into one new PDF, in the order given: a PDF's pages copied
  * as they are; a picture as a page of its size; any other document Folio
  * reads (CBZ, XPS, an ebook) drawn into PDF pages, JPEGs kept as they are.

@@ -117,10 +117,11 @@ static void create_objects(void)
 	entry(&ib, 0, 0, "Info", MENU_SUBMENU, 0, "Move right to see information about this version of Folio.");
 	entry(&ib, 1, 3, "Bookshelf...", 0, EV_BOOKSHELF, "Click to see your bookshelf.");
 	entry(&ib, 2, 5, "Create PDF...", 0, EV_CREATE_PDF, "Click to open a window to drag PDFs, pictures and other documents into, in order, and join them into one new PDF.");
-	entry(&ib, 3, 4, "Choices...", 0, EV_CHOICES, "Click to change Folio's choices.");
-	entry(&ib, 4, 1, "Help...", 0, EV_HELP, "Click to read Folio's help.");
-	entry(&ib, 5, 2, "Quit", 0, EV_QUIT, "Click to leave Folio.");
-	app.iconbar_menu = make_menu(&ib, "Folio", 6, 0);
+	entry(&ib, 3, 6, "Scan...", 0, EV_SCAN, "Click to scan pages from a network scanner (eSCL, AirScan) into a new PDF.");
+	entry(&ib, 4, 4, "Choices...", 0, EV_CHOICES, "Click to change Folio's choices.");
+	entry(&ib, 5, 1, "Help...", 0, EV_HELP, "Click to read Folio's help.");
+	entry(&ib, 6, 2, "Quit", 0, EV_QUIT, "Click to leave Folio.");
+	app.iconbar_menu = make_menu(&ib, "Folio", 7, 0);
 	check(menu_set_submenu(app.iconbar_menu, 0, app.proginfo));
 
 	/* Document menu: View and Navigate submenus. */
@@ -387,6 +388,9 @@ static int toolbox_event(int *b)
 	case EV_PAGES_OK:
 	case EV_PAGES_CANCEL:
 		pagesave_event(code);
+		break;
+	case EV_SCAN: case EV_SC_FIND: case EV_SC_SCAN: case EV_SC_STOP:
+		scanui_event(code);
 		break;
 	case EV_CREATE_PDF: case EV_CP_UP: case EV_CP_DOWN: case EV_CP_REMOVE: case EV_CP_SORT:
 	case EV_CP_CLEAR: case EV_CP_CREATE:
@@ -681,6 +685,7 @@ int main(int argc, char **argv)
 		busy |= bookshelf_background();
 		busy |= print_background();
 		busy |= speech_background(&wake);
+		busy |= scanui_background(&wake);
 	}
 	print_quit();
 	speech_quit();

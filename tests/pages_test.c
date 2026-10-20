@@ -149,6 +149,13 @@ static void make_data(void)
 	}
 	fz_close_zip_writer(ctx, zip);
 	fz_drop_zip_writer(ctx, zip);
+	/* A JPEG that doesn't say its resolution, as a scanner's may not. */
+	{
+		fz_pixmap *pix = picture(ctx, 400, 200, 5);
+		fz_set_pixmap_resolution(ctx, pix, 0, 0);
+		fz_save_pixmap_as_jpeg(ctx, pix, OUT "/nores.jpg", 80);
+		fz_drop_pixmap(ctx, pix);
+	}
 	scan_pdf(ctx, OUT "/scan1.jpg", "hidden words", 3, OUT "/hidden.pdf");
 	scan_pdf(ctx, OUT "/scan1.jpg", "VISIBLE", 0, OUT "/ontop.pdf");
 	fz_drop_context(ctx);
@@ -214,7 +221,19 @@ int main(int argc, char **argv)
 		CHECK(folio_page_size(d, L(0), &pw, &ph) == 0 && pw > 143.9f && pw < 144.1f &&
 			ph > 201.5f && ph < 201.7f, "page 1 is the picture's size: %g x %g", pw, ph);
 
-		printf("Page pictures\n");
+		{
+		/* 400 pixels at the 200 dpi given: 144 points. */
+		const char *nores[1] = { OUT "/nores.jpg" };
+		folio_doc *dn;
+		CHECK(folio_images_to_pdf_res(fc, nores, 1, 200, OUT "/nores.pdf") == 0, "nores: %s", folio_error(fc));
+		dn = folio_open(fc, OUT "/nores.pdf", NULL);
+		CHECK(dn && folio_page_size(dn, L(0), &pw, &ph) == 0 && pw > 143.9f && pw < 144.1f,
+			"pictures taken at the resolution given (%g)", pw);
+		if (dn)
+			folio_close(dn);
+	}
+
+	printf("Page pictures\n");
 		k = folio_save_page_image(d, L(0), 150, OUT "/out1");
 		CHECK(k == FOLIO_PAGEIMG_JPEG, "page 1: the JPEG (%d)", k);
 		CHECK(same_file(OUT "/out1", OUT "/scan1.jpg"), "page 1: byte for byte");

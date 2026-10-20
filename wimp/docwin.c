@@ -3306,6 +3306,13 @@ static void update_title(docwin *w)
 	set_title(w);
 }
 
+/* Recognise every page's text (a new scan), if it isn't already. */
+void docwin_ocr_all(docwin *w)
+{
+	if (w->ocr && !ocr_win_all_on(w->ocr))
+		ocr_win_all(w->ocr);
+}
+
 void docwin_mark_new(docwin *w)
 {
 	w->unsaved_new = 1;

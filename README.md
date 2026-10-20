@@ -31,6 +31,10 @@ running RISC OS 5, but expect rough edges. The design is in
   pictures in a directory: a scanned page's own JPEG, byte for byte, else a
   PNG. Drag a **directory of pictures** to Folio to make a PDF of them, a
   page each in name order, JPEGs not compressed again.
+- **Scan** (icon bar menu): scan from a network scanner with eSCL (AirScan),
+  no driver needed: find it on the network or type its address, choose
+  glass or feeder (both sides), colour or grey, resolution and size, and the
+  pages open as a new PDF with the scanner's JPEGs as they came.
 - **Create PDF** (icon bar menu): drag PDFs, pictures and other documents
   into a list, put them in order, and join them into one new PDF (PDF pages
   copied as they are, JPEGs unchanged).

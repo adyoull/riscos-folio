@@ -49,15 +49,15 @@ WARN := -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -std=gnu99
 INC := -Icore -Ithird/cjson -I$(MUPDF)/include
 
 CORE_SRC := core/doc.c core/render.c core/text.c core/dict.c core/annot.c core/security.c core/drawfile.c \
-	core/ocr.c core/info.c core/content.c core/form.c core/fonts.c core/pages.c
-CORE_HDR := core/folio.h core/folio_int.h core/dict.h
+	core/ocr.c core/info.c core/content.c core/form.c core/fonts.c core/pages.c core/escl.c
+CORE_HDR := core/folio.h core/folio_int.h core/dict.h core/escl.h
 CORE_OBJ = $(CORE_SRC:core/%.c=build/$(1)/%.o) build/$(1)/cJSON.o
 
 WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c wimp/clip.c wimp/dict.c wimp/contents.c wimp/find.c wimp/toolbar.c wimp/thumbs.c wimp/annotui.c wimp/passui.c wimp/bookshelf.c wimp/shelfdata.c \
-	wimp/readtext.c wimp/speaker.c wimp/speech.c wimp/print.c wimp/printlay.c wimp/export.c wimp/ocrui.c wimp/gotopage.c wimp/docinfo.c wimp/choices.c wimp/ask.c wimp/formui.c wimp/fontsetup.c wimp/pagesave.c wimp/combine.c
+	wimp/readtext.c wimp/speaker.c wimp/speech.c wimp/print.c wimp/printlay.c wimp/export.c wimp/ocrui.c wimp/gotopage.c wimp/docinfo.c wimp/choices.c wimp/ask.c wimp/formui.c wimp/fontsetup.c wimp/pagesave.c wimp/combine.c wimp/scanui.c
 WIMP_HDR := wimp/app.h wimp/tbx.h wimp/worker.h wimp/shelfdata.h wimp/readtext.h wimp/speaker.h \
 	core/folio.h core/dict.h
-VERSION ?= 0.0.1-test50
+VERSION ?= 0.0.1-test51
 # The plugins and the font pack have versions of their own, raised only
 # when what's in them changes (not with each Folio build).
 SPEECH_VERSION ?= 1.0
@@ -73,6 +73,14 @@ build/ro/fonts.o: core/fonts.c $(CORE_HDR)
 build/al/fonts.o: core/fonts.c $(CORE_HDR)
 	@mkdir -p $(dir $@)
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -DFOLIO_FONTCONFIG -Ifontconfig/out/al/include -c $< -o $@
+
+# Scanning (eSCL): expat for the scanner's XML, as fontconfig has it.
+build/ro/escl.o: core/escl.c core/escl.h
+	@mkdir -p $(dir $@)
+	$(RO_CC) $(RO_CFLAGS) $(WARN) -Ifontconfig/out/ro/include -c $< -o $@
+build/al/escl.o: core/escl.c core/escl.h
+	@mkdir -p $(dir $@)
+	$(AL_CC) $(AL_CFLAGS) $(WARN) -Ifontconfig/out/al/include -c $< -o $@
 
 build/ro/%.o: core/%.c $(CORE_HDR)
 	@mkdir -p $(@D)
@@ -223,6 +231,9 @@ build/al/form_test: tests/form_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
 		-L$(MU_AL) -Lfontconfig/out/al/lib $(MU_LIBS) -o $@
 
+build/al/escl_test: tests/escl_test.c build/al/escl.o
+	$(AL_CC) $(AL_CFLAGS) $(WARN) -Icore -no-pie $< build/al/escl.o -Lfontconfig/out/al/lib -lexpat -o $@
+
 build/al/pages_test: tests/pages_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
 		-L$(MU_AL) -Lfontconfig/out/al/lib $(MU_LIBS) -o $@
@@ -239,7 +250,7 @@ build/al/find_test: tests/find_test.c wimp/find.c wimp/worker.c $(WIMP_HDR) buil
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -Iwimp -Itests/stub-wimp -no-pie tests/find_test.c wimp/find.c \
 		wimp/worker.c build/al/libfolio.a -L$(MU_AL) -Lfontconfig/out/al/lib $(MU_LIBS) -o $@
 
-test: build/al/core_test build/al/worker_test build/al/dict_test build/al/find_test build/al/annot_test build/al/password_test build/al/draw_test build/al/pagetext_test build/al/readtext_test build/al/printlay_test build/al/speaker_test build/al/shelf_test build/al/ocr_test build/al/form_test build/al/fonts_test build/al/pages_test tests/data/stamp
+test: build/al/core_test build/al/worker_test build/al/dict_test build/al/find_test build/al/annot_test build/al/password_test build/al/draw_test build/al/pagetext_test build/al/readtext_test build/al/printlay_test build/al/speaker_test build/al/shelf_test build/al/ocr_test build/al/form_test build/al/fonts_test build/al/pages_test build/al/escl_test tests/data/stamp
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/core_test tests/data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/worker_test tests/data/doc.pdf
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/dict_test tests/dict
@@ -257,6 +268,7 @@ test: build/al/core_test build/al/worker_test build/al/dict_test build/al/find_t
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/form_test tests/data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/fonts_test tests/data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/pages_test tests/data
+	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH tests/escl-test.sh $(RCD_DIR)/qemu/aligntrap.sh build/al/escl_test
 
 check: build/ro/core_test.elf
 	RISCOS_TOOLCHAIN=$(RISCOS_TOOLCHAIN) $(RCD_DIR)/checks/check-all.sh build/ro/core_test.elf
