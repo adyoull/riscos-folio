@@ -116,4 +116,10 @@ fz_point folio_sel_point(fz_context *ctx, fz_stext_page *st, folio_cpage *cp, fo
 void folio_fonts_install(fz_context *ctx);
 void folio_fonts_drop(fz_context *ctx);
 
+/* Every page's /Rotate (PDFs; malloc'd, *n of them; NULL otherwise), and,
+ * after something may have turned pages (Rotate, undo, redo), the
+ * recognised text of each page whose turn differs from before[] dropped. */
+int *folio_rotations(folio_doc *doc, int *n);
+void folio_ocr_forget_turned(folio_doc *doc, const int *before, int n);
+
 #endif

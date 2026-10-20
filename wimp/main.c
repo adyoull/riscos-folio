@@ -100,7 +100,7 @@ static void entry(menu_block *b, int i, int comp, const char *text, int flags,
 
 static void create_objects(void)
 {
-	static menu_block ib, dm, em, vm, nm, sm, om;
+	static menu_block ib, dm, em, vm, nm, sm, om, rm;
 	int ndm;
 	static tbx_proginfo pi;
 	static tbx_iconbar icon;
@@ -166,17 +166,18 @@ static void create_objects(void)
 	entry(&dm, 2, DOC_EXPORT_DRAW, "Export page as Draw...", 0, EV_EXPORT_DRAW, "Click to save the page you're reading as a Draw file: its text as outlines, each picture as a sprite of its own.");
 	entry(&dm, 3, DOC_SAVE_PAGES, "Save pages as PDF...", 0, EV_SAVE_PAGES, "Click to make a new PDF of some of the pages, such as 1-10. A PDF's pages are copied just as they are.");
 	entry(&dm, 4, DOC_SAVE_PICTURES, "Save page pictures...", 0, EV_SAVE_PICTURES, "Click to save pages as picture files in a directory: a scanned page's own JPEG, unchanged; other pages drawn as PNG.");
-	entry(&dm, 5, DOC_PASSWORD, "Password...", 0, EV_PASSWORD, "Click to put a password on the document, or take one off (PDFs).");
-	entry(&dm, 6, DOC_INFO, "Document info...", MENU_DOTTED, EV_DOCINFO, "Click to see the document's properties: title, author, dates, page size, security and more.");
-	entry(&dm, 7, 3, "Edit", MENU_SUBMENU, 0, "Move right for undo, copying, highlighting and notes.");
-	entry(&dm, 8, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
-	entry(&dm, 9, 2, "Navigate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right for moving through the document.");
+	entry(&dm, 5, DOC_ROTATE, "Rotate", MENU_SUBMENU, 0, "Move right to turn the page, or every page, a quarter or half turn (PDFs). Save to keep it.");
+	entry(&dm, 6, DOC_PASSWORD, "Password...", 0, EV_PASSWORD, "Click to put a password on the document, or take one off (PDFs).");
+	entry(&dm, 7, DOC_INFO, "Document info...", MENU_DOTTED, EV_DOCINFO, "Click to see the document's properties: title, author, dates, page size, security and more.");
+	entry(&dm, 8, 3, "Edit", MENU_SUBMENU, 0, "Move right for undo, copying, highlighting and notes.");
+	entry(&dm, 9, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
+	entry(&dm, 10, 2, "Navigate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right for moving through the document.");
 	/* The context item (DESIGN §3.4): its text names the word when it's shown. */
-	entry(&dm, 10, DOC_FIND, "Find...        F4", 0, EV_FIND, "Click to find text in the document.");
-	entry(&dm, 11, DOC_DEFINE, "Define", MENU_FADED | MENU_DOTTED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
-	dm.e[11].max_text = 80;
-	entry(&dm, 12, DOC_SHELF, "On bookshelf", 0, EV_ADD_SHELF, "Click to put this document on the bookshelf, or take it off.");
-	ndm = 13;
+	entry(&dm, 11, DOC_FIND, "Find...        F4", 0, EV_FIND, "Click to find text in the document.");
+	entry(&dm, 12, DOC_DEFINE, "Define", MENU_FADED | MENU_DOTTED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
+	dm.e[12].max_text = 80;
+	entry(&dm, 13, DOC_SHELF, "On bookshelf", 0, EV_ADD_SHELF, "Click to put this document on the bookshelf, or take it off.");
+	ndm = 14;
 	/* Text recognition: only with the OCR plugin. */
 	if (ocr_available()) {
 		entry(&dm, ndm++, DOC_OCR, "Text recognition", MENU_SUBMENU, 0, "Move right to read the text in scanned pages, so it can be found, selected, copied and read aloud.");
@@ -198,12 +199,20 @@ static void create_objects(void)
 		entry(&sm, 2, SPEED_FAST, "Faster", 0, EV_SPEED_FAST, "Click to read more quickly (the voice's own speed).");
 		app.speed_menu = make_menu(&sm, "Speed", 3, EV_SPEED_SHOWN);
 	}
+	/* Rotate: the page Menu was pressed over (or the one being read). */
+	entry(&rm, 0, ROT_CW, "Page clockwise      ^R", 0, EV_ROT_CW, "Click to turn the page a quarter turn clockwise (Ctrl-R turns the page under the pointer).");
+	entry(&rm, 1, ROT_ACW, "Page anticlockwise  ^L", 0, EV_ROT_ACW, "Click to turn the page a quarter turn anticlockwise (Ctrl-L turns the page under the pointer).");
+	entry(&rm, 2, ROT_180, "Page upside down", MENU_DOTTED, EV_ROT_180, "Click to turn the page a half turn.");
+	entry(&rm, 3, ROTALL_CW, "All pages clockwise", 0, EV_ROTALL_CW, "Click to turn every page a quarter turn clockwise.");
+	entry(&rm, 4, ROTALL_ACW, "All pages anticlockwise", 0, EV_ROTALL_ACW, "Click to turn every page a quarter turn anticlockwise.");
+	app.rotate_menu = make_menu(&rm, "Rotate", 5, 0);
 	app.doc_menu = make_menu(&dm, "Folio", ndm, EV_DOCMENU_SHOWN);
 	if (app.speed_menu)
 		check(menu_set_submenu(app.doc_menu, DOC_SPEED, app.speed_menu));
 	if (app.ocr_menu)
 		check(menu_set_submenu(app.doc_menu, DOC_OCR, app.ocr_menu));
 	check(menu_set_submenu(app.doc_menu, 3, app.edit_menu));
+	check(menu_set_submenu(app.doc_menu, DOC_ROTATE, app.rotate_menu));
 	check(menu_set_submenu(app.doc_menu, 1, app.view_menu));
 	check(menu_set_submenu(app.doc_menu, 2, app.nav_menu));
 
@@ -323,6 +332,7 @@ static docwin *window_for_event(void)
 	 * document menu's show event arrives, whose parent is that window). */
 	ObjectId self = app.idb.self_id;
 	if (self == app.doc_menu || self == app.view_menu || self == app.nav_menu || self == app.edit_menu ||
+			self == app.rotate_menu ||
 			(self == app.ocr_menu && self))
 		return docwin_from_object(app.menu_window);
 	return docwin_from_object(self);

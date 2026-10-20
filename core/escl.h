@@ -28,6 +28,10 @@ typedef struct {
 	int res[32], nres;      /* resolutions offered (dpi), smallest first */
 	int rgb, gray, bw;      /* colour modes offered */
 	int jpeg, pdf, png;     /* page formats offered */
+	/* Brightness and contrast it can set itself (BrightnessSupport,
+	 * ContrastSupport): whether, and its lowest, highest and normal. */
+	int bright, bright_min, bright_max, bright_normal;
+	int contrast, contrast_min, contrast_max, contrast_normal;
 } escl_caps;
 
 /* Reads ScannerCapabilities XML. 0, or -1 if it isn't that. */
@@ -43,6 +47,9 @@ typedef struct {
 	int color;              /* ESCL_RGB or ESCL_GRAY */
 	int dpi;                /* the nearest the scanner offers is used */
 	int width, height;      /* 1/300 inch; 0 = the largest it can */
+	/* -100 to 100: 0 is the scanner's normal, 100 its highest, -100 its
+	 * lowest. Left out of the settings if 0 or the scanner can't. */
+	int brightness, contrast;
 } escl_settings;
 
 /* The ScanSettings XML for s with the scanner's caps (dpi, size and format

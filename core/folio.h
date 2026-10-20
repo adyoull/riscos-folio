@@ -378,6 +378,11 @@ int folio_images_to_pdf_res(folio_ctx *fc, const char *const *paths, int n, int 
  * reads (CBZ, XPS, an ebook) drawn into PDF pages, JPEGs kept as they are.
  * 0 or -1 (folio_error names the file that failed). */
 int folio_combine(folio_ctx *fc, const char *const *paths, int n, const char *path);
+/* Turning PDF pages: the chosen pages turned by degrees (90 clockwise,
+ * -90 anticlockwise, 180), one undoable operation; their recognised text
+ * (OCR) is dropped. And a page's turn now (0, 90, 180, 270). */
+int folio_rotate_pages(folio_doc *doc, const unsigned char *sel, int count, int degrees);
+int folio_page_rotation(folio_doc *doc, folio_loc loc);
 
 /* ---- Annotations (PDFs) ------------------------------------------------ */
 

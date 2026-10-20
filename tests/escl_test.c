@@ -137,6 +137,11 @@ int main(int argc, char **argv)
 	CHECK(strstr(xml, "Grayscale8") && strstr(xml, "<pwg:InputSource>Platen<"), "grey, glass");
 	CHECK(strstr(xml, "<pwg:Version>2.5<") && strstr(xml, "DocumentFormatExt>image/jpeg"), "version, format");
 	CHECK(!strstr(xml, "Duplex"), "no duplex on the glass");
+	CHECK(!c.bright && !c.contrast, "no brightness or contrast offered");
+	s.brightness = 50;
+	escl_settings_xml(&s, &c, xml, sizeof xml);
+	CHECK(!strstr(xml, "Brightness"), "so none is sent");
+	s.brightness = 0;
 
 	printf("Scanning from the glass\n");
 	memset(&s, 0, sizeof s);
@@ -154,9 +159,32 @@ int main(int argc, char **argv)
 			escl_job_caps(j)->model);
 		CHECK(file_has(settings, "<pwg:InputSource>Platen<") && file_has(settings, "XResolution>300<") &&
 			file_has(settings, "<pwg:Width>2550<"), "settings sent: glass, 300 dpi, whole width");
+		CHECK(escl_job_caps(j)->bright && escl_job_caps(j)->bright_max == 2000 &&
+			escl_job_caps(j)->bright_normal == 1000 && !escl_job_caps(j)->contrast, "brightness 0-2000, no contrast");
+		CHECK(!file_has(settings, "Brightness"), "brightness 0: the scanner's own, not sent");
 		free(first);
 		escl_job_free(j);
 	}
+
+	printf("Brightness and contrast\n");
+	s.brightness = 50;
+	s.contrast = -30;
+	j = escl_job_new("127.0.0.1", http_port, "eSCL", &s);
+	if (j) {
+		r = run(j, &pages, NULL, NULL, 0);
+		CHECK(r == ESCL_DONE, "done (%s)", escl_error(j));
+		CHECK(file_has(settings, "<scan:Brightness>1500<"), "half way to the brightest: 1500");
+		CHECK(!file_has(settings, "Contrast>"), "contrast left out: the scanner can't");
+		escl_job_free(j);
+	}
+	s.brightness = -100;
+	j = escl_job_new("127.0.0.1", http_port, "eSCL", &s);
+	if (j) {
+		run(j, &pages, NULL, NULL, 0);
+		CHECK(file_has(settings, "<scan:Brightness>0<"), "the darkest: 0");
+		escl_job_free(j);
+	}
+	s.brightness = s.contrast = 0;
 
 	printf("Scanning from the feeder\n");
 	s.source = ESCL_FEEDER;

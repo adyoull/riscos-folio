@@ -526,3 +526,91 @@ int folio_combine(folio_ctx *fc, const char *const *paths, int n, const char *pa
 		folio_set_error(fc);
 	return ok ? 0 : -1;
 }
+
+/* ---- Turning pages (PDFs) ------------------------------------------------- */
+
+static int rot_of(fz_context *ctx, pdf_document *pdf, int i)
+{
+	pdf_obj *page = pdf_lookup_page_obj(ctx, pdf, i);
+	int r = pdf_to_int(ctx, pdf_dict_get_inheritable(ctx, page, PDF_NAME(Rotate)));
+	return ((r % 360) + 360) % 360;
+}
+
+int folio_page_rotation(folio_doc *doc, folio_loc loc)
+{
+	fz_context *ctx = doc->ctx;
+	pdf_document *pdf = pdf_specifics(ctx, doc->doc);
+	int r = 0;
+	if (!pdf)
+		return 0;
+	fz_try(ctx)
+		r = rot_of(ctx, pdf, folio_page_number(doc, loc));
+	fz_catch(ctx)
+		r = 0;
+	return r;
+}
+
+int *folio_rotations(folio_doc *doc, int *n)
+{
+	fz_context *ctx = doc->ctx;
+	pdf_document *pdf = pdf_specifics(ctx, doc->doc);
+	int *r = NULL, i, count = 0;
+	*n = 0;
+	if (!pdf)
+		return NULL;
+	fz_var(r);
+	fz_try(ctx) {
+		count = pdf_count_pages(ctx, pdf);
+		r = malloc(sizeof *r * (size_t)(count > 0 ? count : 1));
+		for (i = 0; r && i < count; i++)
+			r[i] = rot_of(ctx, pdf, i);
+	}
+	fz_catch(ctx) {
+		free(r);
+		return NULL;
+	}
+	if (r)
+		*n = count;
+	return r;
+}
+
+int folio_rotate_pages(folio_doc *doc, const unsigned char *sel, int count, int degrees)
+{
+	fz_context *ctx = doc->ctx;
+	pdf_document *pdf = pdf_specifics(ctx, doc->doc);
+	int i, op = 0, *before, nb;
+	if (!pdf) {
+		snprintf(doc->fc->err, sizeof doc->fc->err, "only a PDF's pages can be turned");
+		return -1;
+	}
+	before = folio_rotations(doc, &nb);
+	folio_forget_pages(doc);
+	fz_var(op);
+	fz_var(i);
+	fz_try(ctx) {
+		pdf_begin_operation(ctx, pdf, "Rotate");
+		op = 1;
+		for (i = 0; i < count && i < pdf_count_pages(ctx, pdf); i++) {
+			int r;
+			if (!sel[i])
+				continue;
+			r = ((rot_of(ctx, pdf, i) + degrees) % 360 + 360) % 360;
+			pdf_dict_put_int(ctx, pdf_lookup_page_obj(ctx, pdf, i), PDF_NAME(Rotate), r);
+		}
+		pdf_end_operation(ctx, pdf);
+		op = 0;
+	}
+	fz_catch(ctx) {
+		if (op)
+			pdf_abandon_operation(ctx, pdf);
+		folio_set_error(doc->fc);
+		free(before);
+		folio_forget_pages(doc);
+		return -1;
+	}
+	folio_forget_pages(doc);
+	/* Recognised text on a page that turned is in the wrong place now. */
+	folio_ocr_forget_turned(doc, before, nb);
+	free(before);
+	return 0;
+}

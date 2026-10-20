@@ -62,6 +62,22 @@ static void ocr_clear(folio_doc *doc, folio_ocr_store *p)
 	memset(p, 0, sizeof *p);
 }
 
+void folio_ocr_forget_turned(folio_doc *doc, const int *before, int n)
+{
+	int *now, nn, i;
+	if (!before)
+		return;
+	now = folio_rotations(doc, &nn);
+	if (!now)
+		return;
+	for (i = 0; i < n && i < nn && i < doc->ocr_n; i++)
+		if (now[i] != before[i] && doc->ocr[i].words) {
+			ocr_clear(doc, &doc->ocr[i]);
+			doc->ocr_changed = 1;
+		}
+	free(now);
+}
+
 void folio_ocr_free(folio_doc *doc)
 {
 	int i;

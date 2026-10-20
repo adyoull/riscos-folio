@@ -21,7 +21,8 @@ enum {
 	S_COL_L, S_COLOUR, S_GREY,
 	S_RES_L, S_R150, S_R300, S_R600,
 	S_SIZE_L, S_A4, S_LETTER, S_LARGEST,
-	S_STATUS, S_STOP, S_SCAN, S_OCR
+	S_STATUS, S_STOP, S_SCAN, S_OCR,
+	S_BRIGHT_L, S_BRIGHT, S_CONTRAST_L, S_CONTRAST
 };
 
 typedef struct {
@@ -44,6 +45,12 @@ typedef struct {
 	ComponentId before, after;
 } writable_gadget;
 typedef struct { gadget_hdr h; char *text; int max_text; } display_gadget;
+typedef struct {
+	gadget_hdr h;
+	int lower, upper, step, initial, precision;
+	ComponentId before, after;
+	int display_length;
+} range_gadget;
 typedef struct {
 	gadget_hdr h;
 	const char *text;
@@ -70,10 +77,14 @@ static struct {
 	display_gadget status;
 	button_gadget stop, scan;
 	option_gadget ocr;
+	label_gadget bright_l;
+	range_gadget bright;
+	label_gadget contrast_l;
+	range_gadget contrast;
 } g;
 
 #define BOX_W 920
-#define BOX_H 648
+#define BOX_H 712
 #define COL   200           /* where the choices start, after the labels */
 
 static struct {
@@ -183,6 +194,32 @@ static ObjectId create_window(void)
 	radio(&g.largest, S_LARGEST, 4, COL + 456, y, BOX_W - 24, "Largest",
 		"Click to scan the largest area the scanner can (for long pages in the feeder).");
 	y -= 64;
+	{
+		static const char help_b[] = "Type or click the arrows to make the scan lighter (up to 100) or darker "
+			"(down to -100); 0 is the scanner's own.|MThe scanner does it, so the pages are still its own JPEGs. "
+			"Not every scanner can.";
+		static const char help_c[] = "Type or click the arrows for more contrast (up to 100) or less (down to "
+			"-100); 0 is the scanner's own.|MThe scanner does it, so the pages are still its own JPEGs. Not "
+			"every scanner can.";
+		label(&g.bright_l, S_BRIGHT_L, y, "Brightness");
+		hdr(&g.bright.h, 832, sizeof g.bright, S_BRIGHT, COL, y - 52, COL + 216, y + 4, help_b);
+		g.bright.h.flags = (1 << 2) | (1 << 4) | (1 << 8);   /* writable, arrows, right-justified */
+		g.bright.lower = -100;
+		g.bright.upper = 100;
+		g.bright.step = 10;
+		g.bright.before = g.bright.after = -1;
+		g.bright.display_length = 120;
+		hdr(&g.contrast_l.h, 320, sizeof g.contrast_l, S_CONTRAST_L, COL + 240, y - 48, COL + 440, y, NULL);
+		g.contrast_l.label = "Contrast";
+		hdr(&g.contrast.h, 832, sizeof g.contrast, S_CONTRAST, COL + 456, y - 52, COL + 672, y + 4, help_c);
+		g.contrast.h.flags = (1 << 2) | (1 << 4) | (1 << 8);
+		g.contrast.lower = -100;
+		g.contrast.upper = 100;
+		g.contrast.step = 10;
+		g.contrast.before = g.contrast.after = -1;
+		g.contrast.display_length = 120;
+	}
+	y -= 64;
 	hdr(&g.ocr.h, 192, sizeof g.ocr, S_OCR, COL, y - 48, BOX_W - 24, y,
 		"Click to have the pages' text recognised as soon as they open (with the OCR plugin), so it can be "
 		"found, selected, copied and read aloud.");
@@ -200,7 +237,7 @@ static ObjectId create_window(void)
 	t.flags = (1 << 1) | (1 << 2);   /* the Toolbox opens and closes it */
 	t.help_message = "This window scans from a network scanner (eSCL, AirScan), with no driver.";
 	t.max_help = (int)strlen(t.help_message) + 1;
-	t.num_gadgets = S_OCR + 1;
+	t.num_gadgets = S_CONTRAST + 1;
 	t.gadgets = &g;
 	t.default_focus = S_ADDR;
 	t.show_event = -1;
@@ -468,6 +505,8 @@ static void scan_start(void)
 	s.duplex = s.source == ESCL_FEEDER && get_option(S_DUPLEX);
 	s.color = get_radio(S_GREY) ? ESCL_GRAY : ESCL_RGB;
 	s.dpi = get_radio(S_R150) ? 150 : get_radio(S_R600) ? 600 : 300;
+	tbx_method_out(sc.obj, 833 /* NumberRange_GetValue */, S_BRIGHT, &s.brightness);
+	tbx_method_out(sc.obj, 833, S_CONTRAST, &s.contrast);
 	if (get_radio(S_A4)) {
 		s.width = 2480;               /* 210 x 297 mm in 1/300 inch */
 		s.height = 3508;
@@ -487,8 +526,9 @@ static void scan_start(void)
 	pagesave_new_path("Pages", sc.dir, sizeof sc.dir);
 	/* A directory for the pages (pagesave_new_path names a file in a new one). */
 	_swix(OS_File, _INR(0, 1) | _IN(4), 8, sc.dir, 0);
-	app_log("scan: %s:%d/%s, %s%s, %s, %d dpi", host, port, root, s.source == ESCL_FEEDER ? "feeder" : "glass",
-		s.duplex ? " (both sides)" : "", s.color == ESCL_GRAY ? "grey" : "colour", s.dpi);
+	app_log("scan: %s:%d/%s, %s%s, %s, %d dpi, brightness %d, contrast %d", host, port, root,
+		s.source == ESCL_FEEDER ? "feeder" : "glass", s.duplex ? " (both sides)" : "",
+		s.color == ESCL_GRAY ? "grey" : "colour", s.dpi, s.brightness, s.contrast);
 	set_status(escl_status(sc.job));
 	update_buttons();
 }

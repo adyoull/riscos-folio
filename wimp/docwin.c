@@ -78,6 +78,7 @@ struct docwin {
 	int can_annotate;
 	int modified;             /* as last shown in the title */
 	int unsaved_new;          /* made by Folio (pictures to PDF), not saved yet */
+	int menu_page;            /* the page Menu was pressed over (Rotate), or -1 */
 	int fit_polls;            /* polls left to keep checking the toolbar's width */
 	int grew_left, grew_right;  /* how much the window was widened for the drawer */
 	/* The sentence being read aloud: boxes and their pages (n 0: none). */
@@ -444,6 +445,7 @@ static void drag_start(docwin *w);
 static void drag_stop(docwin *w);
 static int current_page(docwin *w);
 static void go_to_page(docwin *w, int i);
+static void rotate(docwin *w, int code);
 static void link_press(docwin *w, int *b);
 static int link_tick(docwin *w);
 static void go_back(docwin *w);
@@ -849,6 +851,8 @@ static tbx_shortcut shortcuts[] = {
 	{ 0, 0x180, EV_PRINT, 0 },      /* Print (SG p84) */
 	{ 0, 0x185, EV_GOTO, 0 },       /* F5: Go to page */
 	{ 0, 0x1cb, EV_FULL_SCREEN, 0 },/* F11: full screen (F12 is the OS's) */
+	{ 0, 18, EV_ROT_CW, 0 },        /* ^R: turn the page under the pointer clockwise */
+	{ 0, 12, EV_ROT_ACW, 0 },       /* ^L: and anticlockwise */
 };
 
 static ObjectId create_window(docwin *w)
@@ -937,6 +941,7 @@ docwin *docwin_open_password(const char *path, const char *password)
 	w->cols = app.ch.cols == 2 ? 2 : 1;
 	w->cover = 1;
 	w->goto_page = -1;
+	w->menu_page = -1;
 
 	_swix(Hourglass_On, 0);
 	make_accel_path(w);
@@ -2306,6 +2311,14 @@ static int define_word(docwin *w, char *word, size_t size)
 
 void docwin_doc_menu_shown(docwin *w)
 {
+	{
+		/* The page under the pointer: what Rotate's "Page" entries turn. */
+		int ptr[5];
+		folio_point pt;
+		_swix(Wimp_GetPointerInfo, _IN(1), ptr);
+		w->menu_page = point_at(w, ptr[0], ptr[1], &pt, -1);
+	}
+	menu_set_fade(app.doc_menu, DOC_ROTATE, !w->can_annotate);
 	menu_set_fade(app.doc_menu, DOC_SAVE, !w->can_annotate);
 	menu_set_fade(app.doc_menu, DOC_PASSWORD, !w->can_annotate);
 	if (speech_available()) {
@@ -2657,6 +2670,9 @@ void docwin_event(docwin *w, int code)
 		break;
 	case EV_EXPORT_DRAW: if (allowed(w, code)) export_open(w); break;
 	case EV_SAVE_PAGES: if (allowed(w, code)) pagesave_open(w, 0); break;
+	case EV_ROT_CW: case EV_ROT_ACW: case EV_ROT_180: case EV_ROTALL_CW: case EV_ROTALL_ACW:
+		rotate(w, code);
+		break;
 	case EV_SAVE_PICTURES: if (allowed(w, code)) pagesave_open(w, 1); break;
 	case EV_GOTO: gotopage_open(w); break;
 	case EV_DOCINFO: docinfo_open(w); break;
@@ -3514,6 +3530,78 @@ void docwin_delete_annot(docwin *w, int page, int index)
 	page_changed(w, page);
 }
 
+/* Pages may have changed size (turned): measure them all again, from the
+ * first, and lay them out (core lock held for the first). */
+static void remeasure(docwin *w)
+{
+	folio_rect r;
+	if (w->reflow)
+		return;
+	if (!folio_page_bounds(w->doc, (folio_loc){ 0, 0 }, &r))
+		w->page = r;
+	if (w->pw && w->nsize > 0) {
+		memset(w->pw, 0, (size_t)w->nsize * sizeof *w->pw);
+		memset(w->ph, 0, (size_t)w->nsize * sizeof *w->ph);
+	}
+	w->max_pw = w->page.x1;
+	w->sizes_next = 0;
+}
+
+/* Rotate: the page Menu was pressed over (or, from the keys, the one under
+ * the pointer; else the one being read), or every page. */
+static void rotate(docwin *w, int code)
+{
+	unsigned char *sel;
+	int deg = code == EV_ROT_ACW || code == EV_ROTALL_ACW ? -90 : code == EV_ROT_180 ? 180 : 90;
+	int all = code == EV_ROTALL_CW || code == EV_ROTALL_ACW, page = -1, rc;
+	if (!w->can_annotate) {
+		tbx_report("Only a PDF's pages can be turned. Save pages as PDF, or Create PDF, makes one.");
+		return;
+	}
+	if (!all) {
+		if (app.idb.self_id == app.rotate_menu && w->menu_page >= 0) {
+			page = w->menu_page;
+		} else {
+			int ptr[5];
+			folio_point pt;
+			_swix(Wimp_GetPointerInfo, _IN(1), ptr);
+			if (ptr[3] == w->wimp)
+				page = point_at(w, ptr[0], ptr[1], &pt, -1);
+		}
+		if (page < 0)
+			page = current_page(w);
+	}
+	sel = calloc((size_t)(w->pages > 0 ? w->pages : 1), 1);
+	if (!sel)
+		return;
+	if (all)
+		memset(sel, 1, (size_t)w->pages);
+	else if (page >= 0 && page < w->pages)
+		sel[page] = 1;
+	core_now();
+	rc = folio_rotate_pages(w->doc, sel, w->pages, deg);
+	if (!rc) {
+		remeasure(w);
+		ocr_win_resync(w->ocr);
+	}
+	core_unlock();
+	free(sel);
+	if (rc) {
+		char m[300];
+		snprintf(m, sizeof m, "Folio couldn't turn the page: %s", folio_error(app.fc));
+		tbx_report(m);
+		return;
+	}
+	if (all)
+		app_log("%s: every page turned %d", w->title, deg);
+	else
+		app_log("%s: page %d turned %d", w->title, page + 1, deg);
+	w->asel_page = -1;
+	relayout_keep(w);
+	page_changed(w, -1);
+	update_title(w);
+}
+
 static void undo_redo(docwin *w, int redo)
 {
 	int rc;
@@ -3521,10 +3609,16 @@ static void undo_redo(docwin *w, int redo)
 		return;
 	core_now();
 	rc = redo ? folio_redo(w->doc) : folio_undo(w->doc);
+	if (!rc) {
+		/* It may have turned pages back (or again). */
+		remeasure(w);
+		ocr_win_resync(w->ocr);
+	}
 	core_unlock();
 	if (rc)
 		return;
 	w->asel_page = -1;
+	relayout_keep(w);
 	page_changed(w, -1);
 }
 

@@ -329,6 +329,41 @@ int main(int argc, char **argv)
 		}
 	}
 
+	printf("Turning pages\n");
+	d = folio_open(fc, OUT "/made.pdf", NULL);
+	if (d) {
+		float w0, h0, w1, h1;
+		unsigned char one[3] = { 0, 1, 0 }, all[3] = { 1, 1, 1 };
+		int i;
+		folio_page_size(d, L(1), &w0, &h0);
+		CHECK(folio_page_rotation(d, L(1)) == 0, "page 2 upright");
+		CHECK(folio_rotate_pages(d, one, 3, 90) == 0, "turn page 2: %s", folio_error(fc));
+		CHECK(folio_page_rotation(d, L(1)) == 90 && folio_page_rotation(d, L(0)) == 0, "only page 2 turned");
+		CHECK(folio_page_size(d, L(1), &w1, &h1) == 0 && w1 > h0 - 0.1f && w1 < h0 + 0.1f &&
+			h1 > w0 - 0.1f && h1 < w0 + 0.1f, "its width and height swap (%g x %g, was %g x %g)", w1, h1, w0, h0);
+		CHECK(folio_is_modified(d) && folio_can_undo(d), "an undoable change");
+		CHECK(folio_rotate_pages(d, one, 3, -90) == 0 && folio_page_rotation(d, L(1)) == 0, "and back");
+		for (i = 0; i < 4; i++)
+			folio_rotate_pages(d, all, 3, 90);
+		CHECK(folio_page_rotation(d, L(0)) == 0 && folio_page_rotation(d, L(2)) == 0, "four quarter turns: upright");
+		folio_rotate_pages(d, all, 3, 180);
+		CHECK(folio_page_rotation(d, L(2)) == 180, "a half turn");
+		CHECK(folio_undo(d) == 0 && folio_page_rotation(d, L(2)) == 0, "undone");
+		CHECK(folio_redo(d) == 0 && folio_page_rotation(d, L(2)) == 180, "redone");
+		CHECK(folio_save_pdf(d, OUT "/made.pdf", OUT "/turned.pdf") == 0, "saved: %s", folio_error(fc));
+		folio_close(d);
+	}
+	d = folio_open(fc, OUT "/turned.pdf", NULL);
+	CHECK(d && folio_page_rotation(d, L(1)) == 180, "kept when saved");
+	if (d)
+		folio_close(d);
+	d = folio_open(fc, OUT "/book.cbz", NULL);
+	if (d) {
+		unsigned char one[1] = { 1 };
+		CHECK(folio_rotate_pages(d, one, 1, 90) == -1, "a CBZ's pages can't be turned");
+		folio_close(d);
+	}
+
 	printf("A text page\n");
 	snprintf(pbuf[0], sizeof pbuf[0], "%s/doc.pdf", dir);
 	d = folio_open(fc, pbuf[0], NULL);

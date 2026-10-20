@@ -33,8 +33,11 @@ running RISC OS 5, but expect rough edges. The design is in
   page each in name order, JPEGs not compressed again.
 - **Scan** (icon bar menu): scan from a network scanner with eSCL (AirScan),
   no driver needed: find it on the network or type its address, choose
-  glass or feeder (both sides), colour or grey, resolution and size, and the
+  glass or feeder (both sides), colour or grey, resolution, size, brightness
+  and contrast (done by the scanner), and the
   pages open as a new PDF with the scanner's JPEGs as they came.
+- **Rotate** (PDFs): turn the page under the pointer (Ctrl-R, Ctrl-L) or every
+  page; kept when saved, undoable.
 - **Create PDF** (icon bar menu): drag PDFs, pictures and other documents
   into a list, put them in order, and join them into one new PDF (PDF pages
   copied as they are, JPEGs unchanged).

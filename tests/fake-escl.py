@@ -51,6 +51,7 @@ CAPS = b"""<?xml version="1.0" encoding="UTF-8"?>
       </scan:SettingProfiles>
     </scan:PlatenInputCaps>
   </scan:Platen>
+  <scan:BrightnessSupport><scan:Min>0</scan:Min><scan:Max>2000</scan:Max><scan:Normal>1000</scan:Normal><scan:Step>1</scan:Step></scan:BrightnessSupport>
   <scan:Adf>
     <scan:AdfSimplexInputCaps>
       <scan:MaxWidth>2550</scan:MaxWidth>

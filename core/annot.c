@@ -363,8 +363,11 @@ static int step(folio_doc *doc, int redo)
 {
 	fz_context *ctx = doc->ctx;
 	pdf_document *pdf = pdf_of(doc);
+	int *before, nb;
 	if (!pdf || !(redo ? folio_can_redo(doc) : folio_can_undo(doc)))
 		return -1;
+	/* Pages may turn back (or again): their recognised text goes. */
+	before = folio_rotations(doc, &nb);
 	folio_forget_pages(doc);
 	fz_try(ctx) {
 		if (redo)
@@ -375,9 +378,12 @@ static int step(folio_doc *doc, int redo)
 	fz_catch(ctx) {
 		folio_set_error(doc->fc);
 		folio_forget_pages(doc);
+		free(before);
 		return -1;
 	}
 	folio_forget_pages(doc);
+	folio_ocr_forget_turned(doc, before, nb);
+	free(before);
 	return 0;
 }
 

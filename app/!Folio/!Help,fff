@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test53)
+Folio (test build 0.0.1-test54)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -250,7 +250,10 @@ Scanning (network scanners)
   your network (if it finds several, click Find again for the next).
   Choose the glass (one page) or the feeder (every page in it, both sides
   if the scanner can), colour or grey, 150, 300 or 600 dpi, and A4, Letter
-  or the largest area, then click Scan. Folio carries on while the scanner
+  or the largest area. Brightness and Contrast (-100 to 100; 0 is the
+  scanner's own) are done by the scanner itself, so the pages are still its
+  own JPEGs; not every scanner can, and one that can't scans as it would.
+  Then click Scan. Folio carries on while the scanner
   works, and Stop ends the scan, keeping the pages so far. The pages open
   as a new PDF called Scan, unsaved, with the scanner's JPEGs in it as they
   came; Save (F3) puts it where you want it. With the OCR plugin,
@@ -261,6 +264,14 @@ Scanning (network scanners)
   ScannerCapabilities in a web browser: a page of XML means it does.
   Scanners that only accept secure (https) connections aren't supported
   yet, nor are USB scanners.
+
+Turning pages (PDFs)
+  Rotate on the document menu turns the page you pressed Menu over (or all
+  pages) a quarter turn either way or a half turn: for a page fed in the
+  wrong way up, or a landscape page scanned upright. Ctrl-R and Ctrl-L turn
+  the page under the pointer clockwise and anticlockwise. A PDF keeps its
+  pages' turns, so Save (F3) to keep them; Undo (Ctrl-Z) turns them back.
+  Text recognised on a page that's turned is read again.
 
 Opening at a page
   To open a document at a given page, from an Obey file, a program or the

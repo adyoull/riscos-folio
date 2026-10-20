@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test53 (20-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test54 (20-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -23,6 +23,7 @@ enum {
 	EV_HIGHLIGHT = 0x160, EV_UNDERLINE, EV_STRIKE, EV_NOTE, EV_UNDO, EV_REDO, EV_DEL_ANNOT, EV_SAVE,
 	EV_ADD_SHELF, EV_PASSWORD, EV_READ_ALOUD, EV_SPEAK_SEL, EV_PRINT, EV_EXPORT_DRAW,
 	EV_OCR_PAGE = 0x170, EV_OCR_ALL, EV_GOTO, EV_DOCINFO,
+	EV_ROT_CW = 0x180, EV_ROT_ACW, EV_ROT_180, EV_ROTALL_CW, EV_ROTALL_ACW,
 	EV_DICT_COPY = 0x200,  /* the pop-up's, not a window's */
 	EV_FIND_NEXT = 0x210, EV_FIND_PREV, EV_FIND_CANCEL,
 	EV_NOTE_OK = 0x220, EV_NOTE_DELETE, EV_NOTE_CANCEL,
@@ -48,7 +49,10 @@ enum { EDIT_COPY = 1, EDIT_SELECT_ALL, EDIT_CLEAR, EDIT_UNDO, EDIT_REDO, EDIT_HI
 /* Document menu entries. */
 enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6, DOC_SHELF = 7, DOC_PASSWORD = 8,
 	DOC_READ = 9, DOC_SPEAKSEL = 10, DOC_SPEED = 11, DOC_PRINT = 12, DOC_EXPORT_DRAW = 13,
-	DOC_OCR = 14, DOC_INFO = 15, DOC_SAVE_PAGES = 16, DOC_SAVE_PICTURES = 17 };
+	DOC_OCR = 14, DOC_INFO = 15, DOC_SAVE_PAGES = 16, DOC_SAVE_PICTURES = 17,
+	DOC_ROTATE = 18 };
+/* Rotate submenu entries. */
+enum { ROT_CW = 1, ROT_ACW, ROT_180, ROTALL_CW, ROTALL_ACW };
 /* Text recognition menu entries. */
 enum { OCR_PAGE = 1, OCR_ALL, OCR_AUTO, OCR_ACCURATE, OCR_FAST };
 enum { SPEED_SLOW = 1, SPEED_NORMAL, SPEED_FAST };
@@ -77,7 +81,7 @@ typedef struct {
 	tbx_idblock idb;
 	folio_ctx *fc;
 	ObjectId iconbar, iconbar_menu, proginfo;
-	ObjectId doc_menu, edit_menu, view_menu, nav_menu, speed_menu;
+	ObjectId rotate_menu, doc_menu, edit_menu, view_menu, nav_menu, speed_menu;
 	int task;                   /* our Wimp task handle */
 	ObjectId menu_window;       /* the window the document menu was opened from */
 	int xeig, yeig, log2bpp;
@@ -315,6 +319,7 @@ int ocr_win_wait(ocr_win *o, int page);  /* reading aloud: 1 = wait for page */
 void ocr_win_this_page(ocr_win *o);
 void ocr_win_all(ocr_win *o);            /* on or off */
 int ocr_win_all_on(ocr_win *o);
+void ocr_win_resync(ocr_win *o);         /* pages turned: their text is read again (lock held) */
 void ocr_settings_changed(ocr_win *o);
 void passui_forget(docwin *w);
 

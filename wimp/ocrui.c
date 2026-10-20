@@ -439,6 +439,25 @@ void ocr_win_all(ocr_win *o)
 	}
 }
 
+/* Pages turned (Rotate, undo): one recognised before whose text has gone
+ * is read again when it's wanted. Core lock held. */
+void ocr_win_resync(ocr_win *o)
+{
+	int i;
+	folio_doc *doc;
+	if (!o)
+		return;
+	doc = docwin_doc(o->w);
+	for (i = 0; i < o->n; i++) {
+		folio_loc loc;
+		if (o->st[i] == S_DONE && !folio_loc_from_number(doc, i, &loc) &&
+				!folio_page_has_ocr(doc, loc))
+			o->st[i] = S_UNKNOWN;
+	}
+	if (o->all)
+		o->all_next = 0;
+}
+
 int ocr_win_all_on(ocr_win *o)
 {
 	return o && o->all;

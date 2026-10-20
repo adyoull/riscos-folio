@@ -198,6 +198,19 @@ static void XMLCALL caps_end(void *ud, const XML_Char *name)
 			c->png = 1;
 	} else if (!strcmp(n, "XResolution") && inside(p, "DiscreteResolution")) {
 		add_res(c, atoi(t));
+	} else if ((!strcmp(n, "Min") || !strcmp(n, "Max") || !strcmp(n, "Normal")) &&
+			(inside(p, "BrightnessSupport") || inside(p, "ContrastSupport"))) {
+		int b = inside(p, "BrightnessSupport"), v = atoi(t);
+		int *has = b ? &c->bright : &c->contrast;
+		int *mn = b ? &c->bright_min : &c->contrast_min, *mx = b ? &c->bright_max : &c->contrast_max;
+		int *nm = b ? &c->bright_normal : &c->contrast_normal;
+		*has = 1;
+		if (n[1] == 'i')
+			*mn = v;
+		else if (n[1] == 'a')
+			*mx = v;
+		else
+			*nm = v;
 	} else if (!strcmp(n, "Platen") || !strcmp(n, "Adf")) {
 		p->source = -1;
 	}
@@ -255,10 +268,21 @@ static int nearest_dpi(const escl_caps *c, int dpi)
 	return best;
 }
 
+/* -100..100 onto the scanner's lowest..normal..highest. */
+static int adjust(int v, int mn, int nm, int mx)
+{
+	if (v > 100)
+		v = 100;
+	if (v < -100)
+		v = -100;
+	return v >= 0 ? nm + (mx - nm) * v / 100 : nm + (nm - mn) * v / 100;
+}
+
 int escl_settings_xml(const escl_settings *s, const escl_caps *c, char *buf, size_t size)
 {
 	int src = s->source == ESCL_FEEDER ? ESCL_FEEDER : ESCL_PLATEN;
 	int dpi = nearest_dpi(c, s->dpi), w, h, n, ext;
+	char extra[200] = "";
 	const char *mode, *fmt, *ver = c->version[0] ? c->version : "2.0";
 	/* The area: as asked, else the largest; never more than it can. */
 	w = s->width > 0 ? s->width : c->max_w[src] > 0 ? c->max_w[src] : 2480;
@@ -275,6 +299,14 @@ int escl_settings_xml(const escl_settings *s, const escl_caps *c, char *buf, siz
 	/* JPEG if it can (the pages go into the PDF as they are), else PDF. */
 	fmt = c->jpeg || (!c->pdf && !c->png) ? "image/jpeg" : c->pdf ? "application/pdf" : "image/png";
 	ext = strcmp(ver, "2.1") >= 0;
+	/* Brightness and contrast, done by the scanner (so the JPEGs are still
+	 * its own), if it can and they're not its normal. */
+	if (s->brightness && c->bright && c->bright_max > c->bright_min)
+		snprintf(extra, sizeof extra, "  <scan:Brightness>%d</scan:Brightness>\n",
+			adjust(s->brightness, c->bright_min, c->bright_normal, c->bright_max));
+	if (s->contrast && c->contrast && c->contrast_max > c->contrast_min)
+		snprintf(extra + strlen(extra), sizeof extra - strlen(extra), "  <scan:Contrast>%d</scan:Contrast>\n",
+			adjust(s->contrast, c->contrast_min, c->contrast_normal, c->contrast_max));
 	n = snprintf(buf, size,
 		"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
 		"<scan:ScanSettings xmlns:scan=\"http://schemas.hp.com/imaging/escl/2011/05/03\" "
@@ -296,12 +328,14 @@ int escl_settings_xml(const escl_settings *s, const escl_caps *c, char *buf, siz
 		"  <scan:YResolution>%d</scan:YResolution>\n"
 		"  <pwg:DocumentFormat>%s</pwg:DocumentFormat>\n"
 		"%s%s%s"
+		"%s"
 		"</scan:ScanSettings>\n",
 		ver, w, h, src == ESCL_FEEDER ? "Feeder" : "Platen",
 		src == ESCL_FEEDER ? (s->duplex && c->duplex ? "  <scan:Duplex>true</scan:Duplex>\n" :
 			"  <scan:Duplex>false</scan:Duplex>\n") : "",
 		mode, dpi, dpi, fmt,
-		ext ? "  <scan:DocumentFormatExt>" : "", ext ? fmt : "", ext ? "</scan:DocumentFormatExt>\n" : "");
+		ext ? "  <scan:DocumentFormatExt>" : "", ext ? fmt : "", ext ? "</scan:DocumentFormatExt>\n" : "",
+		extra);
 	return n > 0 && (size_t)n < size ? n : -1;
 }
 
@@ -785,6 +819,10 @@ int escl_step(escl_job *j)
 				"That doesn't answer as an eSCL scanner (HTTP %d)", j->h.status);
 			return job_fail(j, m);
 		}
+		elog("escl: %s (eSCL %s): glass %d, feeder %d (both sides %d), %d resolutions, jpeg %d pdf %d, "
+			"brightness %d (%d-%d), contrast %d (%d-%d)", j->caps.model, j->caps.version, j->caps.has[0],
+			j->caps.has[1], j->caps.duplex, j->caps.nres, j->caps.jpeg, j->caps.pdf, j->caps.bright,
+			j->caps.bright_min, j->caps.bright_max, j->caps.contrast, j->caps.contrast_min, j->caps.contrast_max);
 		if (j->s.source == ESCL_FEEDER && !j->caps.has[ESCL_FEEDER] && j->caps.has[ESCL_PLATEN])
 			return job_fail(j, "This scanner has no document feeder: choose the glass");
 		if (j->s.source == ESCL_PLATEN && !j->caps.has[ESCL_PLATEN] && j->caps.has[ESCL_FEEDER])
