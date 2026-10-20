@@ -353,6 +353,24 @@ int main(int argc, char **argv)
 		CHECK(folio_save_pdf(d, OUT "/made.pdf", OUT "/turned.pdf") == 0, "saved: %s", folio_error(fc));
 		folio_close(d);
 	}
+	printf("Adding pages\n");
+	d = folio_open(fc, OUT "/made.pdf", NULL);
+	if (d) {
+		const char *more[2] = { OUT "/scan2.jpg", OUT "/scan3.jpg" };
+		CHECK(pages(d) == 3, "3 pages before");
+		CHECK(folio_append_pictures(d, more, 2, 150) == 0, "added: %s", folio_error(fc));
+		CHECK(pages(d) == 5, "5 after (%d)", pages(d));
+		k = folio_save_page_image(d, L(4), 150, OUT "/added5");
+		CHECK(k == FOLIO_PAGEIMG_JPEG && same_file(OUT "/added5", OUT "/scan3.jpg"), "page 5 is the JPEG (%d)", k);
+		CHECK(folio_undo(d) == 0 && pages(d) == 3, "undone: 3 pages (%d)", pages(d));
+		CHECK(folio_redo(d) == 0 && pages(d) == 5, "redone: 5 pages (%d)", pages(d));
+		CHECK(folio_save_pdf(d, OUT "/made.pdf", OUT "/added.pdf") == 0, "saved: %s", folio_error(fc));
+		folio_close(d);
+	}
+	d = folio_open(fc, OUT "/added.pdf", NULL);
+	CHECK(d && pages(d) == 5, "kept when saved");
+	if (d)
+		folio_close(d);
 	d = folio_open(fc, OUT "/turned.pdf", NULL);
 	CHECK(d && folio_page_rotation(d, L(1)) == 180, "kept when saved");
 	if (d)

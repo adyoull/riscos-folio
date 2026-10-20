@@ -381,7 +381,7 @@ static int step(folio_doc *doc, int redo)
 		free(before);
 		return -1;
 	}
-	folio_forget_pages(doc);
+	folio_recount(doc);         /* pages may have been added or taken away */
 	folio_ocr_forget_turned(doc, before, nb);
 	free(before);
 	return 0;

@@ -382,6 +382,10 @@ int folio_combine(folio_ctx *fc, const char *const *paths, int n, const char *pa
  * -90 anticlockwise, 180), one undoable operation; their recognised text
  * (OCR) is dropped. And a page's turn now (0, 90, 180, 270). */
 int folio_rotate_pages(folio_doc *doc, const unsigned char *sel, int count, int degrees);
+/* Picture files added as new pages at the end of a PDF (a scan's next
+ * pages), each its size at dpi (0: the picture's own); one undoable
+ * operation. 0 or -1. */
+int folio_append_pictures(folio_doc *doc, const char *const *paths, int n, int dpi);
 int folio_page_rotation(folio_doc *doc, folio_loc loc);
 
 /* ---- Annotations (PDFs) ------------------------------------------------ */

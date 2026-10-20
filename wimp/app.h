@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test54 (20-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test55 (20-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -40,7 +40,8 @@ enum {
 	EV_FULL_SCREEN = 0x2b0, EV_SAVE_PAGES, EV_SAVE_PICTURES,
 	EV_PAGES_OK = 0x2c0, EV_PAGES_CANCEL,
 	EV_CREATE_PDF = 0x2d0, EV_CP_UP, EV_CP_DOWN, EV_CP_REMOVE, EV_CP_SORT, EV_CP_CLEAR, EV_CP_CREATE,
-	EV_SCAN = 0x2e0, EV_SC_FIND, EV_SC_SCAN, EV_SC_STOP
+	EV_SCAN = 0x2e0, EV_SC_FIND, EV_SC_SCAN, EV_SC_STOP, EV_SC_ADD,
+	EV_SC_PICK = 0x2f0      /* to 0x2ff: the scanner chosen from Find's menu */
 };
 
 /* View menu entries (component ids). */
@@ -148,7 +149,8 @@ int docwin_pages(docwin *w);
 /* A document Folio made (a directory of pictures as a PDF), in the scrap
  * directory: shown as unsaved until it's saved somewhere. */
 void docwin_mark_new(docwin *w);
-void docwin_ocr_all(docwin *w);       /* a new scan: recognise every page */
+void docwin_ocr_all(docwin *w);
+void docwin_pages_added(docwin *w);   /* a scan's next pages added: lay out, go to the last */       /* a new scan: recognise every page */
 int docwin_reading_dir(docwin *w);
 void docwin_page_pt(docwin *w, int page, float *pw, float *ph);   /* size in points */        /* +1 forwards, -1 backwards */
 void docwin_text_changed(docwin *w, int page);   /* recognised */
@@ -287,6 +289,7 @@ int pagesave_natural(const char *a, const char *b);
 void scanui_open(void);
 void scanui_event(int code);
 int scanui_background(unsigned *wake);
+void scanui_forget(docwin *w);
 void combine_open(void);
 void combine_open_request(int *block);
 int combine_owns(int wimp);

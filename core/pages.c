@@ -347,29 +347,19 @@ int folio_images_to_pdf(folio_ctx *fc, const char *const *paths, int n, const ch
 	return folio_images_to_pdf_res(fc, paths, n, 0, path);
 }
 
-int folio_images_to_pdf_res(folio_ctx *fc, const char *const *paths, int n, int dpi, const char *path)
+/* Appends a page for each picture to pdf (throws, naming the file). */
+static void add_picture_pages(fz_context *ctx, pdf_document *pdf, const char *const *paths, int n, int dpi)
 {
-	fz_context *ctx = fc->ctx;
-	pdf_document *pdf = NULL;
 	fz_image *img = NULL;
 	fz_buffer *contents = NULL;
 	pdf_obj *res = NULL, *page = NULL;
-	int i, ok = 0;
-	fz_var(pdf);
+	int i;
 	fz_var(img);
 	fz_var(contents);
 	fz_var(res);
 	fz_var(page);
 	fz_var(i);
-	fz_var(ok);
-	fz_var(dpi);
-	if (n <= 0) {
-		snprintf(fc->err, sizeof fc->err, "there are no pictures");
-		return -1;
-	}
 	fz_try(ctx) {
-		pdf_write_options opts = pdf_default_write_options;
-		pdf = pdf_create_document(ctx);
 		for (i = 0; i < n; i++) {
 			int xres, yres;
 			float w, h;
@@ -405,21 +395,90 @@ int folio_images_to_pdf_res(folio_ctx *fc, const char *const *paths, int n, int 
 			fz_drop_image(ctx, img);
 			img = NULL;
 		}
-		opts.do_compress = 1;
-		pdf_save_document(ctx, pdf, path, &opts);
-		ok = 1;
 	}
 	fz_always(ctx) {
 		pdf_drop_obj(ctx, page);
 		pdf_drop_obj(ctx, res);
 		fz_drop_buffer(ctx, contents);
 		fz_drop_image(ctx, img);
+	}
+	fz_catch(ctx)
+		fz_rethrow(ctx);
+}
+
+int folio_images_to_pdf_res(folio_ctx *fc, const char *const *paths, int n, int dpi, const char *path)
+{
+	fz_context *ctx = fc->ctx;
+	pdf_document *pdf = NULL;
+	int ok = 0;
+	fz_var(pdf);
+	fz_var(ok);
+	if (n <= 0) {
+		snprintf(fc->err, sizeof fc->err, "there are no pictures");
+		return -1;
+	}
+	fz_try(ctx) {
+		pdf_write_options opts = pdf_default_write_options;
+		pdf = pdf_create_document(ctx);
+		add_picture_pages(ctx, pdf, paths, n, dpi);
+		opts.do_compress = 1;
+		pdf_save_document(ctx, pdf, path, &opts);
+		ok = 1;
+	}
+	fz_always(ctx)
 		pdf_drop_document(ctx, pdf);
+	fz_catch(ctx)
+		folio_set_error(fc);
+	return ok ? 0 : -1;
+}
+
+int folio_append_pictures(folio_doc *doc, const char *const *paths, int n, int dpi)
+{
+	fz_context *ctx = doc->ctx;
+	pdf_document *pdf = pdf_specifics(ctx, doc->doc);
+	int op = 0;
+	if (!pdf) {
+		snprintf(doc->fc->err, sizeof doc->fc->err, "pages can only be added to a PDF");
+		return -1;
+	}
+	if (n <= 0) {
+		snprintf(doc->fc->err, sizeof doc->fc->err, "there are no pictures");
+		return -1;
+	}
+	folio_forget_pages(doc);
+	fz_var(op);
+	fz_try(ctx) {
+		pdf_begin_operation(ctx, pdf, "Add pages");
+		op = 1;
+		add_picture_pages(ctx, pdf, paths, n, dpi);
+		pdf_end_operation(ctx, pdf);
+		op = 0;
 	}
 	fz_catch(ctx) {
-		folio_set_error(fc);
+		if (op)
+			pdf_abandon_operation(ctx, pdf);
+		folio_set_error(doc->fc);
+		folio_recount(doc);
+		return -1;
 	}
-	return ok ? 0 : -1;
+	folio_recount(doc);
+	return 0;
+}
+
+/* A fixed-layout document's pages may have been added or taken away
+ * (added pages, undo, redo): count them again. */
+void folio_recount(folio_doc *doc)
+{
+	fz_context *ctx = doc->ctx;
+	folio_forget_pages(doc);
+	if (doc->reflow || doc->nchap != 1 || !doc->chap_pages)
+		return;
+	fz_try(ctx) {
+		doc->chap_pages[0] = fz_count_pages(ctx, doc->doc);
+	}
+	fz_catch(ctx) {
+		/* left as it was */
+	}
 }
 
 /* ---- Files joined into one PDF ------------------------------------------ */

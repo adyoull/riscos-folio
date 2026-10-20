@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test54)
+Folio (test build 0.0.1-test55)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -247,13 +247,16 @@ Scanning (network scanners)
   eSCL ("AirScan"), which most network scanners and printer-scanners of
   the last ten years understand. No driver is needed. Type the scanner's
   IP address (such as 192.168.0.40; not a name), or click Find to look for scanners on
-  your network (if it finds several, click Find again for the next).
+  your network (if it finds several, a menu of them lets you choose).
   Choose the glass (one page) or the feeder (every page in it, both sides
   if the scanner can), colour or grey, 150, 300 or 600 dpi, and A4, Letter
   or the largest area. Brightness and Contrast (-100 to 100; 0 is the
   scanner's own) are done by the scanner itself, so the pages are still its
   own JPEGs; not every scanner can, and one that can't scans as it would.
-  Then click Scan. Folio carries on while the scanner
+  Then click Scan. For several pages from the glass, scan the first, then
+  put each next page on the glass and click Add page: it goes on the end
+  of that scan (while its window is open), and Undo (Ctrl-Z) takes a page
+  off again. Folio carries on while the scanner
   works, and Stop ends the scan, keeping the pages so far. The pages open
   as a new PDF called Scan, unsaved, with the scanner's JPEGs in it as they
   came; Save (F3) puts it where you want it. With the OCR plugin,

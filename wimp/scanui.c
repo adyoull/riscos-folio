@@ -22,7 +22,7 @@ enum {
 	S_RES_L, S_R150, S_R300, S_R600,
 	S_SIZE_L, S_A4, S_LETTER, S_LARGEST,
 	S_STATUS, S_STOP, S_SCAN, S_OCR,
-	S_BRIGHT_L, S_BRIGHT, S_CONTRAST_L, S_CONTRAST
+	S_BRIGHT_L, S_BRIGHT, S_CONTRAST_L, S_CONTRAST, S_ADD
 };
 
 typedef struct {
@@ -81,6 +81,7 @@ static struct {
 	range_gadget bright;
 	label_gadget contrast_l;
 	range_gadget contrast;
+	button_gadget add;
 } g;
 
 #define BOX_W 920
@@ -97,6 +98,9 @@ static struct {
 	char dir[300];          /* where this scan's pages go */
 	char **paths;
 	int npages, all_images;
+	int adding;             /* this scan's pages go on the end of 'target' */
+	docwin *target;         /* the window of the last scan made here */
+	ObjectId pick;          /* Find's menu of scanners */
 } sc;
 
 static void hdr(gadget_hdr *h, int type, int size, int id, int x0, int y0, int x1, int y1,
@@ -165,7 +169,7 @@ static ObjectId create_window(void)
 	g.addr.before = -1;
 	g.addr.after = -1;
 	button(&g.find, S_FIND, 1u << 2, BOX_W - 184, y, BOX_W - 24, "Find", EV_SC_FIND,
-		"Click to look for scanners on the network (eSCL, AirScan). If it finds several, click again for the next.");
+		"Click to look for scanners on the network (eSCL, AirScan). If it finds several, it shows a menu of them to choose from.");
 	y -= 68;
 	display(&g.found, S_FOUND, COL, y, BOX_W - 24, sc.found_buf, sizeof sc.found_buf,
 		"This is the scanner Find found, or what it's doing.");
@@ -228,8 +232,11 @@ static ObjectId create_window(void)
 	y -= 76;
 	display(&g.status, S_STATUS, 16, y, BOX_W - 24, sc.status_buf, sizeof sc.status_buf,
 		"This shows what the scan is doing.");
-	button(&g.stop, S_STOP, 1u << 2, BOX_W - 392, -BOX_H + 92, BOX_W - 216, "Stop", EV_SC_STOP,
+	button(&g.stop, S_STOP, 1u << 2, BOX_W - 584, -BOX_H + 92, BOX_W - 408, "Stop", EV_SC_STOP,
 		"Click to stop looking for scanners, or to stop the scan (the pages so far are kept).");
+	button(&g.add, S_ADD, 1u << 2, BOX_W - 392, -BOX_H + 92, BOX_W - 216, "Add page", EV_SC_ADD,
+		"Click to scan again and put the pages on the end of the last scan (its window must still be open): "
+		"for several pages from the glass, one at a time.");
 	button(&g.scan, S_SCAN, 1 | (1u << 2), BOX_W - 200, -BOX_H + 92, BOX_W - 24, "Scan", EV_SC_SCAN,
 		"Click (or press Return) to scan. The pages open as a new PDF, to look at and save.");
 
@@ -237,7 +244,7 @@ static ObjectId create_window(void)
 	t.flags = (1 << 1) | (1 << 2);   /* the Toolbox opens and closes it */
 	t.help_message = "This window scans from a network scanner (eSCL, AirScan), with no driver.";
 	t.max_help = (int)strlen(t.help_message) + 1;
-	t.num_gadgets = S_CONTRAST + 1;
+	t.num_gadgets = S_ADD + 1;
 	t.gadgets = &g;
 	t.default_focus = S_ADDR;
 	t.show_event = -1;
@@ -315,6 +322,7 @@ static void update_buttons(void)
 {
 	int busy = sc.job || sc.find;
 	fade(S_SCAN, busy);
+	fade(S_ADD, busy || !sc.target);
 	fade(S_FIND, busy);
 	fade(S_STOP, !busy);
 }
@@ -412,7 +420,7 @@ static void show_found(void)
 	snprintf(sc.addr_buf, sizeof sc.addr_buf, "%s", a);
 	set_text(S_ADDR, sc.addr_buf);
 	if (sc.nfound > 1)
-		snprintf(f, sizeof f, "%.100s (%d of %d: Find for the next)", e->name, sc.cur + 1, sc.nfound);
+		snprintf(f, sizeof f, "%.100s (%d scanners found)", e->name, sc.nfound);
 	else
 		snprintf(f, sizeof f, "%.140s", e->name);
 	set_found(f);
@@ -422,12 +430,6 @@ static void find_start(void)
 {
 	unsigned me = escl_local_address(0xe00000fbu), base, addrs[256];
 	int n = 0, i;
-	/* Found before, and more than one: the next. */
-	if (sc.nfound > 1) {
-		sc.cur = (sc.cur + 1) % sc.nfound;
-		show_found();
-		return;
-	}
 	if (!me)
 		me = escl_local_address(0x08080808u);
 	if (!me) {
@@ -450,6 +452,45 @@ static void find_start(void)
 	update_buttons();
 }
 
+/* Several scanners: a menu of them at the pointer, to choose from. */
+static void show_pick(void)
+{
+	static struct {
+		tbx_menu m;
+		tbx_menu_entry e[16];
+	} b;
+	static char text[16][100], help[] = "Click to scan with this scanner.";
+	int i, n = sc.nfound < 16 ? sc.nfound : 16, ptr[5], pos[2];
+	if (sc.pick) {
+		tbx_delete(sc.pick, 0);
+		sc.pick = 0;
+	}
+	memset(&b, 0, sizeof b);
+	for (i = 0; i < n; i++) {
+		tbx_menu_entry *e = &b.e[i];
+		snprintf(text[i], sizeof text[i], "%.60s (%.30s)", sc.found[i].name, sc.found[i].host);
+		e->component_id = i;
+		e->text = text[i];
+		e->max_text = (int)strlen(text[i]) + 1;
+		e->click_event = EV_SC_PICK + i;
+		e->help_message = help;
+		e->max_entry_help = (int)sizeof help;
+	}
+	b.m.title = "Scanners";
+	b.m.max_title = 9;
+	b.m.show_event = -1;
+	b.m.hide_event = -1;
+	b.m.num_entries = n;
+	if (tbx_create(Class_Menu, 102, 0, &b, (int)(sizeof b.m + (size_t)n * sizeof b.e[0]), &sc.pick)) {
+		sc.pick = 0;
+		return;
+	}
+	_swix(Wimp_GetPointerInfo, _IN(1), ptr);
+	pos[0] = ptr[0] - 64;
+	pos[1] = ptr[1] + 32;
+	tbx_show(sc.pick, 0, 2, pos, sc.obj, -1);
+}
+
 static void find_done(void)
 {
 	const escl_found *list;
@@ -466,7 +507,9 @@ static void find_done(void)
 	sc.cur = 0;
 	if (sc.nfound)
 		show_found();
-	else
+	if (sc.nfound > 1)
+		show_pick();
+	if (!sc.nfound)
 		set_found("No scanners answered. Type the scanner's address instead.");
 	update_buttons();
 }
@@ -481,7 +524,7 @@ static void free_pages(void)
 	sc.npages = 0;
 }
 
-static void scan_start(void)
+static void scan_start(int add)
 {
 	char host[100], root[64], text[120];
 	int port;
@@ -522,6 +565,7 @@ static void scan_start(void)
 	}
 	save_address(text);
 	free_pages();
+	sc.adding = add && sc.target;
 	sc.all_images = 1;
 	pagesave_new_path("Pages", sc.dir, sizeof sc.dir);
 	/* A directory for the pages (pagesave_new_path names a file in a new one). */
@@ -590,6 +634,32 @@ static void scan_done(int ok)
 		set_status("The scanner sent no pages.");
 		return;
 	}
+	if (sc.adding && sc.target) {
+		/* On the end of the last scan. */
+		docwin *w = sc.target;
+		_swix(Hourglass_On, 0);
+		core_now();
+		made = sc.all_images && folio_append_pictures(docwin_doc(w), (const char *const *)sc.paths, sc.npages,
+			dpi) == 0;
+		if (!sc.all_images)
+			snprintf(m, sizeof m, "The scanner sent PDF pages, which Folio can't add to a scan yet.");
+		else if (!made)
+			snprintf(m, sizeof m, "Folio couldn't add the page: %s", folio_error(app.fc));
+		core_unlock();
+		_swix(Hourglass_Off, 0);
+		if (!made) {
+			set_status(m);
+			return;
+		}
+		app_log("scan: %d page%s added to %s", sc.npages, sc.npages == 1 ? "" : "s", docwin_title(w));
+		docwin_pages_added(w);
+		if (ocr_available() && sc.obj && get_option(S_OCR))
+			docwin_ocr_all(w);
+		snprintf(m, sizeof m, "Added %d page%s: now %d. Add page for the next.", sc.npages,
+			sc.npages == 1 ? "" : "s", docwin_pages(w));
+		set_status(m);
+		return;
+	}
 	pagesave_new_path("Scan", out, sizeof out);
 	_swix(Hourglass_On, 0);
 	core_now();
@@ -604,12 +674,15 @@ static void scan_done(int ok)
 		return;
 	}
 	if (ok) {
-		snprintf(m, sizeof m, "Scanned %d page%s.", sc.npages, sc.npages == 1 ? "" : "s");
+		snprintf(m, sizeof m, "Scanned %d page%s. Add page scans the next onto it.", sc.npages,
+			sc.npages == 1 ? "" : "s");
 		set_status(m);
 	}
 	_swix(OS_File, _INR(0, 2), 18, out, 0xadf);
 	{
 		docwin *w = docwin_open(out);
+		sc.target = w;
+		update_buttons();
 		if (w) {
 			docwin_mark_new(w);
 			if (ocr_available() && sc.obj && get_option(S_OCR))
@@ -620,6 +693,13 @@ static void scan_done(int ok)
 
 void scanui_event(int code)
 {
+	if (code >= EV_SC_PICK && code < EV_SC_PICK + 16) {
+		if (code - EV_SC_PICK < sc.nfound) {
+			sc.cur = code - EV_SC_PICK;
+			show_found();
+		}
+		return;
+	}
 	switch (code) {
 	case EV_SCAN:
 		scanui_open();
@@ -630,7 +710,11 @@ void scanui_event(int code)
 		break;
 	case EV_SC_SCAN:
 		if (!sc.find && !sc.job)
-			scan_start();
+			scan_start(0);
+		break;
+	case EV_SC_ADD:
+		if (!sc.find && !sc.job)
+			scan_start(1);
 		break;
 	case EV_SC_STOP:
 		if (sc.find) {
@@ -685,4 +769,15 @@ int scanui_background(unsigned *wake)
 			*wake = w;
 	}
 	return 0;
+}
+
+/* A document window is closing: if it's the last scan's, Add page has
+ * nothing to add to. */
+void scanui_forget(docwin *w)
+{
+	if (sc.target == w) {
+		sc.target = NULL;
+		if (sc.obj)
+			update_buttons();
+	}
 }

@@ -399,7 +399,7 @@ static int toolbox_event(int *b)
 	case EV_PAGES_CANCEL:
 		pagesave_event(code);
 		break;
-	case EV_SCAN: case EV_SC_FIND: case EV_SC_SCAN: case EV_SC_STOP:
+	case EV_SCAN: case EV_SC_FIND: case EV_SC_SCAN: case EV_SC_STOP: case EV_SC_ADD:
 		scanui_event(code);
 		break;
 	case EV_CREATE_PDF: case EV_CP_UP: case EV_CP_DOWN: case EV_CP_REMOVE: case EV_CP_SORT:
@@ -463,6 +463,10 @@ static int toolbox_event(int *b)
 			docwin_nav_menu_shown(w);
 		break;
 	default:
+		if (code >= EV_SC_PICK && code < EV_SC_PICK + 16) {
+			scanui_event(code);
+			break;
+		}
 		/* A document window's: its menus' entries (below &200), and those
 		 * numbered later (test49's Save pages and Save page pictures, and
 		 * Full screen, were outside the range and did nothing). */

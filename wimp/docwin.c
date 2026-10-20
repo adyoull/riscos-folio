@@ -446,6 +446,8 @@ static void drag_stop(docwin *w);
 static int current_page(docwin *w);
 static void go_to_page(docwin *w, int i);
 static void rotate(docwin *w, int code);
+static void remeasure(docwin *w);
+static void page_changed(docwin *w, int page);
 static void link_press(docwin *w, int *b);
 static int link_tick(docwin *w);
 static void go_back(docwin *w);
@@ -1093,6 +1095,7 @@ void docwin_close(docwin *w)
 	print_forget(w);
 	export_forget(w);
 	pagesave_forget(w);
+	scanui_forget(w);
 	speech_forget(w);
 	worker_stop_for(w);
 	core_lock();
@@ -3320,6 +3323,20 @@ static void update_title(docwin *w)
 		return;
 	w->modified = modified;
 	set_title(w);
+}
+
+/* Pages were added (a scan's next pages): lay out again, and go to the
+ * last page. */
+void docwin_pages_added(docwin *w)
+{
+	core_now();
+	remeasure(w);
+	ocr_win_resync(w->ocr);
+	core_unlock();
+	relayout_keep(w);
+	page_changed(w, -1);
+	update_title(w);
+	go_to_page(w, w->pages - 1);
 }
 
 /* Recognise every page's text (a new scan), if it isn't already. */

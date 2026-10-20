@@ -445,9 +445,18 @@ void ocr_win_resync(ocr_win *o)
 {
 	int i;
 	folio_doc *doc;
+	int exact, pages;
 	if (!o)
 		return;
 	doc = docwin_doc(o->w);
+	/* Pages added (or taken away again). */
+	pages = folio_page_count(doc, &exact);
+	if (pages > o->n)
+		grow(o, pages);
+	else if (pages >= 0 && pages < o->n)
+		o->n = pages;
+	if (o->all_next > o->n)
+		o->all_next = o->n;
 	for (i = 0; i < o->n; i++) {
 		folio_loc loc;
 		if (o->st[i] == S_DONE && !folio_loc_from_number(doc, i, &loc) &&

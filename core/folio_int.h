@@ -120,6 +120,7 @@ void folio_fonts_drop(fz_context *ctx);
  * after something may have turned pages (Rotate, undo, redo), the
  * recognised text of each page whose turn differs from before[] dropped. */
 int *folio_rotations(folio_doc *doc, int *n);
+void folio_recount(folio_doc *doc);
 void folio_ocr_forget_turned(folio_doc *doc, const int *before, int n);
 
 #endif
