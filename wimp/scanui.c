@@ -208,7 +208,9 @@ static ObjectId create_window(void)
 	t.window.vis_x1 = BOX_W;
 	t.window.vis_y1 = BOX_H;
 	t.window.behind = -1;
-	t.window.window_flags = 0x80000002u | (1u << 24) | (1u << 25) | (1u << 26);
+	/* Auto-redraw (bit 4): the Wimp draws it. test51-52 left that out, so
+	 * the Wimp asked Folio to draw it, 120,000 times a second. */
+	t.window.window_flags = 0x80000002u | (1u << 4) | (1u << 24) | (1u << 25) | (1u << 26);
 	t.window.title_fore = 7;
 	t.window.title_back = 2;
 	t.window.work_fore = 7;

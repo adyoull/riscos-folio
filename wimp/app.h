@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test52 (20-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test53 (20-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {

@@ -594,6 +594,18 @@ int main(int argc, char **argv)
 				toolbar_scroller_redraw(block);
 			else if (bookshelf_owns(block[0]))
 				bookshelf_redraw(block);
+			else {
+				/* A window nobody here draws: say it's done, or the Wimp
+				 * asks again at once, for ever, and the desktop stops
+				 * (test51-52's Scan window). */
+				int more = 0;
+				static int warned;
+				if (!warned++)
+					app_log("redraw for window &%x, which nothing draws", block[0]);
+				_swix(Wimp_RedrawWindow, _IN(1) | _OUT(0), block, &more);
+				while (more)
+					_swix(Wimp_GetRectangle, _IN(1) | _OUT(0), block, &more);
+			}
 			break;
 		}
 		case Wimp_EOpenWindow:
