@@ -136,8 +136,14 @@ Document info
   is and its size, then what the document says about itself: title,
   author, subject, keywords, the program that made it, when it was made
   and changed, its PDF version, pages and page size, its security and what
-  its author allows (printing, copying, changing, notes...), and whether it
-  has a form, attached files or JavaScript.
+  its author allows (printing, copying, changing, notes...), whether it
+  has a form, attached files or JavaScript, how many bookmarks, layers and
+  pictures it has, and every font it uses: each font's name, its kind
+  (Type 1, TrueType, OpenType, Type 3...) and whether it is embedded in
+  the PDF, whole or as a subset of the characters used. A font that isn't
+  embedded is drawn with the nearest font the computer has. On a very
+  long document Folio stops looking after a few seconds and says how many
+  pages it looked at.
 
 Restrictions (PDFs)
   A PDF's author can say it mustn't be printed, copied from or filled in.

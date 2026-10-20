@@ -2,7 +2,9 @@
  * Copyright (C) 2026 Andrew Youll */
 /* Document info (the document menu's "Document info..."), like a PDF
  * reader's Properties box: the file, its title, author, dates, version,
- * page size, security and what the author allows, and what's inside it.
+ * page size, security and what the author allows, and what's inside it,
+ * down to the pictures and every font it uses (and whether each is held in
+ * the file, "embedded").
  * A plain window of "label  value" rows drawn with Wimp_TextOp; values too
  * long for it end in "...". One window, for the document it was last
  * opened from. */
@@ -16,7 +18,7 @@
 #define PAD      12
 #define WIDTH    1240
 #define LABEL_W  420        /* label column, right-justified */
-#define MAX_ROWS (FOLIO_INFO_MAX + 4)
+#define MAX_ROWS (FOLIO_INFO_MAX + FOLIO_FONTS_MAX + 8)
 
 static struct {
 	ObjectId obj;
@@ -123,6 +125,7 @@ static void add(const char *label, const char *utf8)
 void docinfo_open(docwin *w)
 {
 	folio_info in;
+	folio_fonts *fonts = malloc(sizeof *fonts);
 	const char *path = docwin_path(w), *leaf, *dot, *colon;
 	char buf[300];
 	int st[9], dst[9], h, i, type = 0, len = 0, box[4];
@@ -131,6 +134,11 @@ void docinfo_open(docwin *w)
 	_swix(Hourglass_On, 0);
 	core_now();
 	folio_get_info(docwin_doc(w), &in);
+	/* A few seconds at most: a 2000-page PDF says how far it got. */
+	if (fonts && folio_get_fonts(docwin_doc(w), fonts, 4) < 0) {
+		free(fonts);
+		fonts = NULL;
+	}
 	core_unlock();
 	_swix(Hourglass_Off, 0);
 	di.w = w;
@@ -152,6 +160,38 @@ void docinfo_open(docwin *w)
 	}
 	for (i = 0; i < in.n; i++)
 		add(in.item[i].label, in.item[i].value);
+	if (fonts) {
+		int missing = 0, len2;
+		snprintf(buf, sizeof buf, "%d", fonts->pictures);
+		add("Pictures", fonts->pictures ? buf : "None");
+		for (i = 0; i < fonts->n; i++)
+			missing += fonts->font[i].embedded == 0;
+		if (!fonts->n)
+			snprintf(buf, sizeof buf, "None");
+		else if (missing)
+			snprintf(buf, sizeof buf, "%d, %d not embedded", fonts->n + fonts->more, missing);
+		else
+			snprintf(buf, sizeof buf, "%d, all embedded", fonts->n + fonts->more);
+		len2 = (int)strlen(buf);
+		if (fonts->pages_done < fonts->pages)
+			snprintf(buf + len2, sizeof buf - len2, " (on the first %d of %d pages)",
+				fonts->pages_done, fonts->pages);
+		add("Fonts", buf);
+		for (i = 0; i < fonts->n; i++) {
+			static const char *how[] = { "not embedded", "embedded", "embedded subset", "" };
+			folio_font *f = &fonts->font[i];
+			if (f->embedded == 3)
+				snprintf(buf, sizeof buf, "%s: %s", f->name, f->type);
+			else
+				snprintf(buf, sizeof buf, "%s: %s, %s", f->name, f->type, how[f->embedded & 3]);
+			add("", buf);
+		}
+		if (fonts->more) {
+			snprintf(buf, sizeof buf, "and %d more", fonts->more);
+			add("", buf);
+		}
+		free(fonts);
+	}
 	snprintf(di.title, sizeof di.title, "Document info: %.150s", leaf);
 	window_set_title(di.obj, di.title);
 	h = PAD * 2 + di.n * ROW_H;

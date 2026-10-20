@@ -257,7 +257,7 @@ int folio_ocr_load(folio_doc *doc, const char *path);
 
 /* ---- Document info ------------------------------------------------------ */
 
-#define FOLIO_INFO_MAX 32
+#define FOLIO_INFO_MAX 40
 typedef struct {
 	char label[32];
 	char value[256];      /* UTF-8 */
@@ -268,6 +268,22 @@ typedef struct {
 } folio_info;
 /* The document's properties, in order, for showing (label: value). */
 int folio_get_info(folio_doc *doc, folio_info *in);
+/* The fonts a PDF uses, each once, sorted by name (no subset prefix), and
+ * how many pictures it holds. Looks for at most `seconds` (0: no limit);
+ * pages_done < pages says it stopped early. -1 if not a PDF. */
+#define FOLIO_FONTS_MAX 400
+typedef struct {
+	char name[96];
+	char type[28];        /* "Type 1", "TrueType", "Type 1 (CID)", "Type 3"... */
+	int embedded;         /* 0 not, 1 embedded, 2 embedded subset, 3 drawn in the PDF (Type 3) */
+} folio_font;
+typedef struct {
+	int n, more;          /* fonts listed, fonts beyond FOLIO_FONTS_MAX */
+	int pages, pages_done;
+	int pictures;
+	folio_font font[FOLIO_FONTS_MAX];
+} folio_fonts;
+int folio_get_fonts(folio_doc *doc, folio_fonts *out, int seconds);
 /* A PDF date ("D:20230115093000+01'00'") for people: "15 Jan 2023, 09:30". */
 void folio_pdf_date(const char *d, char *out, size_t size);
 

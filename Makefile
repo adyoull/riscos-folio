@@ -57,7 +57,7 @@ WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c wimp/clip.c wimp/
 	wimp/readtext.c wimp/speaker.c wimp/speech.c wimp/print.c wimp/printlay.c wimp/export.c wimp/ocrui.c wimp/gotopage.c wimp/docinfo.c wimp/choices.c wimp/ask.c wimp/formui.c wimp/fontsetup.c wimp/pagesave.c wimp/combine.c wimp/scanui.c
 WIMP_HDR := wimp/app.h wimp/tbx.h wimp/worker.h wimp/shelfdata.h wimp/readtext.h wimp/speaker.h \
 	core/folio.h core/dict.h
-VERSION ?= 0.0.1-test55
+VERSION ?= 0.0.1-test56
 # The plugins and the font pack have versions of their own, raised only
 # when what's in them changes (not with each Folio build).
 SPEECH_VERSION ?= 1.0
@@ -238,6 +238,10 @@ build/al/pages_test: tests/pages_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
 		-L$(MU_AL) -Lfontconfig/out/al/lib $(MU_LIBS) -o $@
 
+build/al/info_test: tests/info_test.c build/al/libfolio.a
+	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
+		-L$(MU_AL) -Lfontconfig/out/al/lib $(MU_LIBS) -o $@
+
 build/al/fonts_test: tests/fonts_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
 		-L$(MU_AL) -Lfontconfig/out/al/lib $(MU_LIBS) -o $@
@@ -250,7 +254,7 @@ build/al/find_test: tests/find_test.c wimp/find.c wimp/worker.c $(WIMP_HDR) buil
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -Iwimp -Itests/stub-wimp -no-pie tests/find_test.c wimp/find.c \
 		wimp/worker.c build/al/libfolio.a -L$(MU_AL) -Lfontconfig/out/al/lib $(MU_LIBS) -o $@
 
-test: build/al/core_test build/al/worker_test build/al/dict_test build/al/find_test build/al/annot_test build/al/password_test build/al/draw_test build/al/pagetext_test build/al/readtext_test build/al/printlay_test build/al/speaker_test build/al/shelf_test build/al/ocr_test build/al/form_test build/al/fonts_test build/al/pages_test build/al/escl_test tests/data/stamp
+test: build/al/core_test build/al/worker_test build/al/dict_test build/al/find_test build/al/annot_test build/al/password_test build/al/draw_test build/al/pagetext_test build/al/readtext_test build/al/printlay_test build/al/speaker_test build/al/shelf_test build/al/ocr_test build/al/form_test build/al/fonts_test build/al/pages_test build/al/escl_test build/al/info_test tests/data/stamp
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/core_test tests/data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/worker_test tests/data/doc.pdf
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/dict_test tests/dict
@@ -268,6 +272,7 @@ test: build/al/core_test build/al/worker_test build/al/dict_test build/al/find_t
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/form_test tests/data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/fonts_test tests/data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/pages_test tests/data
+	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/info_test tests/data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH tests/escl-test.sh $(RCD_DIR)/qemu/aligntrap.sh build/al/escl_test
 
 check: build/ro/core_test.elf

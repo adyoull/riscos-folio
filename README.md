@@ -70,7 +70,9 @@ running RISC OS 5, but expect rough edges. The design is in
   the computer's fonts: PackMan's FontConfig (UnixFC) setup if it's
   installed, else the fonts in `!Folio.Fonts`.
 - **Document info:** the file, title, author, dates, PDF version, page
-  size, security and permissions, forms, attachments and JavaScript.
+  size, security and permissions, forms, attachments, JavaScript,
+  bookmarks, layers, pictures, and every font the PDF uses, with its kind
+  and whether it's embedded (whole or a subset).
 - **Reading aloud** (with the Speech plugin, a separate download: drag the
   !Folio in it over yours, as with OpenTTD's sound packs): Piper's
   natural-sounding voices run by
