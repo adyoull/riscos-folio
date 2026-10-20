@@ -308,9 +308,15 @@ static void save_address(const char *a)
 	}
 }
 
+static void log_line(const char *s)
+{
+	app_log("%s", s);
+}
+
 void scanui_open(void)
 {
 	int pos[2];
+	escl_set_log(log_line);
 	if (!sc.obj) {
 		load_address();
 		snprintf(sc.found_buf, sizeof sc.found_buf, "%s", sc.addr_buf[0] ? "" :
@@ -449,6 +455,12 @@ static void scan_start(void)
 		set_status("Type the scanner's address first, or click Find.");
 		return;
 	}
+	/* A number only: looking up a name (printer.local) can hold up the
+	 * whole desktop while RISC OS's resolver waits. */
+	if (strspn(host, "0123456789.") != strlen(host)) {
+		set_status("Type the scanner's IP address (such as 192.168.0.40), or click Find.");
+		return;
+	}
 	memset(&s, 0, sizeof s);
 	s.source = get_radio(S_FEEDER) ? ESCL_FEEDER : ESCL_PLATEN;
 	s.duplex = s.source == ESCL_FEEDER && get_option(S_DUPLEX);
@@ -461,6 +473,7 @@ static void scan_start(void)
 		s.width = 2550;
 		s.height = 3300;
 	}
+	app_log("scan: starting: %s:%d/%s", host, port, root);
 	sc.job = escl_job_new(host, port, root, &s);
 	if (!sc.job) {
 		set_status(escl_last_error());

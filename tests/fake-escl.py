@@ -118,6 +118,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(404)
                 j["served"] += 1
                 n = j["served"]
+            if "slow" in self.path or os.path.exists(os.path.join(OUT, "slow")):
+                time.sleep(1.5)     # the scanner taking its time over a page
             return self.send(200, page_bytes(n), "image/jpeg")
         self.send(404)
 

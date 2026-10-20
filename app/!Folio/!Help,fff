@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test51)
+Folio (test build 0.0.1-test52)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -246,7 +246,7 @@ Scanning (network scanners)
   Scan... on the icon bar menu scans from a scanner on the network with
   eSCL ("AirScan"), which most network scanners and printer-scanners of
   the last ten years understand. No driver is needed. Type the scanner's
-  address (such as 192.168.0.40), or click Find to look for scanners on
+  IP address (such as 192.168.0.40; not a name), or click Find to look for scanners on
   your network (if it finds several, click Find again for the next).
   Choose the glass (one page) or the feeder (every page in it, both sides
   if the scanner can), colour or grey, 150, 300 or 600 dpi, and A4, Letter

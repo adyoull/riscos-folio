@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/time.h>
 
 static int fails, checks;
 #define CHECK(c, ...) do { checks++; if (!(c)) { fails++; printf("FAIL %s:%d: ", __FILE__, __LINE__); \
@@ -30,6 +31,15 @@ static const char caps_xml[] =
 	"</scan:DiscreteResolutions></scan:SupportedResolutions></scan:SettingProfile></scan:SettingProfiles>"
 	"</scan:PlatenInputCaps></scan:Platen></scan:ScannerCapabilities>";
 
+static long longest_step;   /* microseconds */
+
+static long usec(void)
+{
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	return tv.tv_sec * 1000000L + tv.tv_usec;
+}
+
 /* Runs a job to its end (or 30 s); counts pages and keeps the first. */
 static int run(escl_job *j, int *pages, unsigned char **first, size_t *first_len, int cancel_after)
 {
@@ -38,7 +48,11 @@ static int run(escl_job *j, int *pages, unsigned char **first, size_t *first_len
 	if (first)
 		*first = NULL;
 	for (i = 0; i < 30000; i++) {
+		long t0 = usec(), t;
 		r = escl_step(j);
+		t = usec() - t0;
+		if (t > longest_step)
+			longest_step = t;
 		if (r == ESCL_PAGE) {
 			size_t len;
 			const char *mime;
@@ -185,6 +199,29 @@ int main(int argc, char **argv)
 		CHECK(r == ESCL_DONE && pages == 1, "stopped after one page (%d, %d)", r, pages);
 		CHECK(file_has(deleted, "/eSCL/ScanJobs/job"), "the job was deleted");
 		escl_job_free(j);
+	}
+
+	printf("Never waiting, even on a blocking socket\n");
+	{
+		char slow[300];
+		FILE *sf;
+		snprintf(slow, sizeof slow, "%s/slow", out);
+		sf = fopen(slow, "w");
+		if (sf)
+			fclose(sf);
+		escl_test_blocking(1);
+		s.source = ESCL_PLATEN;
+		longest_step = 0;
+		j = escl_job_new("127.0.0.1", http_port, "eSCL", &s);
+		if (j) {
+			r = run(j, &pages, NULL, NULL, 0);
+			CHECK(r == ESCL_DONE && pages == 1, "scanned (%d, %d: %s)", r, pages, escl_error(j));
+			/* The page took 1.5 s to come; no step may have waited for it. */
+			CHECK(longest_step < 400000, "the longest step took %ld ms", longest_step / 1000);
+			escl_job_free(j);
+		}
+		escl_test_blocking(0);
+		remove(slow);
 	}
 
 	printf("Finding scanners\n");

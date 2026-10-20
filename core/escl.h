@@ -76,6 +76,11 @@ int escl_job_dpi(escl_job *j);
 void escl_cancel(escl_job *j);
 void escl_job_free(escl_job *j);
 const char *escl_last_error(void);
+/* A function given each step of the network conversation, for the log. */
+void escl_set_log(void (*fn)(const char *));
+/* For the tests: sockets left blocking, as a stack that ignores the
+ * request would leave them (nothing may wait even so). */
+void escl_test_blocking(int on);
 
 /* ---- Finding scanners (mDNS, _uscan._tcp) --------------------------------- */
 

@@ -15,6 +15,8 @@
 #include "escl.h"
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <stdarg.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,6 +32,24 @@
 #include <expat.h>
 
 static char last_error[200];
+static void (*log_fn)(const char *);
+
+void escl_set_log(void (*fn)(const char *))
+{
+	log_fn = fn;
+}
+
+static void elog(const char *fmt, ...)
+{
+	char buf[300];
+	va_list ap;
+	if (!log_fn)
+		return;
+	va_start(ap, fmt);
+	vsnprintf(buf, sizeof buf, fmt, ap);
+	va_end(ap);
+	log_fn(buf);
+}
 
 const char *escl_last_error(void)
 {
@@ -50,10 +70,35 @@ static int would_block(void)
 		errno == EINTR;
 }
 
+static int test_blocking;
+
+void escl_test_blocking(int on)
+{
+	test_blocking = on;
+}
+
+/* Both ways UnixLib offers; 0 if either took. */
 static int nonblocking(int fd)
 {
-	int on = 1;
-	return ioctl(fd, FIONBIO, &on);
+	if (test_blocking)
+		return 0;           /* the tests: a socket that stays blocking */
+	int on = 1, a, b, fl;
+	a = ioctl(fd, FIONBIO, &on);
+	fl = fcntl(fd, F_GETFL, 0);
+	b = fl == -1 ? -1 : fcntl(fd, F_SETFL, fl | O_NONBLOCK);
+	return a == 0 || b == 0 ? 0 : -1;
+}
+
+/* Whether fd can be read (want_write 0) or written (1) now, without
+ * waiting: send() and recv() are only called when it can, so nothing
+ * blocks even if a socket didn't become non-blocking. */
+static int ready(int fd, int want_write)
+{
+	fd_set s;
+	struct timeval tv = { 0, 0 };
+	FD_ZERO(&s);
+	FD_SET(fd, &s);
+	return select(fd + 1, want_write ? NULL : &s, want_write ? &s : NULL, NULL, &tv) > 0;
 }
 
 /* ---- ScannerCapabilities ------------------------------------------------- */
@@ -333,13 +378,20 @@ static int http_start(http_req *h, unsigned addr, int port, const char *method, 
 	h->fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (h->fd < 0)
 		return http_fail(h, "no socket (%s)", strerror(errno));
-	nonblocking(h->fd);
+	if (nonblocking(h->fd)) {
+		elog("escl: the socket can't be made non-blocking (%s)", strerror(errno));
+		return http_fail(h, "%s", "the network stack wouldn't let Folio wait for the scanner in the background");
+	}
+	elog("escl: %s %s: connecting to %u.%u.%u.%u:%d", method, path, addr >> 24, (addr >> 16) & 255,
+		(addr >> 8) & 255, addr & 255, port);
 	memset(&sa, 0, sizeof sa);
 	sa.sin_family = AF_INET;
 	sa.sin_port = htons((unsigned short)port);
 	sa.sin_addr.s_addr = htonl(addr);
-	if (connect(h->fd, (struct sockaddr *)&sa, sizeof sa) < 0 && !would_block())
+	if (connect(h->fd, (struct sockaddr *)&sa, sizeof sa) < 0 && !would_block()) {
+		elog("escl: connect: %s", strerror(errno));
 		return http_fail(h, "can't connect to the scanner (%s)", strerror(errno));
+	}
 	h->state = H_CONNECT;
 	h->deadline = now_cs() + 1500;   /* 15 s to answer */
 	return 0;
@@ -454,13 +506,19 @@ static int http_step(http_req *h)
 		FD_SET(h->fd, &w);
 		if (select(h->fd + 1, NULL, &w, NULL, &tv) <= 0)
 			return 0;
-		if (getsockopt(h->fd, SOL_SOCKET, SO_ERROR, &err, &el) == 0 && err)
+		if (getsockopt(h->fd, SOL_SOCKET, SO_ERROR, &err, &el) == 0 && err) {
+			elog("escl: connect: %s", strerror(err));
 			return http_fail(h, "can't connect to the scanner (%s)", strerror(err));
+		}
+		elog("escl: connected");
 		h->state = H_SEND;
 	}
 	if (h->state == H_SEND) {
 		while (h->out_pos < h->out_len) {
-			ssize_t n = send(h->fd, h->out + h->out_pos, h->out_len - h->out_pos, 0);
+			ssize_t n;
+			if (!ready(h->fd, 1))
+				return 0;
+			n = send(h->fd, h->out + h->out_pos, h->out_len - h->out_pos, 0);
 			if (n < 0) {
 				if (would_block() || errno == ENOTCONN)
 					return 0;
@@ -468,14 +526,17 @@ static int http_step(http_req *h)
 			}
 			h->out_pos += (size_t)n;
 		}
+		elog("escl: sent %lu bytes", (unsigned long)h->out_len);
 		h->state = H_RECV;
 		/* A page can take a while: the scanner warms up and moves. */
 		h->deadline = now + 18000;
 	}
 	if (h->state == H_RECV) {
-		int closed = 0;
-		for (;;) {
+		int closed = 0, reads;
+		for (reads = 0; reads < 32; reads++) {
 			ssize_t n;
+			if (!ready(h->fd, 0))
+				break;
 			if (h->in_cap - h->in_len < 32768) {
 				size_t cap = h->in_cap ? h->in_cap * 2 : 65536;
 				unsigned char *b = realloc(h->in, cap + 1);
@@ -510,6 +571,7 @@ static int http_step(http_req *h)
 				h->head = (size_t)(e - h->in);
 				if (parse_head(h))
 					return http_fail(h, "%s", "the scanner's answer wasn't HTTP");
+				elog("escl: HTTP %d, %s%ld bytes", h->status, h->chunked ? "chunked, " : "", h->clen);
 			}
 		}
 		if (h->head) {
@@ -542,6 +604,7 @@ static int http_step(http_req *h)
 					return http_fail(h, "%s", "the scanner's answer was cut short");
 				http_close(h);
 				h->state = H_DONE;
+				elog("escl: answer complete, %lu bytes", (unsigned long)h->body_len);
 				return 1;
 			}
 		} else if (closed) {
@@ -1024,7 +1087,8 @@ escl_find *escl_find_new(const unsigned *addrs, int n, int port, int wait_cs)
 		free(f);
 		return NULL;
 	}
-	nonblocking(f->fd);
+	if (nonblocking(f->fd))
+		elog("escl: mDNS socket isn't non-blocking (%s); reading only when ready", strerror(errno));
 	memset(&sa, 0, sizeof sa);
 	sa.sin_family = AF_INET;
 	bind(f->fd, (struct sockaddr *)&sa, sizeof sa);
@@ -1051,7 +1115,7 @@ int escl_find_step(escl_find *f)
 			f->end = now_cs() + (unsigned)f->wait_cs;
 	}
 	/* Read what's come. */
-	for (;;) {
+	for (i = 0; i < 64 && ready(f->fd, 0); i++) {
 		struct sockaddr_in from;
 		socklen_t fl = sizeof from;
 		ssize_t got = recvfrom(f->fd, buf, sizeof buf, 0, (struct sockaddr *)&from, &fl);
