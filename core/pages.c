@@ -348,6 +348,39 @@ int folio_images_to_pdf(folio_ctx *fc, const char *const *paths, int n, const ch
 }
 
 /* Appends a page for each picture to pdf (throws, naming the file). */
+/* A Netpbm picture (PBM, PGM, PPM, PAM: "P1" to "P7")? These never say
+ * what resolution they are. */
+static int is_netpbm(fz_context *ctx, const char *path)
+{
+	fz_stream *f = NULL;
+	unsigned char b[2] = { 0, 0 };
+	fz_var(f);
+	fz_try(ctx) {
+		f = fz_open_file(ctx, path);
+		if (fz_read(ctx, f, b, 2) != 2)
+			b[0] = 0;
+	}
+	fz_always(ctx)
+		fz_drop_stream(ctx, f);
+	fz_catch(ctx)
+		return 0;
+	return b[0] == 'P' && b[1] >= '1' && b[1] <= '7';
+}
+
+/* For a picture that doesn't give its resolution: the usual scanning
+ * resolution that makes it no bigger than a sheet of paper (8.5 x 14
+ * inches, either way round), so a 300 dpi A4 scan comes out A4. Small
+ * pictures stay at 96 dpi, as MuPDF assumes. */
+int folio_paper_dpi(int w, int h)
+{
+	static const int dpi[] = { 96, 150, 200, 300, 400, 600, 1200 };
+	int i, lo = w < h ? w : h, hi = w < h ? h : w;
+	for (i = 0; i < (int)(sizeof dpi / sizeof dpi[0]); i++)
+		if (lo <= dpi[i] * 17 / 2 && hi <= dpi[i] * 14)
+			return dpi[i];
+	return 1200;
+}
+
 static void add_picture_pages(fz_context *ctx, pdf_document *pdf, const char *const *paths, int n, int dpi)
 {
 	fz_image *img = NULL;
@@ -372,6 +405,8 @@ static void add_picture_pages(fz_context *ctx, pdf_document *pdf, const char *co
 			 * scanners' JPEGs don't always say), else the picture's own. */
 			if (dpi > 0)
 				xres = yres = dpi;
+			else if (is_netpbm(ctx, paths[i]))
+				xres = yres = folio_paper_dpi(img->w, img->h);
 			else
 				fz_image_resolution(img, &xres, &yres);
 			w = img->w * 72.0f / xres;
@@ -500,6 +535,11 @@ static void combine_one(fz_context *ctx, pdf_document *dst, const char *path)
 	fz_var(res);
 	fz_var(obj);
 	fz_var(dev);
+	if (is_netpbm(ctx, path)) {
+		/* Sized as Pictures to a PDF sizes it. */
+		add_picture_pages(ctx, dst, &path, 1, 0);
+		return;
+	}
 	fz_try(ctx) {
 		pdf_document *src;
 		doc = fz_open_document(ctx, path);

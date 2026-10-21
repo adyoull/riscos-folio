@@ -29,8 +29,9 @@ running RISC OS 5, but expect rough edges. The design is in
   pages (1-10, or 1-3, 20, 45-50), a PDF's pages copied as they are; a CBZ's
   JPEGs go in unchanged. *Save page pictures* writes the chosen pages as
   pictures in a directory: a scanned page's own JPEG, byte for byte, else a
-  PNG. Drag a **directory of pictures** to Folio to make a PDF of them, a
-  page each in name order, JPEGs not compressed again.
+  PNG. Drag a **directory of pictures** (JPEG, PNG, GIF, BMP, TIFF,
+  PBM/PGM/PPM) to Folio to make a PDF of them, a page each in name order,
+  JPEGs not compressed again.
 - **Scan** (icon bar menu): scan from a network scanner with eSCL (AirScan),
   no driver needed: find it on the network or type its address, choose
   glass or feeder (both sides), colour or grey, resolution, size, brightness

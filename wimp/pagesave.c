@@ -399,12 +399,15 @@ void pagesave_forget(docwin *w)
 static int picture_type(int type, const char *leaf)
 {
 	const char *dot;
-	if (type == 0xc85 || type == 0xb60 || type == 0x695 || type == 0x69c || type == 0xff0)
+	/* JPEG, PNG, GIF, BMP, TIFF, PBMPlus (PBM, PGM, PPM). */
+	if (type == 0xc85 || type == 0xb60 || type == 0x695 || type == 0x69c || type == 0xff0 ||
+			type == 0x69e)
 		return 1;
 	/* Untyped, from elsewhere: by the name's ending (Page1/jpg). */
 	dot = strrchr(leaf, '/');
 	if ((type == 0xffd || type == -1) && dot) {
-		static const char *const ends[] = { "jpg", "jpeg", "png", "gif", "bmp", "tif", "tiff", NULL };
+		static const char *const ends[] = { "jpg", "jpeg", "png", "gif", "bmp", "tif", "tiff",
+			"pbm", "pgm", "ppm", "pnm", "pam", NULL };
 		int i;
 		for (i = 0; ends[i]; i++) {
 			const char *a = dot + 1, *b = ends[i];
@@ -554,8 +557,8 @@ int pagesave_folder(const char *dir)
 	n = pagesave_list(dir, 0, &names);
 	if (n == 0) {
 		char m[300];
-		snprintf(m, sizeof m, "There are no pictures in '%s'. Folio makes a PDF from the JPEG, PNG, GIF, BMP "
-			"and TIFF files in a directory dragged to it, a page for each.", leaf);
+		snprintf(m, sizeof m, "There are no pictures in '%s'. Folio makes a PDF from the JPEG, PNG, GIF, BMP, "
+			"TIFF and PBM/PGM/PPM files in a directory dragged to it, a page for each.", leaf);
 		tbx_report(m);
 		free(names);
 		return 1;

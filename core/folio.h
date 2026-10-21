@@ -394,6 +394,10 @@ int folio_images_to_pdf_res(folio_ctx *fc, const char *const *paths, int n, int 
  * reads (CBZ, XPS, an ebook) drawn into PDF pages, JPEGs kept as they are.
  * 0 or -1 (folio_error names the file that failed). */
 int folio_combine(folio_ctx *fc, const char *const *paths, int n, const char *path);
+/* The resolution given to a w x h pixel picture that doesn't say (Netpbm):
+ * the usual scanning resolution (96, 150, 200, 300, 400, 600, 1200) that
+ * makes it no bigger than 8.5 x 14 inches. */
+int folio_paper_dpi(int w, int h);
 /* Turning PDF pages: the chosen pages turned by degrees (90 clockwise,
  * -90 anticlockwise, 180), one undoable operation; their recognised text
  * (OCR) is dropped. And a page's turn now (0, 90, 180, 270). */

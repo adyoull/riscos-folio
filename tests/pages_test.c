@@ -297,6 +297,70 @@ int main(int argc, char **argv)
 	}
 
 	printf("Joining files\n");
+	/* Netpbm pictures with no name ending, as on RISC OS (type &69E):
+	 * plain and raw PBM (1 bit), PGM (grey) and PPM (colour). */
+	{
+		static const char *const pnm[4] = { OUT "/pbmplain", OUT "/pbmraw", OUT "/pgm", OUT "/ppm" };
+		FILE *f;
+		int y;
+		if ((f = fopen(pnm[0], "wb"))) {
+			fprintf(f, "P1\n# plain\n8 4\n");
+			for (y = 0; y < 4; y++)
+				fprintf(f, "1 0 1 0 1 0 1 0\n");
+			fclose(f);
+		}
+		if ((f = fopen(pnm[1], "wb"))) {
+			fprintf(f, "P4\n16 8\n");
+			for (y = 0; y < 16; y++)
+				fputc(y & 1 ? 0xf0 : 0x0f, f);
+			fclose(f);
+		}
+		if ((f = fopen(pnm[2], "wb"))) {
+			fprintf(f, "P5\n4 4\n255\n");
+			for (y = 0; y < 16; y++)
+				fputc(y * 16, f);
+			fclose(f);
+		}
+		if ((f = fopen(pnm[3], "wb"))) {
+			fprintf(f, "P6\n4 2\n255\n");
+			for (y = 0; y < 24; y++)
+				fputc(y * 10, f);
+			fclose(f);
+		}
+		CHECK(folio_images_to_pdf(fc, pnm, 4, OUT "/pnm.pdf") == 0, "PBM/PGM/PPM to a PDF: %s", folio_error(fc));
+		CHECK(folio_combine(fc, pnm, 4, OUT "/pnm2.pdf") == 0, "PBM/PGM/PPM combined: %s", folio_error(fc));
+		d = folio_open(fc, OUT "/pnm.pdf", NULL);
+		CHECK(d && pages(d) == 4, "4 Netpbm pages (%d)", d ? pages(d) : -1);
+		if (d)
+			folio_close(d);
+		d = folio_open(fc, OUT "/pnm2.pdf", NULL);
+		CHECK(d && pages(d) == 4, "4 Netpbm pages combined (%d)", d ? pages(d) : -1);
+		if (d)
+			folio_close(d);
+		CHECK(folio_paper_dpi(16, 8) == 96, "small: 96 dpi");
+		CHECK(folio_paper_dpi(2480, 3508) == 300, "A4 at 300 dpi (%d)", folio_paper_dpi(2480, 3508));
+		CHECK(folio_paper_dpi(3508, 2480) == 300, "A4 landscape at 300 dpi");
+		CHECK(folio_paper_dpi(2550, 3300) == 300, "Letter at 300 dpi");
+		CHECK(folio_paper_dpi(4960, 7016) == 600, "A4 at 600 dpi (%d)", folio_paper_dpi(4960, 7016));
+		CHECK(folio_paper_dpi(1654, 2339) == 200, "A4 at 200 dpi (%d)", folio_paper_dpi(1654, 2339));
+		/* A 300 dpi A4 PBM comes out A4, joined or made. */
+		if ((f = fopen(OUT "/a4pbm", "wb"))) {
+			fprintf(f, "P4\n2480 3508\n");
+			for (y = 0; y < 310 * 3508; y++)
+				fputc(y % 310 < 2 ? 0xff : 0, f);
+			fclose(f);
+		}
+		{
+			const char *one[1] = { OUT "/a4pbm" };
+			float pw2, ph2;
+			CHECK(folio_combine(fc, one, 1, OUT "/a4pbm.pdf") == 0, "A4 PBM: %s", folio_error(fc));
+			d = folio_open(fc, OUT "/a4pbm.pdf", NULL);
+			CHECK(d && folio_page_size(d, L(0), &pw2, &ph2) == 0 && pw2 > 594 && pw2 < 596 &&
+				ph2 > 841 && ph2 < 843, "A4 PBM is an A4 page (%g x %g)", d ? pw2 : 0, d ? ph2 : 0);
+			if (d)
+				folio_close(d);
+		}
+	}
 	{
 		/* made.pdf (scan1, scan2, scan3.png), scan2.jpg alone, the CBZ
 		 * (scan1-3), hidden.pdf (scan1 + hidden text): 8 pages. */

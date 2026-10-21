@@ -222,31 +222,35 @@ Save page pictures
   usually the page's way up; if the PDF turns it, the file isn't turned.
 
 Pictures to a PDF
-  Drag a directory of pictures (JPEG, PNG, GIF, BMP or TIFF) to Folio's
-  icon, or to a document window, and Folio makes a PDF of them, a page for
-  each, in name order (Page2 comes before Page10), and opens it. Each page
-  is the picture's size at its own resolution. A JPEG goes in as it is, not
-  compressed again; other pictures go in without losing anything. The new
-  PDF is named after the directory and isn't saved anywhere yet: Save...
-  (F3) puts it where you want it, and Folio asks before it's closed
-  unsaved. So: Save page pictures for a few pages, change the pictures in
-  another program, drag the directory back to Folio, and compare.
+  Drag a directory of pictures (JPEG, PNG, GIF, BMP, TIFF, or PBM, PGM and
+  PPM, which RISC OS calls PBMPlus, &69E) to Folio's icon, or to a
+  document window, and Folio makes a PDF of them, a page for each, in name
+  order (Page2 comes before Page10), and opens it. Each page is the
+  picture's size at its own resolution. PBM, PGM and PPM files don't
+  record one, so Folio takes the usual scanning resolution (150, 200, 300,
+  400 or 600 dpi) that makes the page paper-sized: a 300 dpi A4 scan comes
+  out A4. A JPEG goes in as it is, not compressed again; other pictures go
+  in without losing anything. The new PDF is named after the directory and
+  isn't saved anywhere yet: Save... (F3) puts it where you want it, and
+  Folio asks before it's closed unsaved. So: Save page pictures for a few
+  pages, change the pictures in another program, drag the directory back
+  to Folio, and compare.
 
 Create PDF (joining files)
   Create PDF... on the icon bar menu opens a window to collect files in.
-  Drag PDFs, pictures (JPEG, PNG, GIF, BMP, TIFF) or other documents Folio
-  reads (CBZ, XPS, ebooks) into it, several at a time if you like; a
-  directory dragged in adds its PDFs and pictures in name order. They're
-  listed in the order they'll go. Click one to choose it; the buttons at
-  the top move it Up or Down, Remove it from the list (the file isn't
-  touched), Sort the list by name (Page2 before Page10) or Clear it.
-  Create PDF joins them into one new PDF, which opens in a window called
-  Combined, unsaved: Save... (F3) puts it where you want it. A PDF's pages
-  are copied just as they are (pictures, fonts, notes, form fields), a
-  picture becomes a page of its own size, JPEGs aren't compressed again,
-  and an ebook is laid out as Folio shows it. The list stays, so you can
-  change it and make the PDF again. A PDF that needs a password has to be
-  opened and saved without it first.
+  Drag PDFs, pictures (JPEG, PNG, GIF, BMP, TIFF, PBM/PGM/PPM) or other
+  documents Folio reads (CBZ, XPS, ebooks) into it, several at a time if
+  you like; a directory dragged in adds its PDFs and pictures in name
+  order. They're listed in the order they'll go. Click one to choose it;
+  the buttons at the top move it Up or Down, Remove it from the list (the
+  file isn't touched), Sort the list by name (Page2 before Page10) or
+  Clear it. Create PDF joins them into one new PDF, which opens in a
+  window called Combined, unsaved: Save... (F3) puts it where you want it.
+  A PDF's pages are copied just as they are (pictures, fonts, notes, form
+  fields), a picture becomes a page of its own size, JPEGs aren't
+  compressed again, and an ebook is laid out as Folio shows it. The list
+  stays, so you can change it and make the PDF again. A PDF that needs a
+  password has to be opened and saved without it first.
 
 Scanning (network scanners)
   Scan... on the icon bar menu scans from a scanner on the network with
