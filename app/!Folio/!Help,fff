@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test55)
+Folio (test build 0.0.1-test58)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -246,11 +246,12 @@ Create PDF (joining files)
   file isn't touched), Sort the list by name (Page2 before Page10) or
   Clear it. Create PDF joins them into one new PDF, which opens in a
   window called Combined, unsaved: Save... (F3) puts it where you want it.
-  A PDF's pages are copied just as they are (pictures, fonts, notes, form
-  fields), a picture becomes a page of its own size, JPEGs aren't
-  compressed again, and an ebook is laid out as Folio shows it. The list
-  stays, so you can change it and make the PDF again. A PDF that needs a
-  password has to be opened and saved without it first.
+  The Create PDF window stays open, so you can change the list and make
+  another. A PDF's pages are copied just as they are (pictures, fonts,
+  notes, form fields), a picture becomes a page of its own size, JPEGs
+  aren't compressed again, and an ebook is laid out as Folio shows it. The
+  list stays, so you can change it and make the PDF again. A PDF that
+  needs a password has to be opened and saved without it first.
 
 Scanning (network scanners)
   Scan... on the icon bar menu scans from a scanner on the network with

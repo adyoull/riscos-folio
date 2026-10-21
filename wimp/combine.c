@@ -80,7 +80,9 @@ static void button(button_gadget *b, int id, int x0, int x1, const char *text, i
 		const char *help)
 {
 	gadget_hdr *h = &b->h;
-	h->flags = 0;
+	/* Local: without it the Toolbox closes the window after each click
+	 * (test49-56 closed it on Up, Down...). */
+	h->flags = 1 << 2;
 	h->type = ((int)sizeof *b << 16) | 128;
 	h->x0 = x0;
 	h->y0 = -TB_H + 8;
