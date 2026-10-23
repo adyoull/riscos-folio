@@ -166,18 +166,19 @@ static void create_objects(void)
 	entry(&dm, 2, DOC_EXPORT_DRAW, "Export page as Draw...", 0, EV_EXPORT_DRAW, "Click to save the page you're reading as a Draw file: its text as outlines, each picture as a sprite of its own.");
 	entry(&dm, 3, DOC_SAVE_PAGES, "Save pages as PDF...", 0, EV_SAVE_PAGES, "Click to make a new PDF of some of the pages, such as 1-10. A PDF's pages are copied just as they are.");
 	entry(&dm, 4, DOC_SAVE_PICTURES, "Save page pictures...", 0, EV_SAVE_PICTURES, "Click to save pages as picture files in a directory: a scanned page's own JPEG, unchanged; other pages drawn as PNG.");
-	entry(&dm, 5, DOC_ROTATE, "Rotate", MENU_SUBMENU, 0, "Move right to turn the page, or every page, a quarter or half turn (PDFs). Save to keep it.");
-	entry(&dm, 6, DOC_PASSWORD, "Password...", 0, EV_PASSWORD, "Click to put a password on the document, or take one off (PDFs).");
-	entry(&dm, 7, DOC_INFO, "Document info...", MENU_DOTTED, EV_DOCINFO, "Click to see the document's properties: title, author, dates, page size, security and more.");
-	entry(&dm, 8, 3, "Edit", MENU_SUBMENU, 0, "Move right for undo, copying, highlighting and notes.");
-	entry(&dm, 9, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
-	entry(&dm, 10, 2, "Navigate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right for moving through the document.");
+	entry(&dm, 5, DOC_SAVE_TEXT, "Save pages as text...", 0, EV_SAVE_TEXT, "Click to save the text of some of the pages, such as 1-10, as a text file: a paragraph a line, with scanned pages' recognised text.");
+	entry(&dm, 6, DOC_ROTATE, "Rotate", MENU_SUBMENU, 0, "Move right to turn the page, or every page, a quarter or half turn (PDFs). Save to keep it.");
+	entry(&dm, 7, DOC_PASSWORD, "Password...", 0, EV_PASSWORD, "Click to put a password on the document, or take one off (PDFs).");
+	entry(&dm, 8, DOC_INFO, "Document info...", MENU_DOTTED, EV_DOCINFO, "Click to see the document's properties: title, author, dates, page size, security and more.");
+	entry(&dm, 9, 3, "Edit", MENU_SUBMENU, 0, "Move right for undo, copying, highlighting and notes.");
+	entry(&dm, 10, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
+	entry(&dm, 11, 2, "Navigate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right for moving through the document.");
 	/* The context item (DESIGN §3.4): its text names the word when it's shown. */
-	entry(&dm, 11, DOC_FIND, "Find...        F4", 0, EV_FIND, "Click to find text in the document.");
-	entry(&dm, 12, DOC_DEFINE, "Define", MENU_FADED | MENU_DOTTED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
-	dm.e[12].max_text = 80;
-	entry(&dm, 13, DOC_SHELF, "On bookshelf", 0, EV_ADD_SHELF, "Click to put this document on the bookshelf, or take it off.");
-	ndm = 14;
+	entry(&dm, 12, DOC_FIND, "Find...        F4", 0, EV_FIND, "Click to find text in the document.");
+	entry(&dm, 13, DOC_DEFINE, "Define", MENU_FADED | MENU_DOTTED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
+	dm.e[13].max_text = 80;
+	entry(&dm, 14, DOC_SHELF, "On bookshelf", 0, EV_ADD_SHELF, "Click to put this document on the bookshelf, or take it off.");
+	ndm = 15;
 	/* Text recognition: only with the OCR plugin. */
 	if (ocr_available()) {
 		entry(&dm, ndm++, DOC_OCR, "Text recognition", MENU_SUBMENU, 0, "Move right to read the text in scanned pages, so it can be found, selected, copied and read aloud.");
@@ -471,7 +472,7 @@ static int toolbox_event(int *b)
 		 * numbered later (test49's Save pages and Save page pictures, and
 		 * Full screen, were outside the range and did nothing). */
 		if ((code >= EV_DARK && code < 0x200) || code == EV_FULL_SCREEN || code == EV_SAVE_PAGES ||
-				code == EV_SAVE_PICTURES) {
+				code == EV_SAVE_PICTURES || code == EV_SAVE_TEXT) {
 			if ((w = window_for_event()) != NULL)
 				docwin_event(w, code);
 			else

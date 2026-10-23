@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test58 (21-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test59 (23-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -37,7 +37,7 @@ enum {
 	EV_CHOICES = 0x280, EV_CHOICES_DEFAULT, EV_CHOICES_CANCEL, EV_CHOICES_SAVE,
 	EV_ASK_OK = 0x290, EV_ASK_CANCEL,
 	EV_FILL_FORM = 0x2a0,   /* not a menu entry: filling in a form (docwin_allows) */
-	EV_FULL_SCREEN = 0x2b0, EV_SAVE_PAGES, EV_SAVE_PICTURES,
+	EV_FULL_SCREEN = 0x2b0, EV_SAVE_PAGES, EV_SAVE_PICTURES, EV_SAVE_TEXT,
 	EV_PAGES_OK = 0x2c0, EV_PAGES_CANCEL,
 	EV_CREATE_PDF = 0x2d0, EV_CP_UP, EV_CP_DOWN, EV_CP_REMOVE, EV_CP_SORT, EV_CP_CLEAR, EV_CP_CREATE,
 	EV_SCAN = 0x2e0, EV_SC_FIND, EV_SC_SCAN, EV_SC_STOP, EV_SC_ADD,
@@ -51,7 +51,7 @@ enum { EDIT_COPY = 1, EDIT_SELECT_ALL, EDIT_CLEAR, EDIT_UNDO, EDIT_REDO, EDIT_HI
 enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6, DOC_SHELF = 7, DOC_PASSWORD = 8,
 	DOC_READ = 9, DOC_SPEAKSEL = 10, DOC_SPEED = 11, DOC_PRINT = 12, DOC_EXPORT_DRAW = 13,
 	DOC_OCR = 14, DOC_INFO = 15, DOC_SAVE_PAGES = 16, DOC_SAVE_PICTURES = 17,
-	DOC_ROTATE = 18 };
+	DOC_ROTATE = 18, DOC_SAVE_TEXT = 19 };
 /* Rotate submenu entries. */
 enum { ROT_CW = 1, ROT_ACW, ROT_180, ROTALL_CW, ROTALL_ACW };
 /* Text recognition menu entries. */
@@ -268,7 +268,8 @@ int export_event(int *block);            /* 1 if it was its SaveAs box's */
 /* pagesave.c: Save pages as PDF... / Save page pictures... (pictures = 1);
  * a directory of pictures dropped on Folio made into a new PDF (returns 1
  * if it dealt with it). */
-void pagesave_open(docwin *w, int pictures);
+/* kind: 0 pages as PDF, 1 page pictures, 2 pages as text */
+void pagesave_open(docwin *w, int kind);
 void pagesave_event(int code);
 int pagesave_saveas_event(int *block);
 void pagesave_forget(docwin *w);

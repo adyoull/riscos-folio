@@ -398,6 +398,14 @@ int folio_combine(folio_ctx *fc, const char *const *paths, int n, const char *pa
  * the usual scanning resolution (96, 150, 200, 300, 400, 600, 1200) that
  * makes it no bigger than 8.5 x 14 inches. */
 int folio_paper_dpi(int w, int h);
+/* The chosen pages' text (UTF-8, malloc'd; free()), in reading order: each
+ * paragraph one line, a blank line between paragraphs and between pages; a
+ * re-flowed book's sentence carried over a page break is joined. Scanned
+ * pages give their recognised text if they have it. *empty counts pages
+ * with no text at all. progress (or NULL) is called before each page with
+ * the pages done. NULL on error (folio_error). */
+char *folio_pages_text(folio_doc *doc, const unsigned char *sel, int count, int *empty,
+		void (*progress)(int done, void *arg), void *arg);
 /* Turning PDF pages: the chosen pages turned by degrees (90 clockwise,
  * -90 anticlockwise, 180), one undoable operation; their recognised text
  * (OCR) is dropped. And a page's turn now (0, 90, 180, 270). */

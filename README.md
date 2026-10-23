@@ -5,7 +5,7 @@ It's built on [MuPDF](https://mupdf.com) with a native front end that follows
 the RISC OS Style Guide, and takes its ideas for markup and reading from
 Flexcil. "Folio" is a working name.
 
-Status: **test builds** (0.0.1-test58). It's used day to day on a Raspberry Pi
+Status: **test builds** (0.0.1-test59). It's used day to day on a Raspberry Pi
 running RISC OS 5, but expect rough edges. The design is in
 [`docs/DESIGN.md`](docs/DESIGN.md).
 
@@ -29,7 +29,8 @@ running RISC OS 5, but expect rough edges. The design is in
   pages (1-10, or 1-3, 20, 45-50), a PDF's pages copied as they are; a CBZ's
   JPEGs go in unchanged. *Save page pictures* writes the chosen pages as
   pictures in a directory: a scanned page's own JPEG, byte for byte, else a
-  PNG. Drag a **directory of pictures** (JPEG, PNG, GIF, BMP, TIFF,
+  PNG. *Save pages as text* writes their text as a text file, a paragraph
+  a line (scanned pages' recognised text included). Drag a **directory of pictures** (JPEG, PNG, GIF, BMP, TIFF,
   PBM/PGM/PPM) to Folio to make a PDF of them, a page each in name order,
   JPEGs not compressed again.
 - **Scan** (icon bar menu): scan from a network scanner with eSCL (AirScan),

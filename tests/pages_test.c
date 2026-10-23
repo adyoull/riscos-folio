@@ -297,6 +297,67 @@ int main(int argc, char **argv)
 	}
 
 	printf("Joining files\n");
+	/* Pages as text. */
+	{
+		char path[512], *t;
+		unsigned char sel[2] = { 1, 1 };
+		int empty;
+		folio_doc *td;
+		snprintf(path, sizeof path, "%s/speech.pdf", dir);
+		td = folio_open(fc, path, NULL);
+		CHECK(td != NULL, "open speech.pdf");
+		if (td) {
+			while (folio_count_step(td, 100) == 0)
+				;
+			t = folio_pages_text(td, sel, 2, &empty, NULL, NULL);
+			CHECK(t && empty == 0, "speech.pdf text (%d empty)", empty);
+			if (t) {
+				CHECK(!strncmp(t, "Chapter One\n\nThe quick brown fox", strlen("Chapter One\n\nThe quick brown fox")), "heading, blank line, paragraph: '%.40s'", t);
+				CHECK(strstr(t, "It is an example of a word split") != NULL, "hyphenated word joined");
+				CHECK(strstr(t, "line.\n\nThe second page has one more sentence.\n") != NULL,
+					"a blank line between pages, ends with a newline");
+				CHECK(!strstr(t, "\n\n\n"), "never two blank lines");
+				free(t);
+			}
+			sel[0] = 0;
+			t = folio_pages_text(td, sel, 2, &empty, NULL, NULL);
+			CHECK(t && !strcmp(t, "The second page has one more sentence.\n"), "page 2 only: '%s'", t ? t : "(null)");
+			free(t);
+			folio_close(td);
+		}
+		snprintf(path, sizeof path, "%s/scan.pdf", dir);
+		td = folio_open(fc, path, NULL);
+		if (td) {
+			while (folio_count_step(td, 100) == 0)
+				;
+			sel[0] = 1;
+			t = folio_pages_text(td, sel, 2, &empty, NULL, NULL);
+			CHECK(t && empty == 1 && !strcmp(t, "The second page has one more sentence.\n"),
+				"a scan with no recognised text is an empty page (%d): '%s'", empty, t ? t : "(null)");
+			free(t);
+			sel[1] = 0;
+			t = folio_pages_text(td, sel, 2, &empty, NULL, NULL);
+			CHECK(t && empty == 1 && !t[0], "only the scan: no text");
+			free(t);
+			folio_close(td);
+		}
+		snprintf(path, sizeof path, "%s/book.epub", dir);
+		td = folio_open(fc, path, NULL);
+		if (td) {
+			int exact = 0, n;
+			unsigned char *all;
+			while (folio_count_step(td, 100) == 0)
+				;
+			n = folio_page_count(td, &exact);
+			all = malloc((size_t)n);
+			memset(all, 1, (size_t)n);
+			t = folio_pages_text(td, all, n, &empty, NULL, NULL);
+			CHECK(t && strlen(t) > 1000, "the book's text (%d pages, %d chars)", n, t ? (int)strlen(t) : -1);
+			free(t);
+			free(all);
+			folio_close(td);
+		}
+	}
 	/* Netpbm pictures with no name ending, as on RISC OS (type &69E):
 	 * plain and raw PBM (1 bit), PGM (grey) and PPM (colour). */
 	{

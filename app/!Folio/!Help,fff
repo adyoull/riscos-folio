@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test58)
+Folio (test build 0.0.1-test59)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -148,11 +148,11 @@ Document info
 Restrictions (PDFs)
   A PDF's author can say it mustn't be printed, copied from or filled in.
   Folio keeps to that: Print, Copy, Export page as Draw, Save pages as
-  PDF, Save page pictures, filling in its
-  form and (if the author doesn't allow text for screen readers either)
-  Read aloud say so instead, and offer to lift it with the document's
-  owner password. To have Folio ignore such restrictions, untick "Keep to
-  a PDF's limits on printing and copying" in the Choices window.
+  PDF, Save page pictures, Save pages as text, filling in its form and (if
+  the author doesn't allow text for screen readers either) Read aloud say
+  so instead, and offer to lift it with the document's owner password. To
+  have Folio ignore such restrictions, untick "Keep to a PDF's limits on
+  printing and copying" in the Choices window.
 
 Security
   Folio asks before following a link out of a document (to a web page, an
@@ -220,6 +220,18 @@ Save page pictures
   several pictures) is drawn at the resolution in the box, 150 dpi unless
   you change it, as a PNG. A JPEG is saved as it is stored, which is
   usually the page's way up; if the PDF turns it, the file isn't turned.
+
+Save pages as text
+  Save pages as text... saves the chosen pages' text as a text file (drag
+  its icon to where it should go). Each paragraph is one line, which Edit
+  and StrongED wrap to the window, with a blank line between paragraphs
+  and between pages. Words split at a line's end are joined again. In an
+  ebook, a sentence carried over from one page to the next is joined up. A
+  scanned page has only a picture of its text: its text is saved if Folio
+  has recognised it (Text recognition, with the OCR plugin), and Folio
+  says so if none of the pages has any. The file is in the desktop's
+  alphabet, as Copy is (Latin-1, unless the alphabet is UTF-8), so
+  characters it hasn't got, such as Chinese or Japanese, become '?'.
 
 Pictures to a PDF
   Drag a directory of pictures (JPEG, PNG, GIF, BMP, TIFF, or PBM, PGM and

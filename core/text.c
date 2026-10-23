@@ -5,6 +5,7 @@
 #include "folio_int.h"
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 fz_stext_page *folio_get_text(folio_doc *doc, folio_cpage *cp)
 {
@@ -384,6 +385,74 @@ static const char *unligature(int c)
 	return NULL;
 }
 
+/* Does text block b carry on the sentence that block a ends without
+ * finishing? Some PDFs (double-spaced text, recognised scans) make each line
+ * a block of its own, and a block ends a paragraph, so reading aloud paused
+ * at every line end. b continues a if a doesn't end a sentence, the text is
+ * the same size, b starts in line with a's last line and close below it, and
+ * that line fills the column (it was wrapped: a short line is a heading or
+ * a list item). *hyphen is set when a ends "exam-" and b goes on "ple". */
+static float line_w(fz_stext_line *l) { return l->bbox.x1 - l->bbox.x0; }
+
+static int block_continues(fz_stext_block *a, fz_stext_block *b, int *hyphen)
+{
+	fz_stext_line *la, *fb, *l;
+	fz_stext_char *last = NULL, *first, *ch;
+	float lh, gap, col = 0, sa, sb;
+	*hyphen = 0;
+	if (!a || !b || a->type != FZ_STEXT_BLOCK_TEXT || b->type != FZ_STEXT_BLOCK_TEXT)
+		return 0;
+	la = a->u.t.last_line;
+	fb = b->u.t.first_line;
+	if (!la || !fb || !fb->first_char)
+		return 0;
+	for (ch = la->first_char; ch; ch = ch->next)
+		if (ch->c > ' ')
+			last = ch;
+	for (first = fb->first_char; first && first->c <= ' '; first = first->next)
+		;
+	if (!last || !first)
+		return 0;
+	/* The sentence (or a list's lead-in) ends here: a closing quote or
+	 * bracket after . ! ? counts too. */
+	{
+		fz_stext_char *end = NULL;
+		for (ch = la->first_char; ch; ch = ch->next) {
+			if (ch->c <= ' ')
+				continue;
+			if (ch->c == '"' || ch->c == '\'' || ch->c == ')' || ch->c == ']' || ch->c == 0x201d ||
+					ch->c == 0x2019 || ch->c == 0xbb)
+				continue;
+			end = ch;
+		}
+		if (end && (end->c == '.' || end->c == '!' || end->c == '?' || end->c == ':' || end->c == 0x2026))
+			return 0;
+	}
+	sa = last->size;
+	sb = first->size;
+	if (sa <= 0 || sb <= 0 || sb < sa * 0.85f || sb > sa * 1.18f)
+		return 0;
+	lh = la->bbox.y1 - la->bbox.y0;
+	if (lh <= 0)
+		lh = sa;
+	gap = fb->bbox.y0 - la->bbox.y1;
+	if (gap < -0.3f * lh || gap > 2.5f * lh)
+		return 0;
+	if (fabsf(fb->bbox.x0 - la->bbox.x0) > 3 * sa)
+		return 0;
+	for (l = a->u.t.first_line; l; l = l->next)
+		if (line_w(l) > col)
+			col = line_w(l);
+	for (l = fb; l; l = l->next)
+		if (line_w(l) > col)
+			col = line_w(l);
+	if (line_w(la) < 0.7f * col)
+		return 0;
+	if (fz_is_unicode_hyphen(last->c) && first->c >= 'a' && first->c <= 'z')
+		*hyphen = 1;
+	return 1;
+}
+
 int folio_get_page_text(folio_doc *doc, folio_loc loc, folio_page_text *t)
 {
 	fz_context *ctx = doc->ctx;
@@ -424,9 +493,27 @@ int folio_get_page_text(folio_doc *doc, folio_loc loc, folio_page_text *t)
 					tb_put(&b, " ", 1, -1);
 			}
 			if (any) {
+				fz_stext_block *nb;
+				int hyphen;
 				if (b.len && b.text[b.len - 1] == ' ' && b.byte_char[b.len - 1] == -1)
 					b.len--;          /* the last line's space */
-				tb_put(&b, "\n\n", 2, -1);
+				for (nb = blk->next; nb && nb->type == FZ_STEXT_BLOCK_TEXT && !nb->u.t.first_line; nb = nb->next)
+					;
+				if (block_continues(blk, nb, &hyphen)) {
+					if (hyphen) {
+						/* Take the hyphen (its UTF-8 bytes) off: "exam" + "ple". */
+						int k = b.len - 1, c = 0;
+						while (k > 0 && ((unsigned char)b.text[k] & 0xc0) == 0x80)
+							k--;
+						if (k >= 0) {
+							fz_chartorune(&c, b.text + k);
+							if (fz_is_unicode_hyphen(c))
+								b.len = k;
+						}
+					} else
+						tb_put(&b, " ", 1, -1);
+				} else
+					tb_put(&b, "\n\n", 2, -1);
 			}
 		}
 		if (b.bad)

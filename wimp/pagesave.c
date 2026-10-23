@@ -6,6 +6,9 @@
  *    resolution for pages that aren't one picture; then a SaveAs box: a PDF
  *    file, or a directory of pictures (Page001, Page002...): JPEG (&C85) when
  *    the page is one JPEG picture, stored as it was; else PNG (&B60).
+ *  - Save pages as text... (document menu): the same box, then a Text file
+ *    (&FFF) of those pages' text, a paragraph a line, in the desktop's
+ *    alphabet; scanned pages give their recognised text.
  *  - A directory of pictures dropped on Folio's icon or a document window
  *    becomes a new PDF, a page per picture in name order (Page2 before
  *    Page10), opened in a window to look at and save. */
@@ -57,13 +60,16 @@ typedef struct {
 	label_gadget dpi_units;
 } box_gadgets;
 
+/* The three kinds of saving, each with its own box. */
+enum { K_PDF, K_PICTURES, K_TEXT, K_COUNT };
+
 static struct {
-	ObjectId box[2];            /* 0: pages as PDF, 1: page pictures */
-	ObjectId saveas[2];
-	box_gadgets g[2];
-	char pages_buf[2][64], of_buf[2][32], dpi_buf[8];
+	ObjectId box[K_COUNT];
+	ObjectId saveas[K_COUNT];
+	box_gadgets g[K_COUNT];
+	char pages_buf[K_COUNT][64], of_buf[K_COUNT][32], dpi_buf[8];
 	docwin *w;
-	int pictures;               /* which is being used */
+	int kind;                   /* which is being used */
 	unsigned char *sel;         /* the pages chosen */
 	int count, n, dpi;
 } ps;
@@ -89,12 +95,25 @@ static void hdr(gadget_hdr *h, int type, int size, int id, int x0, int y0, int x
 
 #define BOX_W 600
 
-static ObjectId create_box(int pictures)
+static ObjectId create_box(int kind)
 {
-	static tbx_window t[2];
-	static char title[2][40] = { "Save pages as PDF", "Save page pictures" };
-	box_gadgets *g = &ps.g[pictures];
-	tbx_window *tw = &t[pictures];
+	static tbx_window t[K_COUNT];
+	static char title[K_COUNT][40] = { "Save pages as PDF", "Save page pictures", "Save pages as text" };
+	static const char *const pages_help[K_COUNT] = {
+		"Type the pages to put in the new PDF, such as 1-10, or 1-3, 20, 45-50.|MLeave it as 'all' for every page.",
+		"Type the pages whose pictures you want, such as 1-10, or 1-3, 20, 45-50.|MLeave it as 'all' for every page.",
+		"Type the pages whose text you want, such as 1-10, or 1-3, 20, 45-50.|MLeave it as 'all' for every page." };
+	static const char *const save_help[K_COUNT] = {
+		"Click (or press Return) to choose where the new PDF goes.",
+		"Click (or press Return) to choose where the directory of pictures goes.",
+		"Click (or press Return) to choose where the text file goes." };
+	static const char *const box_help[K_COUNT] = {
+		"Use this box to make a new PDF of some of this document's pages.",
+		"Use this box to save pages' pictures as files: a scanned page's own JPEG, unchanged.",
+		"Use this box to save the text of some of this document's pages as a text file." };
+	int pictures = kind == K_PICTURES;
+	box_gadgets *g = &ps.g[kind];
+	tbx_window *tw = &t[kind];
 	int box_h = pictures ? 248 : 184, by = -box_h + 16;
 	ObjectId id = 0;
 	_kernel_oserror *e;
@@ -102,27 +121,23 @@ static ObjectId create_box(int pictures)
 	memset(g, 0, sizeof *g);
 	hdr(&g->label.h, 320, sizeof g->label, S_LABEL, 16, -84, 112, -36, NULL);
 	g->label.label = "Pages";
-	hdr(&g->pages.h, 512, sizeof g->pages, S_PAGES, 112, -88, 400, -32, pictures ?
-		"Type the pages whose pictures you want, such as 1-10, or 1-3, 20, 45-50.|MLeave it as 'all' for every page." :
-		"Type the pages to put in the new PDF, such as 1-10, or 1-3, 20, 45-50.|MLeave it as 'all' for every page.");
-	g->pages.text = ps.pages_buf[pictures];
-	g->pages.max_text = sizeof ps.pages_buf[pictures];
+	hdr(&g->pages.h, 512, sizeof g->pages, S_PAGES, 112, -88, 400, -32, pages_help[kind]);
+	g->pages.text = ps.pages_buf[kind];
+	g->pages.max_text = sizeof ps.pages_buf[kind];
 	g->pages.allowable = "0-9,\\- aAlL";
 	g->pages.max_allowable = 12;
 	g->pages.before = -1;
 	g->pages.after = pictures ? S_DPI : -1;
 	hdr(&g->of.h, 448, sizeof g->of, S_OF, 408, -84, BOX_W - 16, -36, NULL);
-	g->of.text = ps.of_buf[pictures];
-	g->of.max_text = sizeof ps.of_buf[pictures];
+	g->of.text = ps.of_buf[kind];
+	g->of.max_text = sizeof ps.of_buf[kind];
 	hdr(&g->cancel.h, 128, sizeof g->cancel, S_CANCEL, BOX_W - 360, by, BOX_W - 200, by + 68,
 		"Click to close this box.");
 	g->cancel.h.flags = 2;          /* Escape */
 	g->cancel.text = "Cancel";
 	g->cancel.max_text = 7;
 	g->cancel.event = EV_PAGES_CANCEL;
-	hdr(&g->save.h, 128, sizeof g->save, S_SAVE, BOX_W - 184, by, BOX_W - 24, by + 68,
-		pictures ? "Click (or press Return) to choose where the directory of pictures goes." :
-		"Click (or press Return) to choose where the new PDF goes.");
+	hdr(&g->save.h, 128, sizeof g->save, S_SAVE, BOX_W - 184, by, BOX_W - 24, by + 68, save_help[kind]);
 	g->save.h.flags = 1;            /* default: Return */
 	g->save.text = "Save";
 	g->save.max_text = 5;
@@ -146,9 +161,7 @@ static ObjectId create_box(int pictures)
 
 	memset(tw, 0, sizeof *tw);
 	tw->flags = (1 << 1) | (1 << 2);
-	tw->help_message = pictures ?
-		"Use this box to save pages' pictures as files: a scanned page's own JPEG, unchanged." :
-		"Use this box to make a new PDF of some of this document's pages.";
+	tw->help_message = box_help[kind];
 	tw->max_help = (int)strlen(tw->help_message) + 1;
 	tw->num_gadgets = pictures ? 8 : 5;
 	tw->gadgets = g;
@@ -171,9 +184,9 @@ static ObjectId create_box(int pictures)
 	tw->window.title_flags = 0x00000119;
 	tw->window.work_flags = 0;
 	tw->window.sprite_area = (void *)1;
-	tw->window.title_text = title[pictures];
+	tw->window.title_text = title[kind];
 	tw->window.title_validation = "";
-	tw->window.title_buflen = sizeof title[pictures];
+	tw->window.title_buflen = sizeof title[kind];
 	e = tbx_create(Class_Window, 102, 0, tw, sizeof *tw, &id);
 	if (e) {
 		tbx_report_error(e);
@@ -182,39 +195,39 @@ static ObjectId create_box(int pictures)
 	return id;
 }
 
-void pagesave_open(docwin *w, int pictures)
+void pagesave_open(docwin *w, int kind)
 {
-	int dst[9], pos[2], pages = docwin_pages(w);
+	int dst[9], pos[2], pages = docwin_pages(w), k;
 	char of[32];
-	pictures = pictures ? 1 : 0;
+	if (kind < 0 || kind >= K_COUNT)
+		return;
 	if (docwin_is_counting(w)) {
 		tbx_report("Folio is still counting this book's pages. Try again in a moment.");
 		return;
 	}
 	if (pages <= 0)
 		return;
-	if (!ps.box[pictures]) {
-		if (!ps.pages_buf[pictures][0])
-			strcpy(ps.pages_buf[pictures], "all");
+	if (!ps.box[kind]) {
+		if (!ps.pages_buf[kind][0])
+			strcpy(ps.pages_buf[kind], "all");
 		if (!ps.dpi_buf[0])
 			strcpy(ps.dpi_buf, "150");
-		if (!(ps.box[pictures] = create_box(pictures)))
+		if (!(ps.box[kind] = create_box(kind)))
 			return;
 	}
-	if (ps.w && ps.w != w) {
-		tbx_hide(ps.box[0]);
-		if (ps.box[1])
-			tbx_hide(ps.box[1]);
-	}
+	if (ps.w && ps.w != w)
+		for (k = 0; k < K_COUNT; k++)
+			if (ps.box[k])
+				tbx_hide(ps.box[k]);
 	ps.w = w;
-	ps.pictures = pictures;
+	ps.kind = kind;
 	snprintf(of, sizeof of, "of %d", pages);
-	tbx_method(ps.box[pictures], 448 /* DisplayField_SetValue */, S_OF, (int)of, 0);
+	tbx_method(ps.box[kind], 448 /* DisplayField_SetValue */, S_OF, (int)of, 0);
 	dst[0] = docwin_wimp(w);
 	_swix(Wimp_GetWindowState, _IN(1), dst);
 	pos[0] = dst[1] + 64;
 	pos[1] = dst[4] - 64;
-	tbx_show(ps.box[pictures], 1, 2, pos, 0, -1);
+	tbx_show(ps.box[kind], 1, 2, pos, 0, -1);
 }
 
 static void show_saveas(void)
@@ -226,15 +239,18 @@ static void show_saveas(void)
 		const char *title;
 		int max_title;
 		const char *window;
-	} t[2];
-	int ptr[5], pos[2], k = ps.pictures;
+	} t[K_COUNT];
+	static const char *const name[K_COUNT] = { "Pages", "Pictures", "Text" };
+	static const int type[K_COUNT] = { 0xadf, 0x1000, 0xfff };
+	static const char *const title[K_COUNT] = { "Save pages as PDF", "Save page pictures", "Save pages as text" };
+	int ptr[5], pos[2], k = ps.kind;
 	if (!ps.saveas[k]) {
 		_kernel_oserror *e;
 		memset(&t[k], 0, sizeof t[k]);
 		t[k].flags = 4;              /* no Selection option; Folio writes it itself */
-		t[k].filename = k ? "Pictures" : "Pages";
-		t[k].filetype = k ? 0x1000 : 0xadf;
-		t[k].title = k ? "Save page pictures" : "Save pages as PDF";
+		t[k].filename = name[k];
+		t[k].filetype = type[k];
+		t[k].title = title[k];
 		t[k].max_title = 32;
 		e = tbx_create(Class_SaveAs, 100, 0, &t[k], sizeof t[k], &ps.saveas[k]);
 		if (e) {
@@ -253,7 +269,7 @@ static void show_saveas(void)
 void pagesave_event(int code)
 {
 	char text[64], dpi[8];
-	int k = ps.pictures, n;
+	int k = ps.kind, n;
 	if (code != EV_PAGES_OK || !ps.w)
 		return;
 	text[0] = 0;
@@ -275,7 +291,7 @@ void pagesave_event(int code)
 	}
 	ps.n = n;
 	ps.dpi = 150;
-	if (k) {
+	if (k == K_PICTURES) {
 		dpi[0] = 0;
 		_swix(Toolbox_ObjectMiscOp, _INR(0, 5), 0, ps.box[k], 513, S_DPI, dpi, (int)sizeof dpi);
 		dpi[sizeof dpi - 1] = 0;
@@ -361,20 +377,62 @@ static int save_pictures(const char *path)
 	return ok;
 }
 
+static void text_progress(int done, void *arg)
+{
+	_swix(Hourglass_Percentage, _IN(0), done * 100 / *(int *)arg);
+}
+
+static int save_text(const char *path)
+{
+	char *utf8, *text = NULL;
+	int empty = 0, ok = 0;
+	_kernel_oserror *e = NULL;
+	_swix(Hourglass_On, 0);
+	core_now();
+	utf8 = folio_pages_text(docwin_doc(ps.w), ps.sel, ps.count, &empty, text_progress, &ps.n);
+	core_unlock();
+	if (utf8) {
+		/* As the desktop shows text: Latin-1, unless it's set to UTF-8. */
+		text = app_desktop_text(utf8);
+		free(utf8);
+	}
+	if (text) {
+		e = _swix(OS_File, _INR(0, 2) | _INR(4, 5), 10, path, 0xfff, text, text + strlen(text));
+		ok = !e;
+	}
+	_swix(Hourglass_Off, 0);
+	app_log("save text: %d of %d pages (%d with no text), %d bytes to %s%s%s", ps.n, ps.count, empty,
+		text ? (int)strlen(text) : 0, path, ok ? "" : ": ", ok ? "" : e ? e->errmess : folio_error(app.fc));
+	if (!ok) {
+		char m[300];
+		snprintf(m, sizeof m, "Folio couldn't save the text: %s", e ? e->errmess :
+			utf8 || text ? "not enough memory" : folio_error(app.fc));
+		tbx_report(m);
+	} else if (empty == ps.n) {
+		tbx_report(ocr_available() ?
+			"Those pages have no text: they're probably scanned pictures of pages. Choose Text recognition > "
+			"Recognise all pages first, then save the text again." :
+			"Those pages have no text: they're probably scanned pictures of pages. With the OCR plugin, "
+			"Folio can recognise the text in them.");
+	}
+	free(text);
+	return ok;
+}
+
 /* SaveAs events for these boxes. */
 int pagesave_saveas_event(int *b)
 {
 	int k;
-	for (k = 0; k < 2; k++)
+	for (k = 0; k < K_COUNT; k++)
 		if (ps.saveas[k] && app.idb.self_id == ps.saveas[k])
 			break;
-	if (k == 2)
+	if (k == K_COUNT)
 		return 0;
 	if (b[2] == 0x82bc2) {            /* SaveAs_SaveToFile */
 		const char *path = (const char *)(b + 4);
 		int ok = 0;
 		if (ps.w && ps.sel)
-			ok = k ? save_pictures(path) : save_pdf(path);
+			ok = k == K_PICTURES ? save_pictures(path) : k == K_TEXT ? save_text(path) : save_pdf(path);
 		_swix(Toolbox_ObjectMiscOp, _INR(0, 3), ok ? 1 : 0, ps.saveas[k], 12, path);
 	}
 	return 1;
@@ -386,7 +444,7 @@ void pagesave_forget(docwin *w)
 	if (ps.w != w)
 		return;
 	ps.w = NULL;
-	for (k = 0; k < 2; k++) {
+	for (k = 0; k < K_COUNT; k++) {
 		if (ps.box[k])
 			tbx_hide(ps.box[k]);
 		if (ps.saveas[k])

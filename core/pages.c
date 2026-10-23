@@ -713,3 +713,94 @@ int folio_rotate_pages(folio_doc *doc, const unsigned char *sel, int count, int 
 	free(before);
 	return 0;
 }
+
+/* ---- Pages as text ------------------------------------------------------- */
+
+static int ends_sentence(const unsigned char *t, size_t n)
+{
+	/* The last character, skipping closing quotes and brackets. */
+	while (n > 0) {
+		unsigned char c = t[n - 1];
+		if (c == '"' || c == '\'' || c == ')' || c == ']')
+			n--;
+		else if (n >= 3 && t[n - 3] == 0xe2 && t[n - 2] == 0x80 && (c == 0x9d || c == 0x99))
+			n -= 3;           /* ” ’ */
+		else
+			return c == '.' || c == '!' || c == '?' || c == ':';
+	}
+	return 1;
+}
+
+char *folio_pages_text(folio_doc *doc, const unsigned char *sel, int count, int *empty,
+		void (*progress)(int done, void *arg), void *arg)
+{
+	fz_context *ctx = doc->ctx;
+	fz_buffer *out = NULL;
+	char *res = NULL;
+	int i, done = 0, any = 0;
+	fz_var(out);
+	fz_var(res);
+	fz_var(i);
+	fz_var(done);
+	fz_var(any);
+	*empty = 0;
+	fz_try(ctx) {
+		out = fz_new_buffer(ctx, 4096);
+		for (i = 0; i < count; i++) {
+			folio_page_text t;
+			folio_loc loc;
+			size_t n;
+			if (!sel[i])
+				continue;
+			if (progress)
+				progress(done, arg);
+			done++;
+			memset(&t, 0, sizeof t);
+			if (folio_loc_from_number(doc, i, &loc) || folio_get_page_text(doc, loc, &t) < 0) {
+				(*empty)++;
+				continue;
+			}
+			/* Without the blank lines at the end, and at the start. */
+			n = (size_t)t.len;
+			while (n > 0 && (unsigned char)t.text[n - 1] <= ' ')
+				n--;
+			{
+				size_t s = 0;
+				while (s < n && (unsigned char)t.text[s] <= ' ')
+					s++;
+				if (s == n)
+					(*empty)++;
+				else {
+					/* Pages apart by a blank line; in a re-flowed book a
+					 * sentence carried over a page break is joined up. */
+					if (any) {
+						size_t ol = out->len;
+						if (doc->reflow && !ends_sentence(out->data, ol))
+							fz_append_byte(ctx, out, ' ');
+						else
+							fz_append_string(ctx, out, "\n\n");
+					}
+					fz_append_data(ctx, out, t.text + s, n - s);
+					any = 1;
+				}
+			}
+			folio_page_text_free(&t);
+		}
+		fz_append_byte(ctx, out, '\n');
+		res = malloc(out->len + 1);
+		if (!res)
+			fz_throw(ctx, FZ_ERROR_SYSTEM, "not enough memory for the text");
+		memcpy(res, out->data, out->len);
+		res[out->len] = 0;
+		if (!any)
+			res[0] = 0;
+	}
+	fz_always(ctx)
+		fz_drop_buffer(ctx, out);
+	fz_catch(ctx) {
+		free(res);
+		res = NULL;
+		folio_set_error(doc->fc);
+	}
+	return res;
+}

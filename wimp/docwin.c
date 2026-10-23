@@ -536,6 +536,7 @@ static int allowed(docwin *w, int event)
 	case EV_EXPORT_DRAW:
 	case EV_SAVE_PAGES:
 	case EV_SAVE_PICTURES:
+	case EV_SAVE_TEXT:
 		if (!w->perm_copy)
 			what = "copying its text and pictures";
 		break;
@@ -562,7 +563,7 @@ int docwin_allows(docwin *w, int event)
 		return 1;
 	switch (event) {
 	case EV_PRINT: return w->perm_print;
-	case EV_COPY: case EV_EXPORT_DRAW: case EV_SAVE_PAGES: case EV_SAVE_PICTURES:
+	case EV_COPY: case EV_EXPORT_DRAW: case EV_SAVE_PAGES: case EV_SAVE_PICTURES: case EV_SAVE_TEXT:
 		return w->perm_copy;
 	case EV_READ_ALOUD: case EV_SPEAK_SEL: return w->perm_access;
 	case EV_FILL_FORM: return w->perm_form;
@@ -2677,6 +2678,7 @@ void docwin_event(docwin *w, int code)
 		rotate(w, code);
 		break;
 	case EV_SAVE_PICTURES: if (allowed(w, code)) pagesave_open(w, 1); break;
+	case EV_SAVE_TEXT: if (allowed(w, code)) pagesave_open(w, 2); break;
 	case EV_GOTO: gotopage_open(w); break;
 	case EV_DOCINFO: docinfo_open(w); break;
 	case EV_OCR_PAGE: ocr_win_this_page(w->ocr); break;
