@@ -261,7 +261,7 @@ static struct {
 } sg;
 
 #define WIN_W 1032
-#define WIN_H 600
+#define WIN_H 660
 
 static void hdr(gadget_hdr *h, int type, int size, int id, int x0, int y0, int x1, int y1, const char *help)
 {
@@ -275,7 +275,7 @@ static void hdr(gadget_hdr *h, int type, int size, int id, int x0, int y0, int x
 
 static void radio(radio_gadget *r, int id, int x0, const char *label, const char *help)
 {
-	hdr(&r->h, 384, sizeof *r, id, x0, -480, x0 + 200, -432, help);
+	hdr(&r->h, 384, sizeof *r, id, x0, -488, x0 + 220, -440, help);
 	r->group = 1;
 	r->label = label;
 	r->max_label = (int)strlen(label) + 1;
@@ -300,14 +300,14 @@ static ObjectId create_window(void)
 	memset(&sg, 0, sizeof sg);
 	hdr(&sg.hint.h, 320, sizeof sg.hint, S_HINT, 16, -88, WIN_W - 16, -24, NULL);
 	sg.hint.h.flags = 1;
-	sg.hint.label = "Write your signature below (drag with Select), or drag a picture of it here.";
-	hdr(&sg.size_l.h, 320, sizeof sg.size_l, S_SIZE_L, 16, -480, 220, -432, NULL);
+	sg.hint.label = "Write your signature below, or drag a picture of it here.";
+	hdr(&sg.size_l.h, 320, sizeof sg.size_l, S_SIZE_L, 16, -488, 236, -440, NULL);
 	sg.size_l.h.flags = 1;
 	sg.size_l.label = "On the page";
-	radio(&sg.small, S_SMALL, 230, "Small", "Click to put it on the page about 1.4 inches wide.");
-	radio(&sg.medium, S_MEDIUM, 440, "Medium", "Click to put it on the page 2 inches wide.");
-	radio(&sg.large, S_LARGE, 650, "Large", "Click to put it on the page about 2.8 inches wide.");
-	hdr(&sg.white.h, 192, sizeof sg.white, S_WHITE, 16, -536, WIN_W - 16, -488,
+	radio(&sg.small, S_SMALL, 248, "Small", "Click to put it on the page about 1.4 inches wide.");
+	radio(&sg.medium, S_MEDIUM, 480, "Medium", "Click to put it on the page 2 inches wide.");
+	radio(&sg.large, S_LARGE, 712, "Large", "Click to put it on the page about 2.8 inches wide.");
+	hdr(&sg.white.h, 192, sizeof sg.white, S_WHITE, 248, -552, WIN_W - 16, -504,
 		"Click to make a picture's white see-through, so the page shows through the paper.");
 	sg.white.label = "A picture's white is see-through";
 	sg.white.max_label = (int)strlen(sg.white.label) + 1;

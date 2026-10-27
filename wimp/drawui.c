@@ -132,11 +132,13 @@ static ObjectId create_draw(void)
 	memset(&dg, 0, sizeof dg);
 	hdr(&dg.col_l.h, 320, sizeof dg.col_l, D_COL_L, 16, -72, 184, -24, NULL);
 	dg.col_l.label = "Colour";
+	dg.col_l.h.flags = 1;
 	radio(&dg.black, D_BLACK, 1, 192, -24, "Black", "Click to draw in black.");
 	radio(&dg.blue, D_BLUE, 1, 376, -24, "Blue", "Click to draw in dark blue, like a pen.");
 	radio(&dg.red, D_RED, 1, 560, -24, "Red", "Click to draw in red.");
 	hdr(&dg.pen_l.h, 320, sizeof dg.pen_l, D_PEN_L, 16, -136, 184, -88, NULL);
 	dg.pen_l.label = "Pen";
+	dg.pen_l.h.flags = 1;
 	radio(&dg.thin, D_THIN, 2, 192, -88, "Thin", "Click for a thin line (1 point), for writing.");
 	radio(&dg.medium, D_MEDIUM, 2, 376, -88, "Medium", "Click for a medium line (2 points).");
 	radio(&dg.thick, D_THICK, 2, 560, -88, "Thick", "Click for a thick line (4 points).");
@@ -276,7 +278,7 @@ static struct {
 	int white;
 } pb = { .white = 1 };
 
-#define PW 760
+#define PW 900
 #define PH 220
 
 static ObjectId create_picbox(void)
@@ -289,6 +291,7 @@ static ObjectId create_picbox(void)
 	hdr(&pg.hint.h, 320, sizeof pg.hint, P_HINT, 16, -72, PW - 16, -24,
 		"Drag a picture file (JPEG, PNG and so on) into this box, then click on the page where it goes.");
 	pg.hint.label = "Drag a picture here, then click on the page.";
+	pg.hint.h.flags = 1;
 	hdr(&pg.white.h, 192, sizeof pg.white, P_WHITE, 16, -136, PW - 16, -88,
 		"Click to make the picture's white see-through, as for a signature written on paper and scanned.");
 	pg.white.label = "Make white see-through (a scanned signature)";

@@ -267,8 +267,12 @@ static struct {
 	char field[128];              /* "" for a new field */
 } sb;
 
-#define SB_W 760
-#define SB_H 568
+#define SB_W 1040
+#define LBL_X1 256          /* labels: 16 to here (no box) */
+#define FLD_X0 272          /* fields and choices from here */
+#define COL2 540            /* the second and third choices */
+#define COL3 808
+#define SB_H 584
 
 static void hdr(gadget_hdr *h, int type, int size, int id, int x0, int y0, int x1, int y1,
 		const char *help)
@@ -283,14 +287,15 @@ static void hdr(gadget_hdr *h, int type, int size, int id, int x0, int y0, int x
 
 static void row_label(label_gadget *l, int id, int row, const char *text)
 {
-	hdr(&l->h, 320, sizeof *l, id, 16, -84 - 64 * row, 200, -36 - 64 * row, NULL);
+	hdr(&l->h, 320, sizeof *l, id, 16, -84 - 64 * row, LBL_X1, -36 - 64 * row, NULL);
+	l->h.flags = 1;                    /* no box */
 	l->label = text;
 }
 
 static void row_field(writable_gadget *f, int id, int row, char *buf, int size, int before, int after,
 		const char *help)
 {
-	hdr(&f->h, 512, sizeof *f, id, 200, -88 - 64 * row, SB_W - 16, -32 - 64 * row, help);
+	hdr(&f->h, 512, sizeof *f, id, FLD_X0, -88 - 64 * row, SB_W - 16, -32 - 64 * row, help);
 	f->text = buf;
 	f->max_text = size;
 	f->before = before;
@@ -318,7 +323,7 @@ static ObjectId create_signbox(void)
 
 	memset(g, 0, sizeof *g);
 	row_label(&g->cert_l, G_CERT_L, 0, "Certificate");
-	hdr(&g->cert.h, 448, sizeof g->cert, G_CERT, 200, -84, SB_W - 16, -36,
+	hdr(&g->cert.h, 448, sizeof g->cert, G_CERT, FLD_X0, -84, SB_W - 16, -36,
 		"Drag your certificate file (.p12 or .pfx: your key and certificate) into this box.");
 	g->cert.text = sb.cert_buf;
 	g->cert.max_text = sizeof sb.cert_buf;
@@ -345,20 +350,20 @@ static ObjectId create_signbox(void)
 	g->sign.max_text = 5;
 	g->sign.event = EV_SG_SIGN;
 	row_label(&g->kind_l, G_KIND_L, 4, "Kind");
-	radio(&g->ord, G_ORD, 1, 4, 200, 380, "Ordinary",
+	radio(&g->ord, G_ORD, 1, 4, FLD_X0, COL2 - 12, "Ordinary",
 		"Click for an ordinary signature: changes can still be saved after it (they're shown when it's checked).");
-	radio(&g->lock, G_LOCK, 1, 4, 380, 580, "Lock the PDF",
+	radio(&g->lock, G_LOCK, 1, 4, COL2, COL3 - 12, "Lock the PDF",
 		"Click to sign and lock the PDF: no changes are allowed after this signature, and its fields can't be filled in.");
-	radio(&g->certify, G_CERTIFY, 1, 4, 580, SB_W - 16, "Certify",
+	radio(&g->certify, G_CERTIFY, 1, 4, COL3, SB_W - 16, "Certify",
 		"Click to certify the PDF (only the first signature can): you say which changes are allowed after it.");
-	row_label(&g->allow_l, G_ALLOW_L, 5, "Certify, allow");
-	radio(&g->a_none, G_A_NONE, 2, 5, 200, 380, "No changes",
+	row_label(&g->allow_l, G_ALLOW_L, 5, "Certified, allow");
+	radio(&g->a_none, G_A_NONE, 2, 5, FLD_X0, COL2 - 12, "No changes",
 		"When certifying: click to allow no changes at all after signing.");
-	radio(&g->a_forms, G_A_FORMS, 2, 5, 380, 580, "Filling in",
+	radio(&g->a_forms, G_A_FORMS, 2, 5, COL2, COL3 - 12, "Filling in",
 		"When certifying: click to allow filling in the form and signing after this.");
-	radio(&g->a_notes, G_A_NOTES, 2, 5, 580, SB_W - 16, "And notes",
+	radio(&g->a_notes, G_A_NOTES, 2, 5, COL3, SB_W - 16, "And notes",
 		"When certifying: click to allow filling in, signing, and notes and markings after this.");
-	hdr(&g->mysig.h, 192, sizeof g->mysig, G_MYSIG, 200, -84 - 64 * 6, SB_W - 16, -36 - 64 * 6,
+	hdr(&g->mysig.h, 192, sizeof g->mysig, G_MYSIG, FLD_X0, -84 - 64 * 6, SB_W - 16, -36 - 64 * 6,
 		"Click to show your handwritten signature (Edit > Stamp > Set up my signature) beside your name.");
 	g->mysig.label = "Show my handwritten signature";
 	g->mysig.max_label = (int)strlen(g->mysig.label) + 1;
