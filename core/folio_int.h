@@ -127,6 +127,11 @@ int *folio_page_keys(folio_doc *doc, int *n);
 void folio_recount(folio_doc *doc);
 void folio_ocr_follow(folio_doc *doc, const int *before, int n);
 
+/* sign.c: throws if the change isn't allowed in a signed PDF. field: a
+ * form field's full name (FOLIO_CHANGE_FORM), or NULL. */
+enum { FOLIO_CHANGE_ANNOT, FOLIO_CHANGE_FORM, FOLIO_CHANGE_SIGN, FOLIO_CHANGE_PAGES, FOLIO_CHANGE_CONTENT };
+void folio_allow(folio_doc *doc, int what, const char *field);
+
 /* xfa.c: an ordinary field (full name) of an XFA form changed; its value
  * goes into the datasets too. Inside the caller's operation. */
 void folio_xfa_sync(folio_doc *doc, const char *acro_name, const char *value);

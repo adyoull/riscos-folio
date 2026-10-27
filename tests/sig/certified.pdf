@@ -1,0 +1,48 @@
+%PDF-1.7
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [6 0 R 7 0 R 8 0 R] /DA (/Helv 12 Tf 0 g) /DR << /Font << /Helv 4 0 R >> >> /SigFlags 3 >> /Perms << /DocMDP 9 0 R >> >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R /Annots [6 0 R 7 0 R 8 0 R] >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 64 >>
+stream
+BT /F1 18 Tf 72 790 Td (Certified test page: fill in only) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Sig /T (Cert) /V 9 0 R /Rect [72 600 288 672] /F 132 /P 3 0 R /Lock << /Type /SigFieldLock /Action /Include /Fields [(locked)] >> >>
+endobj
+7 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Tx /T (name) /V (Ada) /Rect [72 740 300 760] /F 4 /P 3 0 R /DA (/Helv 12 Tf 0 g) >>
+endobj
+8 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Tx /T (locked) /V (Fixed) /Rect [72 700 300 720] /F 4 /P 3 0 R /DA (/Helv 12 Tf 0 g) >>
+endobj
+9 0 obj
+<< /Type /Sig /Filter /Adobe.PPKLite /SubFilter /adbe.pkcs7.detached /ByteRange [0 0 0 0] /Contents <00> /Reference [<< /Type /SigRef /TransformMethod /DocMDP /TransformParams << /Type /TransformParams /P 2 /V /1.2 >> >>] >>
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000009 00000 n 
+0000000197 00000 n 
+0000000254 00000 n 
+0000000408 00000 n 
+0000000478 00000 n 
+0000000592 00000 n 
+0000000778 00000 n 
+0000000915 00000 n 
+0000001056 00000 n 
+trailer
+<< /Size 10 /Root 1 0 R >>
+startxref
+1296
+%%EOF

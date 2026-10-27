@@ -126,7 +126,7 @@ static struct {
 } eg;
 
 #define EB_W 900
-#define EB_H 200
+#define EB_H 248
 
 static void hdr(gadget_hdr *h, int type, int size, int id, int x0, int y0, int x1, int y1, const char *help)
 {

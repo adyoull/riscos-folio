@@ -1406,12 +1406,17 @@ int folio_sign(folio_doc *doc, folio_loc loc, const char *field, folio_rect wher
 		snprintf(doc->fc->err, sizeof doc->fc->err, "only a PDF can be signed");
 		return -1;
 	}
+	if (doc->pw_change != FOLIO_PW_KEEP) {
+		snprintf(doc->fc->err, sizeof doc->fc->err, "save the PDF with its new password first, then sign it");
+		return -1;
+	}
 	fz_var(op);
 	folio_begin(doc);
 	fz_try(ctx) {
 		folio_cpage *cp = folio_get_page(doc, loc);
 		pdf_page *page = pdf_page_from_fz_page(ctx, cp->page);
 		pdf_annot *w = NULL;
+		folio_allow(doc, FOLIO_CHANGE_SIGN, NULL);
 		pdf_begin_operation(ctx, pdf, "Sign");
 		op = 1;
 		if (field) {
@@ -1456,4 +1461,158 @@ int folio_sign(folio_doc *doc, folio_loc loc, const char *field, folio_rect wher
 	}
 	folio_forget_pages(doc);
 	return 0;
+}
+
+/* ==== What a signed PDF still allows =========================================
+ * A signature must stay as it was signed. So, once a PDF has a signature:
+ *   - signed signature fields are never changed, cleared or signed again;
+ *   - fields a signature locks (its /Lock, or its FieldMDP reference:
+ *     All, Include or Exclude) can't be filled in;
+ *   - a certifying signature (Root/Perms/DocMDP) is obeyed: P 1 no changes
+ *     at all; P 2 filling in forms and signing only; P 3 annotations too;
+ *   - its pages aren't turned, deleted, moved or added to, recognised text
+ *     isn't written into them, and its password isn't changed (those would
+ *     change or rewrite what was signed);
+ *   - it's only ever saved incrementally (folio_save_pdf).
+ * folio_allow throws (inside the caller's fz_try) if a change isn't allowed. */
+
+typedef struct {
+	int signed_n;           /* signed signature fields */
+	int docmdp;             /* the certifying signature's P, or 0 */
+	int lock_all;           /* every other field is locked */
+	pdf_obj *include[16], *exclude[16];   /* Fields arrays */
+	int ni, ne;
+} sig_state;
+
+static void lock_of(fz_context *ctx, pdf_obj *lock, sig_state *st)
+{
+	pdf_obj *action = pdf_dict_get(ctx, lock, PDF_NAME(Action));
+	if (!action)
+		return;
+	if (pdf_name_eq(ctx, action, PDF_NAME(All)))
+		st->lock_all = 1;
+	else if (pdf_name_eq(ctx, action, PDF_NAME(Include)) && st->ni < 16)
+		st->include[st->ni++] = pdf_dict_get(ctx, lock, PDF_NAME(Fields));
+	else if (pdf_name_eq(ctx, action, PDF_NAME(Exclude)) && st->ne < 16)
+		st->exclude[st->ne++] = pdf_dict_get(ctx, lock, PDF_NAME(Fields));
+}
+
+static void scan_sigs(fz_context *ctx, pdf_obj *fields, int depth, sig_state *st)
+{
+	int i, n = pdf_array_len(ctx, fields);
+	if (depth > 16)
+		return;
+	for (i = 0; i < n; i++) {
+		pdf_obj *f = pdf_array_get(ctx, fields, i), *kids = pdf_dict_get(ctx, f, PDF_NAME(Kids));
+		if (pdf_is_array(ctx, kids) && pdf_dict_get(ctx, pdf_array_get(ctx, kids, 0), PDF_NAME(T)))
+			scan_sigs(ctx, kids, depth + 1, st);
+		else if (pdf_name_eq(ctx, pdf_dict_get_inheritable(ctx, f, PDF_NAME(FT)), PDF_NAME(Sig))) {
+			pdf_obj *v = pdf_dict_get_inheritable(ctx, f, PDF_NAME(V)), *refs;
+			int k;
+			if (!pdf_is_dict(ctx, v) || !pdf_dict_get(ctx, v, PDF_NAME(Contents)))
+				continue;
+			st->signed_n++;
+			lock_of(ctx, pdf_dict_get(ctx, f, PDF_NAME(Lock)), st);
+			refs = pdf_dict_get(ctx, v, PDF_NAME(Reference));
+			for (k = 0; k < pdf_array_len(ctx, refs); k++) {
+				pdf_obj *r = pdf_array_get(ctx, refs, k);
+				if (pdf_name_eq(ctx, pdf_dict_get(ctx, r, PDF_NAME(TransformMethod)), PDF_NAME(FieldMDP)))
+					lock_of(ctx, pdf_dict_get(ctx, r, PDF_NAME(TransformParams)), st);
+			}
+		}
+	}
+}
+
+static void sig_state_of(fz_context *ctx, pdf_document *pdf, sig_state *st)
+{
+	pdf_obj *root = pdf_dict_get(ctx, pdf_trailer(ctx, pdf), PDF_NAME(Root)), *mdp, *refs;
+	int k;
+	memset(st, 0, sizeof *st);
+	scan_sigs(ctx, pdf_dict_getp(ctx, root, "AcroForm/Fields"), 0, st);
+	mdp = pdf_dict_getp(ctx, root, "Perms/DocMDP");
+	refs = pdf_dict_get(ctx, mdp, PDF_NAME(Reference));
+	for (k = 0; k < pdf_array_len(ctx, refs); k++) {
+		pdf_obj *r = pdf_array_get(ctx, refs, k);
+		if (pdf_name_eq(ctx, pdf_dict_get(ctx, r, PDF_NAME(TransformMethod)), PDF_NAME(DocMDP))) {
+			pdf_obj *p = pdf_dict_getp(ctx, r, "TransformParams/P");
+			st->docmdp = p ? pdf_to_int(ctx, p) : 2;
+			if (st->docmdp < 1 || st->docmdp > 3)
+				st->docmdp = 2;
+		}
+	}
+}
+
+static int in_fields(fz_context *ctx, pdf_obj *arr, const char *name)
+{
+	int i, n = pdf_array_len(ctx, arr);
+	size_t l;
+	for (i = 0; i < n; i++) {
+		const char *s = pdf_to_text_string(ctx, pdf_array_get(ctx, arr, i));
+		/* The field, or a field below it. */
+		l = strlen(s);
+		if (l && !strncmp(name, s, l) && (name[l] == 0 || name[l] == '.'))
+			return 1;
+	}
+	return 0;
+}
+
+static int field_locked(fz_context *ctx, const sig_state *st, const char *name)
+{
+	int i;
+	if (st->lock_all)
+		return 1;
+	for (i = 0; i < st->ni; i++)
+		if (in_fields(ctx, st->include[i], name))
+			return 1;
+	for (i = 0; i < st->ne; i++)
+		if (!in_fields(ctx, st->exclude[i], name))
+			return 1;
+	return 0;
+}
+
+void folio_allow(folio_doc *doc, int what, const char *field)
+{
+	fz_context *ctx = doc->ctx;
+	pdf_document *pdf = pdf_specifics(ctx, doc->doc);
+	sig_state st;
+	if (!pdf)
+		return;
+	sig_state_of(ctx, pdf, &st);
+	if (!st.signed_n && !st.docmdp)
+		return;
+	if (st.docmdp == 1)
+		fz_throw(ctx, FZ_ERROR_ARGUMENT, "the PDF is certified with no changes allowed: it can't be changed");
+	switch (what) {
+	case FOLIO_CHANGE_PAGES:
+		fz_throw(ctx, FZ_ERROR_ARGUMENT, "the PDF is signed: changing its pages would break the signature");
+	case FOLIO_CHANGE_CONTENT:
+		fz_throw(ctx, FZ_ERROR_ARGUMENT, "the PDF is signed: changing what's on its pages would break the signature");
+	case FOLIO_CHANGE_ANNOT:
+		if (st.docmdp == 2)
+			fz_throw(ctx, FZ_ERROR_ARGUMENT, "the PDF is certified for filling in and signing only: notes and markings can't be added");
+		break;
+	case FOLIO_CHANGE_FORM:
+		if (field && field_locked(ctx, &st, field))
+			fz_throw(ctx, FZ_ERROR_ARGUMENT, "the field is locked by a signature");
+		break;
+	default:
+		break;
+	}
+}
+
+int folio_is_signed(folio_doc *doc)
+{
+	fz_context *ctx = doc->ctx;
+	pdf_document *pdf = pdf_specifics(ctx, doc->doc);
+	sig_state st;
+	int n = 0;
+	if (!pdf)
+		return 0;
+	fz_try(ctx) {
+		sig_state_of(ctx, pdf, &st);
+		n = st.signed_n || st.docmdp;
+	}
+	fz_catch(ctx)
+		n = 0;
+	return n;
 }

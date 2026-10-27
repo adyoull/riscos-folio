@@ -340,6 +340,11 @@ int folio_has_signatures(folio_doc *doc);
  * is always trusted. Returns how many were added, or -1. */
 int folio_set_trust_roots(folio_ctx *fc, const unsigned char *data, size_t len);
 int folio_trust_root_count(void);
+/* A signed (or certified) PDF: changes that would break or alter a
+ * signature are refused (pages, page content, its password, locked
+ * fields, and what a certification forbids), and it's only saved
+ * incrementally. */
+int folio_is_signed(folio_doc *doc);
 /* Signing with a certificate from a .p12 / .pfx file (PKCS#12: a private
  * key and its certificates, under a password). NULL, with folio_error
  * saying why ("the password isn't right"...), if it can't be used. */

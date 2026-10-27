@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test65)
+Folio (test build 0.0.1-test66)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -226,6 +226,15 @@ Signing a PDF
   instead). Other signatures in the PDF stay good: changes are added to
   the end of the file. Folio keeps the certificate file's name until it
   quits, but never the password.
+  Once a PDF is signed, Folio keeps the signature as it was signed: a
+  signature can't be changed, cleared or signed again; the pages can't be
+  turned, deleted, moved or added to; recognised text isn't written into
+  them; the password can't be changed; fields a signature locks can't be
+  filled in; and the PDF is only ever saved by adding to the end of it.
+  A certified PDF's own rules are obeyed too (no changes at all, or only
+  filling in and signing, or those and notes). Notes, markings and filling
+  in other fields are still allowed where the PDF allows them, and the
+  signature then says that changes were saved after it.
 
 Security
   Folio asks before following a link out of a document (to a web page, an

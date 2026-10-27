@@ -136,6 +136,7 @@ int folio_annot_markup(folio_doc *doc, folio_loc loc, folio_annot_kind kind,
 			folio_sel_point(ctx, st, cp, b), q, (int)(sizeof q / sizeof q[0]));
 		if (n <= 0)
 			fz_throw(ctx, FZ_ERROR_ARGUMENT, "no text selected");
+		folio_allow(doc, FOLIO_CHANGE_ANNOT, NULL);
 		pdf_begin_operation(ctx, pdf, op_name(kind));
 		op = 1;
 		annot = pdf_create_annot(ctx, page, pdf_type(kind));
@@ -175,6 +176,7 @@ int folio_annot_note(folio_doc *doc, folio_loc loc, folio_point at, const char *
 		folio_cpage *cp = folio_get_page(doc, loc);
 		pdf_page *page = pdf_page_from_fz_page(ctx, cp->page);
 		fz_point p = to_page(cp, at);
+		folio_allow(doc, FOLIO_CHANGE_ANNOT, NULL);
 		pdf_begin_operation(ctx, pdf, "Note");
 		op = 1;
 		annot = pdf_create_annot(ctx, page, PDF_ANNOT_TEXT);
@@ -295,6 +297,7 @@ int folio_annot_set_text(folio_doc *doc, folio_loc loc, int n, const char *text)
 		pdf_annot *a = nth(ctx, page, n);
 		if (!a)
 			fz_throw(ctx, FZ_ERROR_ARGUMENT, "no such annotation");
+		folio_allow(doc, FOLIO_CHANGE_ANNOT, NULL);
 		pdf_begin_operation(ctx, pdf, "Edit note");
 		op = 1;
 		pdf_set_annot_contents(ctx, a, text ? text : "");
@@ -327,6 +330,7 @@ int folio_annot_delete(folio_doc *doc, folio_loc loc, int n)
 		pdf_annot *a = nth(ctx, page, n);
 		if (!a)
 			fz_throw(ctx, FZ_ERROR_ARGUMENT, "no such annotation");
+		folio_allow(doc, FOLIO_CHANGE_ANNOT, NULL);
 		pdf_begin_operation(ctx, pdf, "Delete annotation");
 		op = 1;
 		pdf_delete_annot(ctx, page, a);
@@ -472,6 +476,8 @@ int folio_save_pdf(folio_doc *doc, const char *original, const char *path)
 	fz_try(ctx) {
 		if (doc->pw_change != FOLIO_PW_KEEP) {
 			/* A password on or off: a full save, encrypted or not. */
+			if (folio_is_signed(doc))
+				fz_throw(ctx, FZ_ERROR_ARGUMENT, "the PDF is signed: changing its password would break the signature");
 			folio_security_write_options(doc, &opts);
 		} else {
 			/* Incremental (the original bytes, then the changes) keeps
@@ -480,6 +486,11 @@ int folio_save_pdf(folio_doc *doc, const char *original, const char *path)
 			opts.do_incremental = original && pdf_can_be_saved_incrementally(ctx, pdf);
 			if (opts.do_incremental && copy_file(original, path))
 				opts.do_incremental = 0;
+			/* A signed PDF is only ever added to: a full save would
+			 * rewrite what was signed. */
+			if (!opts.do_incremental && folio_is_signed(doc))
+				fz_throw(ctx, FZ_ERROR_ARGUMENT, "the PDF is signed, and it can't be saved without "
+					"breaking the signature (it can only be added to)");
 		}
 		pdf_save_document(ctx, pdf, path, &opts);
 	}
@@ -606,6 +617,7 @@ int folio_annot_recolour(folio_doc *doc, folio_loc loc, int n, int rgb)
 		c[0] = ((rgb >> 16) & 255) / 255.0f;
 		c[1] = ((rgb >> 8) & 255) / 255.0f;
 		c[2] = (rgb & 255) / 255.0f;
+		folio_allow(doc, FOLIO_CHANGE_ANNOT, NULL);
 		pdf_begin_operation(ctx, pdf, "Colour");
 		op = 1;
 		pdf_set_annot_color(ctx, a, 3, c);
@@ -684,6 +696,7 @@ int folio_annot_measure(folio_doc *doc, folio_loc loc, const folio_point *pt, in
 		pdf_page *page = pdf_page_from_fz_page(ctx, cp->page);
 		static const float red[3] = { 0.85f, 0.1f, 0.1f };
 		pdf_annot *a;
+		folio_allow(doc, FOLIO_CHANGE_ANNOT, NULL);
 		pdf_begin_operation(ctx, pdf, "Measurement");
 		op = 1;
 		if (n == 2) {

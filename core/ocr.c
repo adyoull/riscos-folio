@@ -840,6 +840,7 @@ int folio_ocr_embed(folio_doc *doc)
 	folio_begin(doc);
 	fz_try(ctx) {
 		n = pdf_count_pages(ctx, pdf);
+		folio_allow(doc, FOLIO_CHANGE_CONTENT, NULL);
 		pdf_begin_operation(ctx, pdf, "Add recognised text");
 		op = 1;
 		for (i = 0; i < n && i < doc->ocr_n; i++)

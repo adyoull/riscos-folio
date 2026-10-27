@@ -1080,6 +1080,15 @@ static void set_acro(folio_doc *doc, pdf_document *pdf, const char *path, const 
 	pdf_obj *f = acro_field(ctx, pdf_dict_getp(ctx, pdf_trailer(ctx, pdf), "Root/AcroForm/Fields"), path);
 	if (!f)
 		return;
+	{
+		char *name = pdf_load_field_name(ctx, f);
+		fz_try(ctx)
+			folio_allow(doc, FOLIO_CHANGE_FORM, name);
+		fz_always(ctx)
+			fz_free(ctx, name);
+		fz_catch(ctx)
+			fz_rethrow(ctx);
+	}
 	fz_var(v);
 	if (tf && tf->f.type == FOLIO_XFA_CHECK && tf->f.nopts > 1 && !strcmp(v, tf->f.save[1]))
 		v = "Off";
@@ -1115,6 +1124,7 @@ int folio_xfa_set(folio_doc *doc, const char *path, const char *value)
 		if (tf && tf->f.read_only)
 			fz_throw(ctx, FZ_ERROR_ARGUMENT, "the field can't be changed");
 		ds = edited(ctx, &st, path, value ? value : "");
+		folio_allow(doc, FOLIO_CHANGE_FORM, NULL);
 		pdf_begin_operation(ctx, pdf, "Fill in");
 		op = 1;
 		store(ctx, pdf, &st, ds);

@@ -454,6 +454,7 @@ static void meas_draw(docwin *w, int i, int x0, int y1);
 static void ocr_embed(docwin *w);
 static void remeasure(docwin *w);
 static void form_changed(docwin *w);
+static void say_if_signed(const char *what);
 static void page_changed(docwin *w, int page);
 static void link_press(docwin *w, int *b);
 static int link_tick(docwin *w);
@@ -3553,6 +3554,7 @@ static void markup(docwin *w, folio_annot_kind kind)
 		core_unlock();
 		if (rc) {
 			app_log("markup: %s", folio_error(app.fc));
+			say_if_signed("mark the text");
 			break;
 		}
 		app_log("%s: markup %d on page %d", w->title, (int)kind, page + 1);
@@ -3602,9 +3604,10 @@ void docwin_note_done(docwin *w, int page, int index, folio_point at, const char
 	rc = index < 0 ? folio_annot_note(w->doc, loc, at, utf8)
 		: folio_annot_set_text(w->doc, loc, index, utf8);
 	core_unlock();
-	if (rc)
+	if (rc) {
 		app_log("note: %s", folio_error(app.fc));
-	else
+		say_if_signed("change the note");
+	} else
 		page_changed(w, page);
 }
 
@@ -3658,8 +3661,10 @@ static void colour_chosen(docwin *w, int code)
 		}
 		if (rc == 0)
 			page_changed(w, page);
-		else
+		else {
 			app_log("recolour: %s", folio_error(app.fc));
+			say_if_signed("change the colour");
+		}
 	}
 }
 
@@ -4051,6 +4056,17 @@ int docwin_xfa_set(docwin *w, const char *path, const char *utf8)
 	return 0;
 }
 
+/* A change refused because the PDF is signed (core/sign.c) is said so. */
+static void say_if_signed(const char *what)
+{
+	const char *e = folio_error(app.fc);
+	char m[300];
+	if (!strstr(e, "signed") && !strstr(e, "certified") && !strstr(e, "locked by a signature"))
+		return;
+	snprintf(m, sizeof m, "Folio can't %s: %s.", what, e);
+	tbx_report(m);
+}
+
 const char *docwin_path(docwin *w)
 {
 	return w->path;
@@ -4092,6 +4108,7 @@ int docwin_set_password(docwin *w, const char *utf8)
 	core_unlock();
 	if (rc) {
 		app_log("%s: password: %s", w->title, folio_error(app.fc));
+		say_if_signed("change the password");
 		return -1;
 	}
 	if (utf8 && *utf8)
@@ -4244,8 +4261,10 @@ int docwin_form_set_text(docwin *w, int page, int index, const char *utf8)
 	core_now();
 	rc = folio_field_set_text(w->doc, loc, index, utf8);
 	core_unlock();
-	if (rc < 0)
+	if (rc < 0) {
 		app_log("form: %s", folio_error(app.fc));
+		say_if_signed("fill in that field");
+	}
 	app_log("form: field %d on page %d %s", index, page + 1, rc == 0 ? "set" : "not set");
 	form_changed(w);
 	return rc;
@@ -4260,6 +4279,8 @@ int docwin_form_toggle(docwin *w, int page, int index)
 	core_now();
 	rc = folio_field_toggle(w->doc, loc, index);
 	core_unlock();
+	if (rc < 0)
+		say_if_signed("change that field");
 	app_log("form: field %d on page %d toggled%s", index, page + 1, rc ? " (failed)" : "");
 	form_changed(w);
 	return rc;
@@ -4274,6 +4295,8 @@ int docwin_form_choose(docwin *w, int page, int index, int option)
 	core_now();
 	rc = folio_field_choose(w->doc, loc, index, option);
 	core_unlock();
+	if (rc < 0)
+		say_if_signed("change that field");
 	app_log("form: field %d on page %d: choice %d%s", index, page + 1, option, rc ? " (failed)" : "");
 	form_changed(w);
 	return rc;

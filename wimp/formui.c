@@ -456,6 +456,12 @@ int formui_click(docwin *w, int page, folio_point p, int x, int y)
 	core_unlock();
 	if (found != 1)
 		return 0;
+	/* A signature says what it is (or, empty, offers signing), even when
+	 * it's locked or the form can't be filled in. */
+	if (f.kind == FOLIO_FIELD_SIGNATURE) {
+		signui_click(w, page, f.name);
+		return 1;
+	}
 	if (f.read_only) {
 		app_log("form: '%s' can't be changed", f.name);
 		return 1;
@@ -484,9 +490,6 @@ int formui_click(docwin *w, int page, folio_point p, int x, int y)
 		else if (docwin_form_press(w, page, f.index) == 0)
 			app_log("form: '%s' has nothing to do", f.name);
 		alerts_pending(w);
-		break;
-	case FOLIO_FIELD_SIGNATURE:
-		signui_click(w, page, f.name);
 		break;
 	default:
 		return 0;

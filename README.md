@@ -5,7 +5,7 @@ It's built on [MuPDF](https://mupdf.com) with a native front end that follows
 the RISC OS Style Guide, and takes its ideas for markup and reading from
 Flexcil. "Folio" is a working name.
 
-Status: **test builds** (0.0.1-test65). It's used day to day on a Raspberry Pi
+Status: **test builds** (0.0.1-test66). It's used day to day on a Raspberry Pi
 running RISC OS 5, but expect rough edges. The design is in
 [`docs/DESIGN.md`](docs/DESIGN.md).
 
@@ -54,6 +54,9 @@ running RISC OS 5, but expect rough edges. The design is in
 - **Signing:** sign a PDF with your own certificate from a .p12 or .pfx
   file, in an empty signature field or a new one; the signature is made as
   the PDF is saved, as an incremental update, so earlier signatures stay good.
+  A signed PDF's signatures are never changed: its pages, page content and
+  password stay as signed, locked fields and certification rules (DocMDP)
+  are obeyed, and it's only saved incrementally.
 - **Create PDF** (icon bar menu): drag PDFs, pictures and other documents
   into a list, put them in order, and join them into one new PDF (PDF pages
   copied as they are, JPEGs unchanged).

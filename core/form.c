@@ -207,6 +207,18 @@ static void changed(fz_context *ctx, folio_doc *doc, pdf_page *page)
 }
 
 /* On an XFA form, the value goes into its datasets too (xfa.c). */
+/* The field's own lock (signatures; sign.c). */
+static void allow_field(fz_context *ctx, folio_doc *doc, pdf_annot *w)
+{
+	char *name = pdf_load_field_name(ctx, pdf_annot_obj(ctx, w));
+	fz_try(ctx)
+		folio_allow(doc, FOLIO_CHANGE_FORM, name);
+	fz_always(ctx)
+		fz_free(ctx, name);
+	fz_catch(ctx)
+		fz_rethrow(ctx);
+}
+
 static void sync_xfa(fz_context *ctx, folio_doc *doc, pdf_annot *w)
 {
 	char *name;
@@ -243,6 +255,8 @@ int folio_field_set_text(folio_doc *doc, folio_loc loc, int index, const char *u
 		if (pdf_widget_is_readonly(ctx, w))
 			fz_throw(ctx, FZ_ERROR_ARGUMENT, "the field can't be changed");
 		/* 1: taken; 0: the form's script turned it down. */
+		if (w)
+			allow_field(ctx, doc, w);
 		pdf_begin_operation(ctx, pdf, "Fill in");
 		op = 1;
 		rc = pdf_set_text_field_value(ctx, w, utf8 ? utf8 : "") ? 0 : 1;
@@ -275,6 +289,8 @@ int folio_field_toggle(folio_doc *doc, folio_loc loc, int index)
 		folio_cpage *cp = folio_get_page(doc, loc);
 		pdf_page *page = pdf_page_from_fz_page(ctx, cp->page);
 		pdf_annot *w = page ? widget_n(ctx, page, index) : NULL;
+		if (w)
+			allow_field(ctx, doc, w);
 		pdf_begin_operation(ctx, pdf, "Fill in");
 		op = 1;
 		if (!w || pdf_widget_is_readonly(ctx, w) || !pdf_toggle_widget(ctx, w))
@@ -314,6 +330,8 @@ int folio_field_choose(folio_doc *doc, folio_loc loc, int index, int option)
 			fz_throw(ctx, FZ_ERROR_ARGUMENT, "no such choice");
 		opts = fz_malloc_array(ctx, n, const char *);
 		pdf_choice_widget_options(ctx, w, 1, opts);   /* export values */
+		if (w)
+			allow_field(ctx, doc, w);
 		pdf_begin_operation(ctx, pdf, "Fill in");
 		op = 1;
 		pdf_choice_widget_set_value(ctx, w, 1, &opts[option]);
@@ -347,6 +365,7 @@ int folio_field_press(folio_doc *doc, folio_loc loc, int index)
 		pdf_page *page = pdf_page_from_fz_page(ctx, cp->page);
 		pdf_annot *w = page ? widget_n(ctx, page, index) : NULL;
 		if (w && doc->js) {
+			allow_field(ctx, doc, w);
 			pdf_annot_event_down(ctx, w);
 			pdf_annot_event_up(ctx, w);
 			ran = 1;

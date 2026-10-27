@@ -483,6 +483,7 @@ int folio_append_pictures(folio_doc *doc, const char *const *paths, int n, int d
 	folio_forget_pages(doc);
 	fz_var(op);
 	fz_try(ctx) {
+		folio_allow(doc, FOLIO_CHANGE_PAGES, NULL);
 		pdf_begin_operation(ctx, pdf, "Add pages");
 		op = 1;
 		add_picture_pages(ctx, pdf, paths, n, dpi);
@@ -690,6 +691,7 @@ int folio_rotate_pages(folio_doc *doc, const unsigned char *sel, int count, int 
 	fz_var(op);
 	fz_var(i);
 	fz_try(ctx) {
+		folio_allow(doc, FOLIO_CHANGE_PAGES, NULL);
 		pdf_begin_operation(ctx, pdf, "Rotate");
 		op = 1;
 		for (i = 0; i < count && i < pdf_count_pages(ctx, pdf); i++) {
@@ -899,6 +901,7 @@ static int organise(folio_doc *doc, org_kind kind, const unsigned char *sel, int
 	fz_var(op);
 	fz_var(to);
 	fz_try(ctx) {
+		folio_allow(doc, FOLIO_CHANGE_PAGES, NULL);
 		pdf_begin_operation(ctx, pdf, what[kind]);
 		op = 1;
 		if (kind == ORG_DELETE) {

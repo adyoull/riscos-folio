@@ -132,6 +132,12 @@ int folio_set_password(folio_doc *doc, const char *password)
 			"the owner password is needed to change this document's security");
 		return -1;
 	}
+	/* A new password rewrites the whole file: every signature would break. */
+	if (folio_is_signed(doc)) {
+		snprintf(doc->fc->err, sizeof doc->fc->err,
+			"the PDF is signed: changing its password would break the signature");
+		return -1;
+	}
 	if (password && *password) {
 		if (strlen(password) >= sizeof doc->new_pw) {
 			snprintf(doc->fc->err, sizeof doc->fc->err, "the password is too long");

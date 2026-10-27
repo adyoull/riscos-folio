@@ -61,6 +61,13 @@ static int sign_into(const char *in, const char *out, folio_signer *sg, const ch
 	return rc;
 }
 
+static const char *path_out(const char *d)
+{
+	static char b[512];
+	snprintf(b, sizeof b, "%s/../out/signed-full.pdf", d);
+	return b;
+}
+
 static int sigs(const char *leaf, folio_signature *s, int max)
 {
 	char path[512];
@@ -122,6 +129,55 @@ int main(int argc, char **argv)
 		!strcmp(s[0].signer, "Eve Curve"), "ECDSA: valid and trusted (%d %d) %s", s[0].digest, s[0].cert, s[0].why);
 	CHECK(sigs("self.pdf", s, 4) == 1 && s[0].cert == FOLIO_CERT_SELF_SIGNED, "self-signed still");
 	CHECK(folio_set_trust_roots(fc, (const unsigned char *)"not a certificate", 17) == -1, "rubbish refused");
+
+	/* A signed PDF keeps its signature: what would change it is refused. */
+	{
+		folio_doc *d;
+		unsigned char sel[1] = { 1 };
+		folio_loc l0 = { 0, 0 };
+		folio_point at = { 100, 100 };
+		char out[600];
+		snprintf(path, sizeof path, "%s/rsa.pdf", dir);
+		d = folio_open(fc, path, NULL);
+		CHECK(d && folio_is_signed(d), "rsa.pdf is signed");
+		if (d) {
+			CHECK(folio_rotate_pages(d, sel, 1, 90) == -1 && strstr(folio_error(fc), "signed"),
+				"signed: no turning pages (%s)", folio_error(fc));
+			CHECK(folio_delete_pages(d, sel, 1) == -1, "signed: no deleting pages");
+			CHECK(folio_set_password(d, "secret") == -1 && strstr(folio_error(fc), "signature"),
+				"signed: no new password (%s)", folio_error(fc));
+			CHECK(folio_annot_note(d, l0, at, "a note") == 0, "signed: a note may be added");
+			snprintf(out, sizeof out, "%s/../out/signed-note.pdf", dir);
+			CHECK(folio_save_pdf(d, path, out) == 0, "signed: saved (incrementally)");
+			folio_close(d);
+			d = folio_open(fc, out, NULL);
+			CHECK(d && folio_signatures(d, s, 4) == 1 && s[0].digest == FOLIO_SIG_VALID && s[0].changed_after,
+				"signed: the signature is still good after the note");
+			if (d) {
+				CHECK(folio_save_pdf(d, NULL, path_out(dir)) == -1, "signed: no full save (%s)", folio_error(fc));
+				folio_close(d);
+			}
+		}
+		snprintf(path, sizeof path, "%s/certified.pdf", dir);
+		d = folio_open(fc, path, NULL);
+		CHECK(d && folio_is_signed(d), "certified.pdf");
+		if (d) {
+			int i, n = folio_field_count(d, l0), name = -1, locked = -1;
+			folio_field f;
+			for (i = 0; i < n; i++)
+				if (folio_field_get(d, l0, i, &f) == 1) {
+					if (!strcmp(f.name, "name")) name = i;
+					if (!strcmp(f.name, "locked")) locked = i;
+				}
+			CHECK(name >= 0 && folio_field_set_text(d, l0, name, "Bea") == 0, "certified: a free field fills in");
+			CHECK(locked >= 0 && folio_field_set_text(d, l0, locked, "Changed") == -1 &&
+				strstr(folio_error(fc), "locked"), "certified: a locked field doesn't (%s)", folio_error(fc));
+			CHECK(folio_annot_note(d, l0, at, "a note") == -1 && strstr(folio_error(fc), "certified"),
+				"certified P 2: no notes (%s)", folio_error(fc));
+			CHECK(folio_rotate_pages(d, sel, 1, 90) == -1, "certified: no turning pages");
+			folio_close(d);
+		}
+	}
 
 	/* Not a PDF, and a PDF with no signature fields. */
 	{
