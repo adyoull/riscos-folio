@@ -5,7 +5,7 @@ It's built on [MuPDF](https://mupdf.com) with a native front end that follows
 the RISC OS Style Guide, and takes its ideas for markup and reading from
 Flexcil. "Folio" is a working name.
 
-Status: **test builds** (0.0.1-test64). It's used day to day on a Raspberry Pi
+Status: **test builds** (0.0.1-test65). It's used day to day on a Raspberry Pi
 running RISC OS 5, but expect rough edges. The design is in
 [`docs/DESIGN.md`](docs/DESIGN.md).
 
@@ -75,6 +75,9 @@ running RISC OS 5, but expect rough edges. The design is in
   radio buttons, lists and drop-downs, with undo, and save them into the
   PDF. A form's JavaScript (totals, checks as you type) runs only if
   Choices allow it, through MuPDF's sandbox; forms are never sent anywhere.
+- **XFA forms** (Adobe LiveCycle): filled in as a list of fields, written
+  back into the form's XFA data (kept in step with the page's fields on a
+  static form); a dynamic form, which MuPDF can't draw, opens its list.
 - **Security:** Folio asks before following a link out of a document,
   showing where it goes, never starts other programs, and says when a PDF
   it opens has JavaScript, attached files or actions that would.

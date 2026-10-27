@@ -206,12 +206,29 @@ static void changed(fz_context *ctx, folio_doc *doc, pdf_page *page)
 	forget_all(doc);
 }
 
+/* On an XFA form, the value goes into its datasets too (xfa.c). */
+static void sync_xfa(fz_context *ctx, folio_doc *doc, pdf_annot *w)
+{
+	char *name;
+	if (folio_xfa_kind(doc) == FOLIO_XFA_NONE)
+		return;
+	name = pdf_load_field_name(ctx, pdf_annot_obj(ctx, w));
+	fz_try(ctx)
+		folio_xfa_sync(doc, name, pdf_field_value(ctx, pdf_annot_obj(ctx, w)));
+	fz_always(ctx)
+		fz_free(ctx, name);
+	fz_catch(ctx)
+		fz_rethrow(ctx);
+}
+
 int folio_field_set_text(folio_doc *doc, folio_loc loc, int index, const char *utf8)
 {
 	fz_context *ctx = doc->ctx;
-	int rc = -1;
+	int rc = -1, op = 0;
+	pdf_document *pdf = pdf_of(doc);
 	fz_var(rc);
-	if (!pdf_of(doc)) {
+	fz_var(op);
+	if (!pdf) {
 		snprintf(doc->fc->err, sizeof doc->fc->err, "this document has no form");
 		return -1;
 	}
@@ -226,10 +243,18 @@ int folio_field_set_text(folio_doc *doc, folio_loc loc, int index, const char *u
 		if (pdf_widget_is_readonly(ctx, w))
 			fz_throw(ctx, FZ_ERROR_ARGUMENT, "the field can't be changed");
 		/* 1: taken; 0: the form's script turned it down. */
+		pdf_begin_operation(ctx, pdf, "Fill in");
+		op = 1;
 		rc = pdf_set_text_field_value(ctx, w, utf8 ? utf8 : "") ? 0 : 1;
+		if (rc == 0)
+			sync_xfa(ctx, doc, w);
+		pdf_end_operation(ctx, pdf);
+		op = 0;
 		changed(ctx, doc, page);
 	}
 	fz_catch(ctx) {
+		if (op)
+			pdf_abandon_operation(ctx, pdf);
 		folio_set_error(doc->fc);
 		forget_all(doc);
 		return -1;
@@ -240,18 +265,28 @@ int folio_field_set_text(folio_doc *doc, folio_loc loc, int index, const char *u
 int folio_field_toggle(folio_doc *doc, folio_loc loc, int index)
 {
 	fz_context *ctx = doc->ctx;
-	if (!pdf_of(doc))
+	pdf_document *pdf = pdf_of(doc);
+	int op = 0;
+	fz_var(op);
+	if (!pdf)
 		return -1;
 	folio_begin(doc);
 	fz_try(ctx) {
 		folio_cpage *cp = folio_get_page(doc, loc);
 		pdf_page *page = pdf_page_from_fz_page(ctx, cp->page);
 		pdf_annot *w = page ? widget_n(ctx, page, index) : NULL;
+		pdf_begin_operation(ctx, pdf, "Fill in");
+		op = 1;
 		if (!w || pdf_widget_is_readonly(ctx, w) || !pdf_toggle_widget(ctx, w))
 			fz_throw(ctx, FZ_ERROR_ARGUMENT, "not a check box or radio button that can change");
+		sync_xfa(ctx, doc, w);
+		pdf_end_operation(ctx, pdf);
+		op = 0;
 		changed(ctx, doc, page);
 	}
 	fz_catch(ctx) {
+		if (op)
+			pdf_abandon_operation(ctx, pdf);
 		folio_set_error(doc->fc);
 		forget_all(doc);
 		return -1;
@@ -263,8 +298,11 @@ int folio_field_choose(folio_doc *doc, folio_loc loc, int index, int option)
 {
 	fz_context *ctx = doc->ctx;
 	const char **opts = NULL;
+	pdf_document *pdf = pdf_of(doc);
+	int op = 0;
 	fz_var(opts);
-	if (!pdf_of(doc))
+	fz_var(op);
+	if (!pdf)
 		return -1;
 	folio_begin(doc);
 	fz_try(ctx) {
@@ -276,12 +314,19 @@ int folio_field_choose(folio_doc *doc, folio_loc loc, int index, int option)
 			fz_throw(ctx, FZ_ERROR_ARGUMENT, "no such choice");
 		opts = fz_malloc_array(ctx, n, const char *);
 		pdf_choice_widget_options(ctx, w, 1, opts);   /* export values */
+		pdf_begin_operation(ctx, pdf, "Fill in");
+		op = 1;
 		pdf_choice_widget_set_value(ctx, w, 1, &opts[option]);
+		sync_xfa(ctx, doc, w);
+		pdf_end_operation(ctx, pdf);
+		op = 0;
 		changed(ctx, doc, page);
 	}
 	fz_always(ctx)
 		fz_free(ctx, opts);
 	fz_catch(ctx) {
+		if (op)
+			pdf_abandon_operation(ctx, pdf);
 		folio_set_error(doc->fc);
 		forget_all(doc);
 		return -1;

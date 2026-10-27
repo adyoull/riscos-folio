@@ -397,6 +397,39 @@ int folio_form_js(folio_doc *doc, int on);
 int folio_form_take_alert(folio_doc *doc, char *buf, size_t size);
 int folio_form_take_url(folio_doc *doc, char *buf, size_t size);
 
+/* ---- XFA forms (Adobe LiveCycle; xfa.c) ------------------------------------
+ * Filled in as a list of fields: the values are kept in the form's XFA
+ * datasets, by path (form1.Page1.Name). A static ("hybrid") form also has
+ * ordinary fields on its pages, kept in step; a dynamic one has only a
+ * "Please wait..." page, as MuPDF can't lay out XFA. */
+enum { FOLIO_XFA_NONE, FOLIO_XFA_HYBRID, FOLIO_XFA_DYNAMIC };
+int folio_xfa_kind(folio_doc *doc);
+
+typedef enum {
+	FOLIO_XFA_TEXT, FOLIO_XFA_MULTILINE, FOLIO_XFA_NUMBER, FOLIO_XFA_DATE,
+	FOLIO_XFA_CHECK, FOLIO_XFA_CHOICE, FOLIO_XFA_PASSWORD
+} folio_xfa_type;
+
+#define FOLIO_XFA_OPTS 16
+typedef struct {
+	char path[256];         /* where the value is kept: form1.Item[2].Price */
+	char label[160];        /* the caption (UTF-8), or the field's name */
+	char value[512];        /* UTF-8 */
+	folio_xfa_type type;
+	int read_only;
+	int nopts;              /* choices (and radio groups); check: [0] on, [1] off */
+	char opt[FOLIO_XFA_OPTS][64];    /* as shown */
+	char save[FOLIO_XFA_OPTS][64];   /* as kept */
+	int chosen;             /* the value's place in save[], or -1 */
+} folio_xfa_field;
+
+/* The fields, in the form's order (data first, then fields with no value
+ * yet): how many there are (more than max: only max filled), or -1. */
+int folio_xfa_fields(folio_doc *doc, folio_xfa_field *out, int max);
+/* Sets a field's value (for a choice or check box, one of save[]). One
+ * change in the journal. 0 or -1 (folio_error). */
+int folio_xfa_set(folio_doc *doc, const char *path, const char *value);
+
 /* ---- Links ------------------------------------------------------------ */
 
 typedef struct {

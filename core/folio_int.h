@@ -62,6 +62,7 @@ struct folio_doc {
 	struct folio_ocr_store *ocr;
 	int ocr_n;
 	int ocr_changed;            /* since loaded or saved */
+	int xfa_syncing;            /* xfa.c setting an ordinary field itself */
 	fz_font *ocr_font;
 
 	/* Forms (form.c): JavaScript on, and what it last asked for. */
@@ -125,5 +126,9 @@ void folio_fonts_drop(fz_context *ctx);
 int *folio_page_keys(folio_doc *doc, int *n);
 void folio_recount(folio_doc *doc);
 void folio_ocr_follow(folio_doc *doc, const int *before, int n);
+
+/* xfa.c: an ordinary field (full name) of an XFA form changed; its value
+ * goes into the datasets too. Inside the caller's operation. */
+void folio_xfa_sync(folio_doc *doc, const char *acro_name, const char *value);
 
 #endif

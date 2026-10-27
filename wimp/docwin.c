@@ -76,6 +76,7 @@ struct docwin {
 	int asel_page, asel_index;
 	folio_rect asel_rect;
 	int can_annotate;
+	int xfa;                    /* FOLIO_XFA_*: an XFA form */
 	int modified;             /* as last shown in the title */
 	int unsaved_new;          /* made by Folio (pictures to PDF), not saved yet */
 	int menu_page;            /* the page Menu was pressed over (Rotate), or -1 */
@@ -452,6 +453,7 @@ static void colour_chosen(docwin *w, int code);
 static void meas_draw(docwin *w, int i, int x0, int y1);
 static void ocr_embed(docwin *w);
 static void remeasure(docwin *w);
+static void form_changed(docwin *w);
 static void page_changed(docwin *w, int page);
 static void link_press(docwin *w, int *b);
 static int link_tick(docwin *w);
@@ -520,6 +522,7 @@ static void read_perms(docwin *w)
 	w->perm_access = folio_permitted(w->doc, FOLIO_PERM_ACCESSIBILITY) || w->perm_copy;
 	w->perm_form = folio_permitted(w->doc, FOLIO_PERM_FORM);
 	w->perm_assemble = folio_permitted(w->doc, FOLIO_PERM_ASSEMBLE);
+	w->xfa = folio_xfa_kind(w->doc);
 	if (!w->perm_print || !w->perm_copy)
 		app_log("%s: the author allows%s%s%s", leafname(w->path), w->perm_print ? " printing" : "",
 			w->perm_copy ? " copying" : "", w->perm_access ? " reading aloud" : "");
@@ -1086,6 +1089,11 @@ docwin *docwin_open_password(const char *path, const char *password)
 		folio_chapters(w->doc), w->page.x1, w->page.y1);
 	security_on_open(w);
 	signui_on_open(w);
+	/* An XFA form MuPDF can't draw: its fields as a list. */
+	if (w->xfa == FOLIO_XFA_DYNAMIC) {
+		app_log("%s: a dynamic XFA form; its fields are listed", leafname(w->path));
+		xfaui_open(w);
+	}
 	return w;
 }
 
@@ -1110,6 +1118,7 @@ void docwin_close(docwin *w)
 	annotlist_forget(w);
 	pageorg_forget(w);
 	signbox_forget(w);
+	xfaui_forget(w);
 	measure_forget(w);
 	annotui_forget(w);
 	passui_forget(w);
@@ -2425,6 +2434,7 @@ void docwin_edit_menu_shown(docwin *w)
 	menu_set_fade(app.edit_menu, EDIT_ULINE, !markup_ok);
 	menu_set_fade(app.edit_menu, EDIT_STRIKE, !markup_ok);
 	menu_set_fade(app.edit_menu, EDIT_NOTE, !w->can_annotate);
+	menu_set_fade(app.edit_menu, EDIT_XFA, !w->xfa);
 	menu_set_fade(app.edit_menu, EDIT_DELANNOT, w->asel_page < 0);
 	/* Not faded when not allowed: choosing it says why, and offers the
 	 * owner password. */
@@ -2780,6 +2790,12 @@ void docwin_event(docwin *w, int code)
 	case EV_PASSWORD:
 		if (w->can_annotate)
 			passui_security(w);
+		break;
+	case EV_XFA:
+		if (w->xfa)
+			xfaui_open(w);
+		else
+			tbx_report("This document isn't an XFA form. (Ordinary PDF forms are filled in on the page.)");
 		break;
 	case EV_SIGN:
 		signbox_open(w, app.idb.self_id == app.doc_menu && w->menu_page >= 0 ? w->menu_page : current_page(w), NULL);
@@ -4009,6 +4025,29 @@ int docwin_sign(docwin *w, int page, const char *field, folio_signer *sg, const 
 	update_title(w);
 	go_to_page(w, page);
 	save_open(w, 0);
+	return 0;
+}
+
+int docwin_xfa_set(docwin *w, const char *path, const char *utf8)
+{
+	int rc;
+	if (!is_window(w))
+		return -1;
+	if (app.ch.obey_restrictions && !w->perm_form) {
+		allowed(w, EV_FILL_FORM);
+		return -1;
+	}
+	core_now();
+	rc = folio_xfa_set(w->doc, path, utf8);
+	core_unlock();
+	app_log("xfa: %s set%s", path, rc ? " (failed)" : "");
+	if (rc) {
+		char m[300];
+		snprintf(m, sizeof m, "Folio couldn't fill in the field: %s", folio_error(app.fc));
+		tbx_report(m);
+		return -1;
+	}
+	form_changed(w);
 	return 0;
 }
 

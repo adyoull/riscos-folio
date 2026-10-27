@@ -9,6 +9,7 @@ D=$(cd "$(dirname "$0")" && pwd)/data
 mkdir -p "$D"; cd "$D"
 python3 -I ../make-epub.py book.epub
 python3 -I ../make-form.py form.pdf
+python3 -I ../make-xfa.py .
 # A Japanese PDF whose font isn't embedded, and a font for fontconfig to
 # find (fonts_test).
 mkdir -p fonts

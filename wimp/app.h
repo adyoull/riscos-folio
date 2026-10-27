@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test64 (27-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test65 (27-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -22,7 +22,7 @@ enum {
 	EV_COPY = 0x150, EV_SELECT_ALL, EV_CLEAR_SEL, EV_DEFINE, EV_FIND, EV_CONTENTS,
 	EV_HIGHLIGHT = 0x160, EV_UNDERLINE, EV_STRIKE, EV_NOTE, EV_UNDO, EV_REDO, EV_DEL_ANNOT, EV_SAVE,
 	EV_ADD_SHELF, EV_PASSWORD, EV_READ_ALOUD, EV_SPEAK_SEL, EV_PRINT, EV_EXPORT_DRAW, EV_MEASURE,
-	EV_OCR_PAGE = 0x170, EV_OCR_ALL, EV_GOTO, EV_DOCINFO, EV_ANNOTS, EV_OCR_EMBED, EV_SIGN,
+	EV_OCR_PAGE = 0x170, EV_OCR_ALL, EV_GOTO, EV_DOCINFO, EV_ANNOTS, EV_OCR_EMBED, EV_SIGN, EV_XFA,
 	EV_ROT_CW = 0x180, EV_ROT_ACW, EV_ROT_180, EV_ROTALL_CW, EV_ROTALL_ACW,
 	EV_PG_DELETE = 0x188, EV_PG_MOVE, EV_PG_INSERT,
 	EV_COL_USUAL = 0x190, EV_COL_YELLOW, EV_COL_GREEN, EV_COL_BLUE, EV_COL_PINK, EV_COL_RED,
@@ -46,13 +46,14 @@ enum {
 	EV_MEAS_CLEAR = 0x2c8, EV_MEAS_ADD, EV_MEAS_CLOSE, EV_MEAS_UNITS, EV_MEAS_HIDDEN,
 	EV_CREATE_PDF = 0x2d0, EV_CP_UP, EV_CP_DOWN, EV_CP_REMOVE, EV_CP_SORT, EV_CP_CLEAR, EV_CP_CREATE,
 	EV_SG_SIGN = 0x2d8, EV_SG_CANCEL,                    /* the Sign box */
+	EV_XF_OK = 0x2da, EV_XF_CANCEL,                      /* Form fields' typing box */
 	EV_SCAN = 0x2e0, EV_SC_FIND, EV_SC_SCAN, EV_SC_STOP, EV_SC_ADD,
 	EV_SC_PICK = 0x2f0      /* to 0x2ff: the scanner chosen from Find's menu */
 };
 
 /* View menu entries (component ids). */
 enum { EDIT_COPY = 1, EDIT_SELECT_ALL, EDIT_CLEAR, EDIT_UNDO, EDIT_REDO, EDIT_HILITE,
-	EDIT_ULINE, EDIT_STRIKE, EDIT_NOTE, EDIT_DELANNOT, EDIT_COLOUR, EDIT_MEASURE };
+	EDIT_ULINE, EDIT_STRIKE, EDIT_NOTE, EDIT_DELANNOT, EDIT_COLOUR, EDIT_MEASURE, EDIT_XFA };
 /* Document menu entries. */
 enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6, DOC_SHELF = 7, DOC_PASSWORD = 8,
 	DOC_READ = 9, DOC_SPEAKSEL = 10, DOC_SPEED = 11, DOC_PRINT = 12, DOC_EXPORT_DRAW = 13,
@@ -440,6 +441,17 @@ void signbox_event(int code);
 int signbox_data_load(int *block);
 void signbox_forget(docwin *w);
 int docwin_can_sign(docwin *w);
+/* The Form fields window, for XFA forms (xfaui.c). */
+void xfaui_open(docwin *w);
+void xfaui_forget(docwin *w);
+int xfaui_owns(int wimp_handle);
+void xfaui_redraw(int *block);
+void xfaui_click(int *block);
+void xfaui_background(void);
+void xfaui_event(int code);
+int xfaui_menu_selection(int *block);
+void xfaui_menus_deleted(int tree);
+int docwin_xfa_set(docwin *w, const char *path, const char *utf8);
 int docwin_sign(docwin *w, int page, const char *field, folio_signer *sg, const char *reason,
 	const char *location);
 

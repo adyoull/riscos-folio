@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test64)
+Folio (test build 0.0.1-test65)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -135,6 +135,20 @@ Filling in forms (PDFs)
   what you've filled in. Fields worked out by the form (totals, dates
   checked as you type) need its JavaScript, which is off unless Choices
   turn it on; Folio never sends a form anywhere.
+
+XFA forms (made with Adobe's form designer)
+  Some PDF forms are XFA forms, made with Adobe's LiveCycle Designer: the
+  form's design and its values are kept inside the PDF in Adobe's own way.
+  Folio can't draw an XFA design, but it can fill one in as a list. Edit >
+  Form fields... lists every field with what's in it: click on one to
+  type in it, choose from its choices, or tick it. If the form has
+  ordinary fields on its pages too (a "static" XFA form), filling in
+  either keeps the other in step. A "dynamic" XFA form's page only says
+  "Please wait..." (it needs Adobe Reader to draw it); Folio opens its
+  Form fields window by itself. Save (F3) keeps what you've filled in,
+  and Adobe Reader shows it when the form is opened there. Folio doesn't
+  run an XFA form's scripts, so fields it works out (totals) aren't
+  updated until it's opened in Adobe Reader.
 
 Measuring
   Measure... on the Edit menu opens the Measure window. While it's open,

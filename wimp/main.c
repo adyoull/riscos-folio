@@ -161,8 +161,9 @@ static void create_objects(void)
 	entry(&em, 8, EDIT_NOTE, "Note...", 0, EV_NOTE, "Click to add a note at the selection, or at the top of the page (PDFs).");
 	entry(&em, 9, EDIT_DELANNOT, "Delete annotation Del", 0, EV_DEL_ANNOT, "Click to delete the annotation you clicked on.");
 	entry(&em, 10, EDIT_COLOUR, "Colour", MENU_SUBMENU, 0, "Move right to choose the colour for new highlights, underlines, strike-outs and notes, or to recolour the annotation you clicked on.");
-	entry(&em, 11, EDIT_MEASURE, "Measure...", 0, EV_MEASURE, "Click to measure on the page: lengths between the points you click, and the area they enclose.");
-	app.edit_menu = make_menu(&em, "Edit", 12, EV_EDIT_SHOWN);
+	entry(&em, 11, EDIT_MEASURE, "Measure...", MENU_DOTTED, EV_MEASURE, "Click to measure on the page: lengths between the points you click, and the area they enclose.");
+	entry(&em, 12, EDIT_XFA, "Form fields...", 0, EV_XFA, "Click to fill in an XFA form (one made with Adobe's form designer) as a list of its fields.");
+	app.edit_menu = make_menu(&em, "Edit", 13, EV_EDIT_SHOWN);
 	{
 		static const char *const name[] = { "Yellow", "Green", "Blue", "Pink", "Red", "Orange", "Purple", "Grey" };
 		int k;
@@ -298,6 +299,7 @@ static int message(int *b)
 	switch (b[4]) {
 	case 0x400c9:                 /* Message_MenusDeleted */
 		formui_menus_deleted(b[5]);
+		xfaui_menus_deleted(b[5]);
 		break;
 	case Message_Quit:
 		docwin_close_all();
@@ -441,6 +443,9 @@ static int toolbox_event(int *b)
 		break;
 	case EV_SG_SIGN: case EV_SG_CANCEL:
 		signbox_event(code);
+		break;
+	case EV_XF_OK: case EV_XF_CANCEL:
+		xfaui_event(code);
 		break;
 	case EV_PO_DELETE: case EV_PO_MOVE: case EV_PO_CANCEL:
 		pageorg_event(code);
@@ -649,6 +654,8 @@ int main(int argc, char **argv)
 				contents_redraw(block);
 			else if (annotlist_owns(block[0]))
 				annotlist_redraw(block);
+			else if (xfaui_owns(block[0]))
+				xfaui_redraw(block);
 			else if (docinfo_owns(block[0]))
 				docinfo_redraw(block);
 			else if (combine_owns(block[0]))
@@ -701,7 +708,8 @@ int main(int argc, char **argv)
 			formui_lose_caret(block[0]);
 			break;
 		case Wimp_EMenuSelection:
-			formui_menu_selection(block);
+			if (!xfaui_menu_selection(block))
+				formui_menu_selection(block);
 			break;
 		case Wimp_EUserDrag:
 			/* A selection drag's button was let go. */
@@ -727,6 +735,8 @@ int main(int argc, char **argv)
 				contents_click(block);
 			else if (annotlist_owns(block[3]))
 				annotlist_click(block);
+			else if (xfaui_owns(block[3]))
+				xfaui_click(block);
 			else if (combine_owns(block[3]))
 				combine_click(block);
 			else if (thumbs_from_wimp(block[3]))
@@ -768,6 +778,7 @@ int main(int argc, char **argv)
 		busy |= speech_background(&wake);
 		busy |= scanui_background(&wake);
 		busy |= annotlist_background();
+		xfaui_background();
 	}
 	print_quit();
 	speech_quit();
