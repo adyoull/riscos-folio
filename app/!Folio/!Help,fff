@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test67)
+Folio (test build 0.0.1-test68)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -149,6 +149,23 @@ XFA forms (made with Adobe's form designer)
   and Adobe Reader shows it when the form is opened there. Folio doesn't
   run an XFA form's scripts, so fields it works out (totals) aren't
   updated until it's opened in Adobe Reader.
+
+Drawing, stamps and pictures (PDFs)
+  Edit > Draw... opens the Draw window: drag with Select on the page to
+  draw, in black, blue or red, with a thin, medium or thick pen; Adjust
+  (or Undo) takes the last stroke off. Keep puts the drawing on the page;
+  so does closing the window, or starting to draw on another page.
+  Edit > Stamp puts a stamp on the page: choose one (Approved, Draft,
+  Confidential and so on), then click where it goes. Stamp > Picture...
+  puts a picture there instead (a logo, or a signature written on paper
+  and scanned): drag the picture file (JPEG, PNG and so on) into the box,
+  then click on the page. "Make white see-through" lets the page show
+  through the paper. Escape (or Adjust) gives up placing it. Each of
+  these is a note on the page: Ctrl-Z undoes it, Delete removes it once
+  clicked, and a signed PDF only takes them where its signature allows
+  notes. A drawn or scanned signature only looks like a signature: it
+  doesn't prove who signed or that the document is unchanged (see
+  Signing a PDF for that).
 
 Measuring
   Measure... on the Edit menu opens the Measure window. While it's open,

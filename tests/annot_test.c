@@ -268,6 +268,56 @@ int main(int argc, char **argv)
 	}
 	folio_close(d);
 
+	/* Drawing, stamps and pictures (on a fresh copy of doc.pdf, page 3). */
+	{
+		folio_doc *q = folio_open(fc, src, NULL);
+		folio_loc p3 = { 0, 2 };
+		folio_point pts[6] = { { 100, 100 }, { 120, 110 }, { 140, 100 }, { 100, 140 }, { 140, 140 }, { 160, 150 } };
+		int counts[2] = { 3, 3 }, k, ink = 0, stamp = 0;
+		folio_annot_info info[8];
+		folio_point c = { 300, 300 }, c2 = { 300, 500 };
+		char pic[600];
+		CHECK(q != NULL, "doc.pdf again");
+		if (q) {
+			int before = folio_annot_list(q, p3, info, 8);
+			CHECK(folio_annot_ink(q, p3, pts, counts, 2, 0x1a2b8c, 2) == 0, "ink");
+			CHECK(folio_annot_ink(q, p3, pts, counts, 0, 0, 2) == -1, "no strokes");
+			CHECK(folio_stamp_name(0) && !strcmp(folio_stamp_name(0), "Approved") && !folio_stamp_name(14),
+				"stamp names");
+			CHECK(folio_annot_stamp(q, p3, c, "Draft") == 0, "stamp");
+			CHECK(folio_annot_stamp(q, p3, c, "Nonsense") == -1, "unknown stamp");
+			snprintf(pic, sizeof pic, "%s/photo.png", dir);
+			CHECK(folio_annot_picture(q, p3, c2, 100, pic, 1) == 0, "picture (%s)", folio_error(fc));
+			k = folio_annot_list(q, p3, info, 8);
+			CHECK(k == before + 3, "three more (%d -> %d)", before, k);
+			for (int i = 0; i < k; i++) {
+				if (!strcmp(info[i].type, "Ink"))
+					ink = 1;
+				if (!strcmp(info[i].type, "Stamp"))
+					stamp++;
+			}
+			CHECK(ink && stamp == 2, "an Ink and two Stamps (%d %d)", ink, stamp);
+			for (int i = 0; i < k; i++)
+				if (!strcmp(info[i].type, "Stamp") && info[i].rect.y0 > 400)
+					CHECK(info[i].rect.x1 - info[i].rect.x0 > 99 && info[i].rect.x1 - info[i].rect.x0 < 101,
+						"picture 100 pt wide");
+			CHECK(folio_undo(q) == 0 && folio_annot_list(q, p3, info, 8) == before + 2, "undo the picture");
+			CHECK(folio_redo(q) == 0, "redo it");
+			CHECK(folio_save_pdf(q, src, "tests/out/annot-stamps.pdf") == 0, "saved");
+			folio_close(q);
+			q = folio_open(fc, "tests/out/annot-stamps.pdf", NULL);
+			CHECK(q && folio_annot_list(q, p3, info, 8) == before + 3, "kept");
+			if (q) {
+				uint32_t *tile = malloc(600 * 850 * 4);
+				folio_irect t = { 0, 0, 600, 850 };
+				CHECK(tile && folio_render_tile(q, p3, 1.0f, t, FOLIO_PAGE_NORMAL, FOLIO_RENDER_ANNOTS, tile,
+					600 * 4) == 0, "page draws");
+				free(tile);
+				folio_close(q);
+			}
+		}
+	}
+
 	/* EPUBs: not yet. */
 	e = folio_open(fc, data(dir, "book.epub"), NULL);
 	CHECK(e && !folio_can_annotate(e), "EPUB annotatable");

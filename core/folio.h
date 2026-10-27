@@ -580,6 +580,21 @@ int folio_page_measure(folio_doc *doc, folio_loc loc, double *per_point, char *u
  * One change in the journal. 0 or -1. */
 int folio_annot_measure(folio_doc *doc, folio_loc loc, const folio_point *pt, int n, int closed,
 		const char *text);
+/* Freehand drawing (an Ink annotation): strokes of folio points, counts[i]
+ * points in stroke i, all in pts one after another; rgb 0xRRGGBB; width in
+ * points. 0 or -1. */
+int folio_annot_ink(folio_doc *doc, folio_loc loc, const folio_point *pts, const int *counts, int strokes,
+		int rgb, float width);
+/* The standard stamps, by number from 0 ("Approved", "NotApproved", "Draft",
+ * "Final", ...): their PDF names, NULL past the last. */
+const char *folio_stamp_name(int i);
+/* A standard stamp centred at centre. 0 or -1. */
+int folio_annot_stamp(folio_doc *doc, folio_loc loc, folio_point centre, const char *name);
+/* A picture (JPEG, PNG and the rest) as a stamp, centred at centre, width
+ * points wide (0: two inches), its shape kept; clear_white makes white
+ * see-through (a signature on paper). 0 or -1. */
+int folio_annot_picture(folio_doc *doc, folio_loc loc, folio_point centre, float width, const char *path,
+		int clear_white);
 
 /* Undo and redo of annotation changes (every page is redrawn after). */
 int folio_can_undo(folio_doc *doc);

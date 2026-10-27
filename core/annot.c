@@ -726,3 +726,233 @@ int folio_annot_measure(folio_doc *doc, folio_loc loc, const folio_point *pt, in
 	forget_page(doc, loc);
 	return 0;
 }
+
+/* ---- Drawing, stamps and pictures --------------------------------------------
+ * Freehand drawing is an Ink annotation (its strokes, colour and width);
+ * a stamp is a Stamp annotation with one of the standard names, which
+ * MuPDF draws (and other readers know); a picture is a Stamp with the
+ * picture as its appearance (pdf_set_annot_stamp_image). White can be made
+ * see-through, for a scanned signature on paper. Each is one change in the
+ * journal, and needs the PDF to allow notes (folio_allow). */
+
+static void rgb_to(int rgb, float c[3])
+{
+	c[0] = ((rgb >> 16) & 255) / 255.0f;
+	c[1] = ((rgb >> 8) & 255) / 255.0f;
+	c[2] = (rgb & 255) / 255.0f;
+}
+
+int folio_annot_ink(folio_doc *doc, folio_loc loc, const folio_point *pts, const int *counts, int strokes,
+		int rgb, float width)
+{
+	fz_context *ctx = doc->ctx;
+	pdf_document *pdf = pdf_of(doc);
+	pdf_annot *annot = NULL;
+	fz_point *v = NULL;
+	int op = 0, total = 0, i;
+	if (!pdf) {
+		snprintf(doc->fc->err, sizeof doc->fc->err, "only a PDF can be drawn on");
+		return -1;
+	}
+	for (i = 0; i < strokes; i++)
+		total += counts[i];
+	if (strokes <= 0 || total <= 0) {
+		snprintf(doc->fc->err, sizeof doc->fc->err, "nothing has been drawn");
+		return -1;
+	}
+	fz_var(annot);
+	fz_var(op);
+	fz_var(v);
+	folio_begin(doc);
+	fz_try(ctx) {
+		folio_cpage *cp = folio_get_page(doc, loc);
+		pdf_page *page = pdf_page_from_fz_page(ctx, cp->page);
+		float c[3];
+		v = fz_malloc_array(ctx, total, fz_point);
+		for (i = 0; i < total; i++)
+			v[i] = to_page(cp, pts[i]);
+		folio_allow(doc, FOLIO_CHANGE_ANNOT, NULL);
+		pdf_begin_operation(ctx, pdf, "Drawing");
+		op = 1;
+		annot = pdf_create_annot(ctx, page, PDF_ANNOT_INK);
+		pdf_set_annot_ink_list(ctx, annot, strokes, counts, v);
+		rgb_to(rgb, c);
+		pdf_set_annot_color(ctx, annot, 3, c);
+		pdf_set_annot_border_width(ctx, annot, width > 0 ? width : 1.5f);
+		pdf_update_page(ctx, page);
+		pdf_end_operation(ctx, pdf);
+		op = 0;
+	}
+	fz_always(ctx) {
+		pdf_drop_annot(ctx, annot);
+		fz_free(ctx, v);
+	}
+	fz_catch(ctx) {
+		if (op)
+			pdf_abandon_operation(ctx, pdf);
+		folio_set_error(doc->fc);
+		forget_page(doc, loc);
+		return -1;
+	}
+	forget_page(doc, loc);
+	return 0;
+}
+
+static const char *const stamp_names[] = {
+	"Approved", "NotApproved", "Draft", "Final", "Confidential", "ForComment", "ForPublicRelease",
+	"NotForPublicRelease", "Experimental", "Expired", "AsIs", "Departmental", "Sold", "TopSecret", NULL
+};
+
+const char *folio_stamp_name(int i)
+{
+	return i >= 0 && i < (int)(sizeof stamp_names / sizeof stamp_names[0]) - 1 ? stamp_names[i] : NULL;
+}
+
+int folio_annot_stamp(folio_doc *doc, folio_loc loc, folio_point centre, const char *name)
+{
+	fz_context *ctx = doc->ctx;
+	pdf_document *pdf = pdf_of(doc);
+	pdf_annot *annot = NULL;
+	int op = 0, i, known = 0;
+	if (!pdf) {
+		snprintf(doc->fc->err, sizeof doc->fc->err, "only a PDF can be stamped");
+		return -1;
+	}
+	for (i = 0; stamp_names[i]; i++)
+		if (!strcmp(stamp_names[i], name))
+			known = 1;
+	if (!known) {
+		snprintf(doc->fc->err, sizeof doc->fc->err, "there's no stamp called '%s'", name);
+		return -1;
+	}
+	fz_var(annot);
+	fz_var(op);
+	folio_begin(doc);
+	fz_try(ctx) {
+		folio_cpage *cp = folio_get_page(doc, loc);
+		pdf_page *page = pdf_page_from_fz_page(ctx, cp->page);
+		fz_point c = to_page(cp, centre);
+		folio_allow(doc, FOLIO_CHANGE_ANNOT, NULL);
+		pdf_begin_operation(ctx, pdf, "Stamp");
+		op = 1;
+		annot = pdf_create_annot(ctx, page, PDF_ANNOT_STAMP);
+		pdf_set_annot_icon_name(ctx, annot, name);
+		/* Acrobat's stamps are about 2.5 inches by 0.75. */
+		pdf_set_annot_rect(ctx, annot, fz_make_rect(c.x - 90, c.y - 27, c.x + 90, c.y + 27));
+		pdf_update_page(ctx, page);
+		pdf_end_operation(ctx, pdf);
+		op = 0;
+	}
+	fz_always(ctx)
+		pdf_drop_annot(ctx, annot);
+	fz_catch(ctx) {
+		if (op)
+			pdf_abandon_operation(ctx, pdf);
+		folio_set_error(doc->fc);
+		forget_page(doc, loc);
+		return -1;
+	}
+	forget_page(doc, loc);
+	return 0;
+}
+
+/* The picture with near-white made see-through (an alpha channel). */
+static fz_image *without_white(fz_context *ctx, fz_image *img)
+{
+	fz_pixmap *pix = NULL, *rgb = NULL, *rgba = NULL;
+	fz_image *out = NULL;
+	fz_var(out);
+	fz_var(pix);
+	fz_var(rgb);
+	fz_var(rgba);
+	fz_try(ctx) {
+		int x, y;
+		pix = fz_get_pixmap_from_image(ctx, img, NULL, NULL, NULL, NULL);
+		rgb = fz_convert_pixmap(ctx, pix, fz_device_rgb(ctx), NULL, NULL, fz_default_color_params, 0);
+		rgba = fz_new_pixmap(ctx, fz_device_rgb(ctx), rgb->w, rgb->h, NULL, 1);
+		for (y = 0; y < rgb->h; y++) {
+			const unsigned char *s = rgb->samples + (size_t)y * rgb->stride;
+			unsigned char *d = rgba->samples + (size_t)y * rgba->stride;
+			for (x = 0; x < rgb->w; x++, s += rgb->n, d += 4) {
+				int lo = s[0] < s[1] ? (s[0] < s[2] ? s[0] : s[2]) : (s[1] < s[2] ? s[1] : s[2]);
+				/* Paper (light) goes; ink stays, with soft edges. */
+				int a = lo >= 230 ? 0 : lo <= 150 ? 255 : (230 - lo) * 255 / 80;
+				/* Premultiplied alpha. */
+				d[0] = (unsigned char)(s[0] * a / 255);
+				d[1] = (unsigned char)(s[1] * a / 255);
+				d[2] = (unsigned char)(s[2] * a / 255);
+				d[3] = (unsigned char)a;
+			}
+		}
+		out = fz_new_image_from_pixmap(ctx, rgba, NULL);
+	}
+	fz_always(ctx) {
+		fz_drop_pixmap(ctx, pix);
+		fz_drop_pixmap(ctx, rgb);
+		fz_drop_pixmap(ctx, rgba);
+	}
+	fz_catch(ctx)
+		fz_rethrow(ctx);
+	return out;
+}
+
+static int picture(folio_doc *doc, folio_loc loc, const folio_point *at, const float *wp, const char *path,
+		int clear_white)
+{
+	const float width = *wp;
+	const folio_point centre = *at;
+	fz_context *ctx = doc->ctx;
+	pdf_document *pdf = pdf_of(doc);
+	pdf_annot *annot = NULL;
+	fz_image *img = NULL, *see = NULL;
+	int op = 0;
+	if (!pdf) {
+		snprintf(doc->fc->err, sizeof doc->fc->err, "only a PDF can take a picture");
+		return -1;
+	}
+	fz_var(annot);
+	fz_var(op);
+	fz_var(img);
+	fz_var(see);
+	folio_begin(doc);
+	fz_try(ctx) {
+		folio_cpage *cp = folio_get_page(doc, loc);
+		pdf_page *page = pdf_page_from_fz_page(ctx, cp->page);
+		fz_point c = to_page(cp, centre);
+		float h;
+		img = fz_new_image_from_file(ctx, path);
+		if (clear_white)
+			see = without_white(ctx, img);
+		h = width * img->h / (img->w ? img->w : 1);
+		folio_allow(doc, FOLIO_CHANGE_ANNOT, NULL);
+		pdf_begin_operation(ctx, pdf, "Picture");
+		op = 1;
+		annot = pdf_create_annot(ctx, page, PDF_ANNOT_STAMP);
+		pdf_set_annot_rect(ctx, annot, fz_make_rect(c.x - width / 2, c.y - h / 2, c.x + width / 2, c.y + h / 2));
+		pdf_set_annot_stamp_image(ctx, annot, see ? see : img);
+		pdf_update_page(ctx, page);
+		pdf_end_operation(ctx, pdf);
+		op = 0;
+	}
+	fz_always(ctx) {
+		pdf_drop_annot(ctx, annot);
+		fz_drop_image(ctx, img);
+		fz_drop_image(ctx, see);
+	}
+	fz_catch(ctx) {
+		if (op)
+			pdf_abandon_operation(ctx, pdf);
+		folio_set_error(doc->fc);
+		forget_page(doc, loc);
+		return -1;
+	}
+	forget_page(doc, loc);
+	return 0;
+}
+
+int folio_annot_picture(folio_doc *doc, folio_loc loc, folio_point centre, float wanted, const char *path,
+		int clear_white)
+{
+	float w = wanted > 0 ? wanted : 144;
+	return picture(doc, loc, &centre, &w, path, clear_white);
+}

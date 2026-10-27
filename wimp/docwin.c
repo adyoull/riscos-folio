@@ -107,6 +107,14 @@ struct docwin {
 	int perm_print, perm_copy, perm_access, perm_form, perm_assemble;
 	int meas_on, meas_page, meas_n;   /* measuring: the points, on one page */
 	folio_point meas_pt[MEASURE_MAX];
+	int pen_on, pen_page, pen_n, pen_strokes, pen_drag;   /* drawing: the strokes, on one page */
+	folio_point *pen_pt;
+	int pen_count[PEN_STROKES];
+	int pen_rgb;
+	float pen_width;
+	char stamp_pending[24];          /* a stamp waiting for its click on the page */
+	char pic_pending[256];           /* or a picture */
+	int pic_clear;
 	/* Full screen: the window fills the screen with no title bar or scroll
 	 * bars; what it was is kept to go back to. */
 	int full;
@@ -451,6 +459,10 @@ static void go_to_page(docwin *w, int i);
 static void rotate(docwin *w, int code);
 static void colour_chosen(docwin *w, int code);
 static void meas_draw(docwin *w, int i, int x0, int y1);
+static void pen_draw(docwin *w, int i, int x0, int y1);
+static int pen_tick(docwin *w);
+static void pen_commit(docwin *w);
+static void place_pending(docwin *w, int page, folio_point pt);
 static void ocr_embed(docwin *w);
 static void remeasure(docwin *w);
 static void form_changed(docwin *w);
@@ -994,6 +1006,7 @@ docwin *docwin_open_password(const char *path, const char *password)
 	read_perms(w);
 	w->asel_page = -1;
 	w->meas_page = -1;
+	w->pen_page = -1;
 	/* Count the first chapter now, so page 1 can be shown at once; the rest
 	 * are counted in null polls. */
 	w->counting = folio_count_step(w->doc, 1) == 0;
@@ -1118,6 +1131,8 @@ void docwin_close(docwin *w)
 	contents_forget(w);
 	annotlist_forget(w);
 	pageorg_forget(w);
+	drawui_forget(w);
+	picbox_forget(w);
 	signbox_forget(w);
 	xfaui_forget(w);
 	measure_forget(w);
@@ -1150,6 +1165,7 @@ void docwin_close(docwin *w)
 	free(w->pw);
 	free(w->ph);
 	free(w->row_y);
+	free(w->pen_pt);
 	tbx_delete(w->obj, 1);
 	if (w->toolbar) {
 		toolbar_forget(w->toolbar);
@@ -1169,6 +1185,10 @@ void docwin_close_all(void)
 void docwin_close_request(docwin *w)
 {
 	int ptr[5];
+	/* A drawing not yet kept goes on the page first, so it counts as a
+	 * change (and the Discard/Save box asks). */
+	if (w->pen_strokes || w->pen_drag)
+		pen_commit(w);
 	if (w->unsaved_new) {
 		dcs_open(w);
 		return;
@@ -1251,6 +1271,7 @@ void docwin_redraw(docwin *w, int *b)
 				asel_draw(w, i, x0, y1);
 				spk_draw(w, i, x0, y1);
 				meas_draw(w, i, x0, y1);
+				pen_draw(w, i, x0, y1);
 			} else {
 				fill_rect(page_colour(w), x0, y0, x1, y1);
 				w->want_render = 1;
@@ -1435,7 +1456,7 @@ static int any_dragging(void)
 {
 	docwin *w;
 	for (w = windows; w; w = w->next)
-		if (w->dragging)
+		if (w->dragging || w->pen_drag)
 			return 1;
 	return 0;
 }
@@ -1559,6 +1580,7 @@ int docwin_background(void)
 	}
 	for (w = windows; w; w = w->next) {
 		busy |= sel_drag_tick(w);
+		busy |= pen_tick(w);
 		busy |= link_tick(w);
 		busy |= w->want_render;
 		/* The toolbar's width: after every event, since the Toolbox shows
@@ -2160,6 +2182,33 @@ void docwin_click(docwin *w, int *b)
 	}
 	_swix(Wimp_SetCaretPosition, _INR(0, 5), w->wimp, -1, 0, 0, 1 << 25, -1);
 	formui_commit(w);                        /* a field being typed in: keep it */
+	/* A stamp or picture waiting: Select places it, Adjust gives up. */
+	if (w->stamp_pending[0] || w->pic_pending[0]) {
+		if (buttons == 0x400 && (page = point_at(w, b[0], b[1], &pt, -1)) >= 0)
+			place_pending(w, page, pt);
+		else if (buttons == 0x100)
+			docwin_place_cancel(w);
+		return;
+	}
+	/* Drawing: a Select drag draws a stroke, Adjust takes the last off. */
+	if (w->pen_on) {
+		if (buttons == 0x40 && (page = point_at(w, b[0], b[1], &pt, -1)) >= 0) {
+			if (w->pen_page >= 0 && page != w->pen_page)
+				pen_commit(w);
+			if (w->pen_strokes < PEN_STROKES && w->pen_n < PEN_POINTS - 1) {
+				w->pen_page = page;
+				w->pen_count[w->pen_strokes] = 1;
+				w->pen_pt[w->pen_n++] = pt;
+				w->pen_drag = 1;
+				drag_start(w);
+			}
+		} else if (buttons == 0x100 && w->pen_strokes > 0) {
+			w->pen_n -= w->pen_count[--w->pen_strokes];
+			redraw_page(w, w->pen_page);
+			drawui_changed(w);
+		}
+		return;
+	}
 	/* Measuring: Select adds a point, Adjust takes the last off; nothing
 	 * else happens on the page meanwhile. */
 	if (w->meas_on) {
@@ -2266,6 +2315,13 @@ static void drag_stop(docwin *w)
 void docwin_user_drag_done(void)
 {
 	docwin *w;
+	for (w = windows; w; w = w->next)
+		if (w->pen_drag) {
+			pen_tick(w);
+			w->pen_drag = 0;
+			w->pen_strokes++;
+			drawui_changed(w);
+		}
 	for (w = windows; w; w = w->next)
 		if (w->dragging) {
 			w->dragging = 0;          /* the Wimp's drag is over already */
@@ -2436,6 +2492,9 @@ void docwin_edit_menu_shown(docwin *w)
 	menu_set_fade(app.edit_menu, EDIT_STRIKE, !markup_ok);
 	menu_set_fade(app.edit_menu, EDIT_NOTE, !w->can_annotate);
 	menu_set_fade(app.edit_menu, EDIT_XFA, !w->xfa);
+	menu_set_fade(app.edit_menu, EDIT_DRAW, !w->can_annotate);
+	menu_set_fade(app.edit_menu, EDIT_STAMP, !w->can_annotate);
+	menu_set_tick(app.edit_menu, EDIT_DRAW, w->pen_on);
 	menu_set_fade(app.edit_menu, EDIT_DELANNOT, w->asel_page < 0);
 	/* Not faded when not allowed: choosing it says why, and offers the
 	 * owner password. */
@@ -2763,6 +2822,10 @@ void docwin_event(docwin *w, int code)
 	case EV_COPY: if (allowed(w, code)) sel_copy(w); break;
 	case EV_SELECT_ALL: sel_all(w); break;
 	case EV_CLEAR_SEL:
+		if (w->stamp_pending[0] || w->pic_pending[0]) {
+			docwin_place_cancel(w);
+			break;
+		}
 		/* Escape: clears the selection; with none, leaves full screen. */
 		if (w->full && !w->sel)
 			full_screen(w, 0);
@@ -2791,6 +2854,29 @@ void docwin_event(docwin *w, int code)
 	case EV_PASSWORD:
 		if (w->can_annotate)
 			passui_security(w);
+		break;
+	case EV_DRAW:
+		if (!w->can_annotate)
+			tbx_report("Only a PDF can be drawn on. Save pages as PDF, or Create PDF, makes one.");
+		else
+			drawui_open(w);
+		break;
+	case EV_STAMP_PICTURE:
+		if (!w->can_annotate)
+			tbx_report("Only a PDF can be stamped. Save pages as PDF, or Create PDF, makes one.");
+		else
+			picbox_open(w);
+		break;
+	case EV_STAMP_0: case EV_STAMP_0 + 1: case EV_STAMP_0 + 2: case EV_STAMP_0 + 3: case EV_STAMP_0 + 4:
+	case EV_STAMP_0 + 5: case EV_STAMP_0 + 6: case EV_STAMP_0 + 7: case EV_STAMP_0 + 8: case EV_STAMP_0 + 9:
+	case EV_STAMP_0 + 10: case EV_STAMP_0 + 11: case EV_STAMP_0 + 12: case EV_STAMP_0 + 13:
+		if (!w->can_annotate)
+			tbx_report("Only a PDF can be stamped. Save pages as PDF, or Create PDF, makes one.");
+		else if (folio_stamp_name(code - EV_STAMP_0)) {
+			docwin_place_cancel(w);
+			snprintf(w->stamp_pending, sizeof w->stamp_pending, "%s", folio_stamp_name(code - EV_STAMP_0));
+			docwin_set_note(w, " (click on the page to place the stamp)");
+		}
 		break;
 	case EV_XFA:
 		if (w->xfa)
@@ -3778,6 +3864,214 @@ static void meas_draw(docwin *w, int i, int x0, int y1)
 		_swix(OS_Plot, _INR(0, 2), 4, px - 6, py - 6);
 		_swix(OS_Plot, _INR(0, 2), 96 + 5, px + 6, py + 6);
 	}
+}
+
+/* ---- Drawing, stamps and pictures ------------------------------------------ */
+
+void docwin_pen_mode(docwin *w, int on, int rgb, float width)
+{
+	if (!is_window(w))
+		return;
+	if (on && !w->pen_pt && !(w->pen_pt = malloc(sizeof *w->pen_pt * PEN_POINTS))) {
+		tbx_report("There isn't enough memory to draw.");
+		return;
+	}
+	w->pen_rgb = rgb;
+	w->pen_width = width;
+	if (w->pen_on && w->pen_page >= 0)
+		redraw_page(w, w->pen_page);           /* in its new colour */
+	if (on == w->pen_on)
+		return;
+	if (!on)
+		pen_commit(w);
+	w->pen_on = on;
+	if (on) {
+		docwin_measure_mode(w, 0);
+		docwin_place_cancel(w);
+		sel_clear(w);
+		asel_clear(w);
+	}
+}
+
+int docwin_pen_strokes(docwin *w)
+{
+	return is_window(w) ? w->pen_strokes : 0;
+}
+
+void docwin_pen_clear(docwin *w)
+{
+	if (!is_window(w))
+		return;
+	if (w->pen_page >= 0)
+		redraw_page(w, w->pen_page);
+	w->pen_n = w->pen_strokes = 0;
+	w->pen_page = -1;
+}
+
+void docwin_pen_undo(docwin *w)
+{
+	if (!is_window(w) || w->pen_strokes == 0)
+		return;
+	w->pen_n -= w->pen_count[--w->pen_strokes];
+	redraw_page(w, w->pen_page);
+}
+
+/* The strokes go on the page as one drawing (an Ink annotation). */
+static void pen_commit(docwin *w)
+{
+	folio_loc loc;
+	int rc, page = w->pen_page;
+	if (w->pen_drag) {
+		_swix(Wimp_DragBox, _IN(1), 0);
+		w->pen_drag = 0;
+		w->pen_strokes++;
+	}
+	if (w->pen_strokes == 0 || page < 0 || folio_loc_from_number(w->doc, page, &loc)) {
+		docwin_pen_clear(w);
+		return;
+	}
+	core_now();
+	rc = folio_annot_ink(w->doc, loc, w->pen_pt, w->pen_count, w->pen_strokes, w->pen_rgb, w->pen_width);
+	core_unlock();
+	if (rc) {
+		char m[300];
+		app_log("draw: %s", folio_error(app.fc));
+		snprintf(m, sizeof m, "Folio couldn't keep the drawing: %s", folio_error(app.fc));
+		tbx_report(m);
+	} else
+		app_log("%s: drawing (%d strokes) on page %d", w->title, w->pen_strokes, page + 1);
+	w->pen_n = w->pen_strokes = 0;
+	w->pen_page = -1;
+	page_changed(w, page);
+	update_title(w);
+	drawui_changed(w);
+}
+
+void docwin_pen_keep(docwin *w)
+{
+	if (is_window(w))
+		pen_commit(w);
+}
+
+/* One line of a stroke, as thick as the pen at this zoom (in OS units). */
+static void pen_line(docwin *w, int ax, int ay, int bx, int by)
+{
+	int t = (int)(w->pen_width * 2.5f * w->zoom + 0.5f), d;
+	if (t < 2)
+		t = 2;
+	for (d = -t / 2; d <= t / 2; d += 2) {
+		_swix(OS_Plot, _INR(0, 2), 4, ax + d, ay);
+		_swix(OS_Plot, _INR(0, 2), 5, bx + d, by);
+		_swix(OS_Plot, _INR(0, 2), 4, ax, ay + d);
+		_swix(OS_Plot, _INR(0, 2), 5, bx, by + d);
+	}
+}
+
+static unsigned pen_gcol(docwin *w)
+{
+	return ((unsigned)(w->pen_rgb & 0xff) << 8) | ((unsigned)((w->pen_rgb >> 8) & 0xff) << 16) |
+		((unsigned)((w->pen_rgb >> 16) & 0xff) << 24);
+}
+
+static void pen_draw(docwin *w, int i, int x0, int y1)
+{
+	float k = 2.5f * w->zoom;
+	int s, j, at = 0, n;
+	if (!w->pen_on || w->pen_page != i || w->pen_n == 0)
+		return;
+	_swix(ColourTrans_SetGCOL, _IN(0) | _INR(3, 4), pen_gcol(w), 0, 0);
+	for (s = 0; s <= w->pen_strokes && at < w->pen_n; s++) {
+		n = s < w->pen_strokes ? w->pen_count[s] : w->pen_n - at;
+		for (j = 1; j < n; j++)
+			pen_line(w, x0 + (int)(w->pen_pt[at + j - 1].x * k), y1 - (int)(w->pen_pt[at + j - 1].y * k),
+				x0 + (int)(w->pen_pt[at + j].x * k), y1 - (int)(w->pen_pt[at + j].y * k));
+		if (n == 1)
+			pen_line(w, x0 + (int)(w->pen_pt[at].x * k), y1 - (int)(w->pen_pt[at].y * k),
+				x0 + (int)(w->pen_pt[at].x * k) + 1, y1 - (int)(w->pen_pt[at].y * k));
+		at += n;
+	}
+}
+
+/* While drawing (null polls): the pointer's new points, drawn at once
+ * over the page (Wimp_UpdateWindow), not by redrawing it. */
+static int pen_tick(docwin *w)
+{
+	int ptr[5], b[11], more = 0, s = w->pen_strokes;
+	folio_point pt, last;
+	float k = 2.5f * w->zoom;
+	if (!w->pen_drag)
+		return 0;
+	_swix(Wimp_GetPointerInfo, _IN(1), ptr);
+	if (point_at(w, ptr[0], ptr[1], &pt, w->pen_page) < 0 || w->pen_n >= PEN_POINTS)
+		return 1;
+	last = w->pen_pt[w->pen_n - 1];
+	if ((pt.x - last.x) * (pt.x - last.x) + (pt.y - last.y) * (pt.y - last.y) < 0.6f / w->zoom)
+		return 1;
+	w->pen_pt[w->pen_n++] = pt;
+	w->pen_count[s]++;
+	{
+		int x0 = page_left(w, w->pen_page), y1 = page_top(w, w->pen_page), pad = 16 + (int)(w->pen_width * k);
+		int ax = x0 + (int)(last.x * k), ay = y1 - (int)(last.y * k);
+		int bx = x0 + (int)(pt.x * k), by = y1 - (int)(pt.y * k);
+		b[0] = w->wimp;
+		b[1] = (ax < bx ? ax : bx) - pad;
+		b[2] = (ay < by ? ay : by) - pad;
+		b[3] = (ax > bx ? ax : bx) + pad;
+		b[4] = (ay > by ? ay : by) + pad;
+		_swix(Wimp_UpdateWindow, _IN(1) | _OUT(0), b, &more);
+		while (more) {
+			int ox = b[1] - b[5], oy = b[4] - b[6];
+			_swix(ColourTrans_SetGCOL, _IN(0) | _INR(3, 4), pen_gcol(w), 0, 0);
+			pen_line(w, ox + ax, oy + ay, ox + bx, oy + by);
+			_swix(Wimp_GetRectangle, _IN(1) | _OUT(0), b, &more);
+		}
+	}
+	return 1;
+}
+
+void docwin_place_picture(docwin *w, const char *path, int clear_white)
+{
+	if (!is_window(w))
+		return;
+	docwin_place_cancel(w);
+	docwin_pen_mode(w, 0, w->pen_rgb, w->pen_width);
+	snprintf(w->pic_pending, sizeof w->pic_pending, "%s", path);
+	w->pic_clear = clear_white;
+	docwin_set_note(w, " (click on the page to place the picture)");
+}
+
+void docwin_place_cancel(docwin *w)
+{
+	if (!is_window(w) || (!w->stamp_pending[0] && !w->pic_pending[0]))
+		return;
+	w->stamp_pending[0] = w->pic_pending[0] = 0;
+	docwin_set_note(w, "");
+}
+
+static void place_pending(docwin *w, int page, folio_point pt)
+{
+	folio_loc loc;
+	int rc = -1;
+	char what[40];
+	snprintf(what, sizeof what, "%s", w->stamp_pending[0] ? "place the stamp" : "place the picture");
+	if (!folio_loc_from_number(w->doc, page, &loc)) {
+		_swix(Hourglass_On, 0);
+		core_now();
+		rc = w->stamp_pending[0] ? folio_annot_stamp(w->doc, loc, pt, w->stamp_pending) :
+			folio_annot_picture(w->doc, loc, pt, 0, w->pic_pending, w->pic_clear);
+		core_unlock();
+		_swix(Hourglass_Off, 0);
+	}
+	if (rc) {
+		char m[300];
+		snprintf(m, sizeof m, "Folio couldn't %s: %s", what, folio_error(app.fc));
+		tbx_report(m);
+	} else {
+		app_log("%s: %s on page %d", w->title, w->stamp_pending[0] ? w->stamp_pending : "picture", page + 1);
+		page_changed(w, page);
+	}
+	docwin_place_cancel(w);
+	update_title(w);
 }
 
 /* Text recognition > Add recognised text to the PDF. */

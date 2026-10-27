@@ -100,7 +100,7 @@ static void entry(menu_block *b, int i, int comp, const char *text, int flags,
 
 static void create_objects(void)
 {
-	static menu_block ib, dm, em, vm, nm, sm, om, rm, pm, cm;
+	static menu_block ib, dm, em, vm, nm, sm, om, rm, pm, cm, stm;
 	int ndm;
 	static tbx_proginfo pi;
 	static tbx_iconbar icon;
@@ -162,8 +162,21 @@ static void create_objects(void)
 	entry(&em, 9, EDIT_DELANNOT, "Delete annotation Del", 0, EV_DEL_ANNOT, "Click to delete the annotation you clicked on.");
 	entry(&em, 10, EDIT_COLOUR, "Colour", MENU_SUBMENU, 0, "Move right to choose the colour for new highlights, underlines, strike-outs and notes, or to recolour the annotation you clicked on.");
 	entry(&em, 11, EDIT_MEASURE, "Measure...", MENU_DOTTED, EV_MEASURE, "Click to measure on the page: lengths between the points you click, and the area they enclose.");
-	entry(&em, 12, EDIT_XFA, "Form fields...", 0, EV_XFA, "Click to fill in an XFA form (one made with Adobe's form designer) as a list of its fields.");
-	app.edit_menu = make_menu(&em, "Edit", 13, EV_EDIT_SHOWN);
+	entry(&em, 12, EDIT_DRAW, "Draw...", 0, EV_DRAW, "Click to draw on the page with the mouse: drag with Select (PDFs).");
+	entry(&em, 13, EDIT_STAMP, "Stamp", MENU_SUBMENU | MENU_DOTTED, 0, "Move right to put a stamp (Approved, Draft...) or a picture on the page (PDFs).");
+	entry(&em, 14, EDIT_XFA, "Form fields...", 0, EV_XFA, "Click to fill in an XFA form (one made with Adobe's form designer) as a list of its fields.");
+	app.edit_menu = make_menu(&em, "Edit", 15, EV_EDIT_SHOWN);
+	{
+		static const char *const name[] = { "Approved", "Not approved", "Draft", "Final", "Confidential",
+			"For comment", "For public release", "Not for public release", "Experimental", "Expired",
+			"As is", "Departmental", "Sold", "Top secret" };
+		int k;
+		for (k = 0; k < 14; k++)
+			entry(&stm, k, k + 1, name[k], k == 13 ? MENU_DOTTED : 0, EV_STAMP_0 + k,
+				"Click, then click on the page where the stamp goes.");
+		entry(&stm, 14, 15, "Picture...", 0, EV_STAMP_PICTURE, "Click to put a picture on the page (a scanned signature, a logo): drag it into the box, then click on the page.");
+		app.stamp_menu = make_menu(&stm, "Stamp", 15, 0);
+	}
 	{
 		static const char *const name[] = { "Yellow", "Green", "Blue", "Pink", "Red", "Orange", "Purple", "Grey" };
 		int k;
@@ -236,6 +249,7 @@ static void create_objects(void)
 	check(menu_set_submenu(app.pages_menu, PG_ROTATE, app.rotate_menu));
 	check(menu_set_submenu(app.doc_menu, DOC_ROTATE, app.pages_menu));
 	check(menu_set_submenu(app.edit_menu, EDIT_COLOUR, app.colour_menu));
+	check(menu_set_submenu(app.edit_menu, EDIT_STAMP, app.stamp_menu));
 	{
 		int k;
 		for (k = COL_USUAL; k < COL_COUNT; k++)
@@ -312,6 +326,11 @@ static int message(int *b)
 		}
 		/* Dropped in the Insert pages box: its pages go into the PDF. */
 		if (pageorg_data_load(b)) {
+			ack_load(b);
+			break;
+		}
+		/* Dropped in the Picture box: a picture to put on the page. */
+		if (picbox_data_load(b)) {
 			ack_load(b);
 			break;
 		}
@@ -443,6 +462,12 @@ static int toolbox_event(int *b)
 		break;
 	case EV_SG_SIGN: case EV_SG_CANCEL:
 		signbox_event(code);
+		break;
+	case EV_DR_UNDO: case EV_DR_CLEAR: case EV_DR_KEEP: case EV_DR_CLOSE: case EV_DR_HIDDEN: case EV_DR_STYLE:
+		drawui_event(code);
+		break;
+	case EV_PIC_CANCEL:
+		picbox_event(code);
 		break;
 	case EV_XF_OK: case EV_XF_CANCEL:
 		xfaui_event(code);

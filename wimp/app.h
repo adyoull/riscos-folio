@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test67 (27-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test68 (27-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -22,11 +22,12 @@ enum {
 	EV_COPY = 0x150, EV_SELECT_ALL, EV_CLEAR_SEL, EV_DEFINE, EV_FIND, EV_CONTENTS,
 	EV_HIGHLIGHT = 0x160, EV_UNDERLINE, EV_STRIKE, EV_NOTE, EV_UNDO, EV_REDO, EV_DEL_ANNOT, EV_SAVE,
 	EV_ADD_SHELF, EV_PASSWORD, EV_READ_ALOUD, EV_SPEAK_SEL, EV_PRINT, EV_EXPORT_DRAW, EV_MEASURE,
-	EV_OCR_PAGE = 0x170, EV_OCR_ALL, EV_GOTO, EV_DOCINFO, EV_ANNOTS, EV_OCR_EMBED, EV_SIGN, EV_XFA,
+	EV_OCR_PAGE = 0x170, EV_OCR_ALL, EV_GOTO, EV_DOCINFO, EV_ANNOTS, EV_OCR_EMBED, EV_SIGN, EV_XFA, EV_DRAW, EV_STAMP_PICTURE,
 	EV_ROT_CW = 0x180, EV_ROT_ACW, EV_ROT_180, EV_ROTALL_CW, EV_ROTALL_ACW,
 	EV_PG_DELETE = 0x188, EV_PG_MOVE, EV_PG_INSERT,
 	EV_COL_USUAL = 0x190, EV_COL_YELLOW, EV_COL_GREEN, EV_COL_BLUE, EV_COL_PINK, EV_COL_RED,
 	EV_COL_ORANGE, EV_COL_PURPLE, EV_COL_GREY,
+	EV_STAMP_0 = 0x1a0,     /* to 0x1ad: the standard stamps (folio_stamp_name) */
 	EV_DICT_COPY = 0x200,  /* the pop-up's, not a window's */
 	EV_FIND_NEXT = 0x210, EV_FIND_PREV, EV_FIND_CANCEL,
 	EV_NOTE_OK = 0x220, EV_NOTE_DELETE, EV_NOTE_CANCEL,
@@ -48,12 +49,14 @@ enum {
 	EV_SG_SIGN = 0x2d8, EV_SG_CANCEL,                    /* the Sign box */
 	EV_XF_OK = 0x2da, EV_XF_CANCEL,                      /* Form fields' typing box */
 	EV_SCAN = 0x2e0, EV_SC_FIND, EV_SC_SCAN, EV_SC_STOP, EV_SC_ADD,
-	EV_SC_PICK = 0x2f0      /* to 0x2ff: the scanner chosen from Find's menu */
+	EV_SC_PICK = 0x2f0,     /* to 0x2ff: the scanner chosen from Find's menu */
+	EV_DR_UNDO = 0x300, EV_DR_CLEAR, EV_DR_KEEP, EV_DR_CLOSE, EV_DR_HIDDEN, EV_DR_STYLE,   /* the Draw window */
+	EV_PIC_CANCEL = 0x308   /* the Picture box */
 };
 
 /* View menu entries (component ids). */
 enum { EDIT_COPY = 1, EDIT_SELECT_ALL, EDIT_CLEAR, EDIT_UNDO, EDIT_REDO, EDIT_HILITE,
-	EDIT_ULINE, EDIT_STRIKE, EDIT_NOTE, EDIT_DELANNOT, EDIT_COLOUR, EDIT_MEASURE, EDIT_XFA };
+	EDIT_ULINE, EDIT_STRIKE, EDIT_NOTE, EDIT_DELANNOT, EDIT_COLOUR, EDIT_MEASURE, EDIT_XFA, EDIT_DRAW, EDIT_STAMP };
 /* Document menu entries. */
 enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6, DOC_SHELF = 7, DOC_PASSWORD = 8,
 	DOC_READ = 9, DOC_SPEAKSEL = 10, DOC_SPEED = 11, DOC_PRINT = 12, DOC_EXPORT_DRAW = 13,
@@ -97,6 +100,7 @@ typedef struct {
 	ObjectId iconbar, iconbar_menu, proginfo;
 	ObjectId rotate_menu, doc_menu, edit_menu, view_menu, nav_menu, speed_menu;
 	ObjectId pages_menu, colour_menu;
+	ObjectId stamp_menu;               /* Edit > Stamp */
 	int task;                   /* our Wimp task handle */
 	ObjectId menu_window;       /* the window the document menu was opened from */
 	int xeig, yeig, log2bpp;
@@ -452,6 +456,24 @@ void xfaui_event(int code);
 int xfaui_menu_selection(int *block);
 void xfaui_menus_deleted(int tree);
 int docwin_xfa_set(docwin *w, const char *path, const char *utf8);
+/* Drawing and pictures (drawui.c; docwin.c keeps the strokes). */
+#define PEN_POINTS  8000
+#define PEN_STROKES 256
+void drawui_open(docwin *w);
+void drawui_forget(docwin *w);
+void drawui_event(int code);
+void drawui_changed(docwin *w);
+void picbox_open(docwin *w);
+void picbox_forget(docwin *w);
+void picbox_event(int code);
+int picbox_data_load(int *block);
+void docwin_pen_mode(docwin *w, int on, int rgb, float width);
+int docwin_pen_strokes(docwin *w);
+void docwin_pen_clear(docwin *w);
+void docwin_pen_undo(docwin *w);
+void docwin_pen_keep(docwin *w);
+void docwin_place_picture(docwin *w, const char *path, int clear_white);
+void docwin_place_cancel(docwin *w);
 int docwin_sign(docwin *w, int page, const char *field, folio_signer *sg, const char *reason,
 	const char *location, int mode);   /* FOLIO_SIGN_* or FOLIO_CERTIFY_* */
 
