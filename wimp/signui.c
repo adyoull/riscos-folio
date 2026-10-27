@@ -59,11 +59,28 @@ void signui_roots(void)
 	app_log("signatures: %d trusted roots in all", folio_trust_root_count());
 }
 
+/* What was changed after a signature, in words. */
+static void changes_text(int c, char *out, size_t size)
+{
+	static const struct { int bit; const char *say; } k[] = {
+		{ FOLIO_AFTER_FORM, "the form filled in" }, { FOLIO_AFTER_SIGNING, "signed again" },
+		{ FOLIO_AFTER_ANNOT, "notes or markings added" }, { FOLIO_AFTER_PAGE, "pages changed" },
+		{ FOLIO_AFTER_OTHER, "other changes" },
+	};
+	int i, n = 0;
+	out[0] = 0;
+	for (i = 0; i < (int)(sizeof k / sizeof k[0]); i++)
+		if (c & k[i].bit) {
+			size_t l = strlen(out);
+			snprintf(out + l, size - l, "%s%s", n++ ? ", " : "", k[i].say);
+		}
+}
+
 /* What a signature says, in a sentence or three (UTF-8). */
 void signui_describe(const folio_signature *s, char *out, size_t size)
 {
-	char when[64], who[300];
-	const char *verdict, *cert, *after = "";
+	char when[64], who[300], what[160], after[400], cert_s[200];
+	const char *verdict, *cert;
 	if (!s->is_signed) {
 		snprintf(out, size, "'%s' is a place for a signature; it hasn't been signed.", s->field);
 		return;
@@ -75,19 +92,29 @@ void signui_describe(const folio_signature *s, char *out, size_t size)
 		snprintf(who, sizeof who, "%s (%s)", s->signer[0] ? s->signer : "someone", s->organisation);
 	else
 		snprintf(who, sizeof who, "%s", s->signer[0] ? s->signer : "someone unnamed");
-	verdict = s->digest == FOLIO_SIG_VALID ? "The signature is good" :
-		s->digest == FOLIO_SIG_CHANGED ? "The signature is BROKEN: the document has been changed since it was signed" :
-		"Folio can't check the signature";
-	cert = s->digest != FOLIO_SIG_VALID ? "" :
+	verdict = s->digest == FOLIO_SIG_CHANGED ? "The signature is BROKEN: the document has been changed since it was signed" :
+		s->digest != FOLIO_SIG_VALID ? "Folio can't check the signature" :
+		s->disallowed[0] ? "The signature is BROKEN" : "The signature is good";
+	cert = s->digest != FOLIO_SIG_VALID || s->disallowed[0] ? "" :
 		s->cert == FOLIO_CERT_TRUSTED ? ", and the signer's certificate comes from a body Folio trusts" :
 		s->cert == FOLIO_CERT_SELF_SIGNED ? ", but the signer vouches for themselves: nobody Folio trusts says who they are" :
 		s->cert == FOLIO_CERT_UNTRUSTED ? ", but the signer's certificate doesn't come from a body Folio trusts, so who signed it can't be confirmed" :
 		s->cert == FOLIO_CERT_NONE ? ", but there's no certificate to say who signed it" :
 		", but there's something wrong with the signer's certificate";
-	if (s->digest == FOLIO_SIG_VALID && s->changed_after)
-		after = " The document has had changes saved since it was signed (forms filled in or notes added, perhaps); what was signed is as it was.";
-	snprintf(out, size, "Signed by %s%s%s. %s%s.%s%s%s%s%s%s%s", who, when[0] ? " on " : "", when,
-		verdict, cert, after,
+	after[0] = 0;
+	changes_text(s->changes, what, sizeof what);
+	if (s->digest == FOLIO_SIG_VALID && s->disallowed[0])
+		snprintf(after, sizeof after, ": %s (since it was signed: %s)", s->disallowed, what[0] ? what : "changes");
+	else if (s->digest == FOLIO_SIG_VALID && s->changed_after)
+		snprintf(after, sizeof after, ". Since it was signed, changes it allows have been saved (%s); what was "
+			"signed is as it was", what[0] ? what : "forms filled in or notes added, perhaps");
+	cert_s[0] = 0;
+	if (s->certified)
+		snprintf(cert_s, sizeof cert_s, " It certifies the document, allowing %s.",
+			s->certified == 1 ? "no changes" : s->certified == 2 ? "filling in and signing only" :
+			"filling in, signing, and notes and markings");
+	snprintf(out, size, "Signed by %s%s%s. %s%s%s.%s%s%s%s%s%s%s", who, when[0] ? " on " : "", when,
+		verdict, cert, after, cert_s,
 		s->expired && s->digest == FOLIO_SIG_VALID ? " The certificate is out of date now." : "",
 		s->digest == FOLIO_SIG_UNREADABLE && s->why[0] ? " (" : "",
 		s->digest == FOLIO_SIG_UNREADABLE ? s->why : "",
@@ -107,6 +134,7 @@ void signui_brief(const folio_signature *s, char *out, size_t size)
 	if (s->date[0])
 		folio_pdf_date(s->date, when, sizeof when);
 	snprintf(out, size, "%s%s%s: %s%s", s->signer[0] ? s->signer : "(no name)", when[0] ? ", " : "", when,
+		s->digest == FOLIO_SIG_VALID && s->disallowed[0] ? "BROKEN (changes not allowed)" :
 		s->digest == FOLIO_SIG_VALID ? (s->cert == FOLIO_CERT_TRUSTED ? "good, trusted" :
 			s->cert == FOLIO_CERT_SELF_SIGNED ? "good, self-signed" : "good, signer not confirmed") :
 		s->digest == FOLIO_SIG_CHANGED ? "BROKEN (changed since)" : "can't be checked",
@@ -159,11 +187,12 @@ void signui_on_open(docwin *w)
 	core_now();
 	n = folio_signatures(docwin_doc(w), s, 16);
 	core_unlock();
-	snprintf(text, sizeof text, "This PDF's signature has been broken: it has been changed since it was signed.");
+	snprintf(text, sizeof text, "This PDF's signature has been broken: it has been changed in a way its signature doesn't allow.");
 	for (i = 0; i < n; i++) {
 		app_log("signature '%s': signed %d digest %d cert %d changed %d", s[i].field, s[i].is_signed,
 			s[i].digest, s[i].cert, s[i].changed_after);
-		if (s[i].is_signed && s[i].digest == FOLIO_SIG_CHANGED) {
+		if (s[i].is_signed && (s[i].digest == FOLIO_SIG_CHANGED ||
+				(s[i].digest == FOLIO_SIG_VALID && s[i].disallowed[0]))) {
 			broken++;
 			if (broken == 1 && s[i].signer[0]) {
 				snprintf(line, sizeof line, " (signed by %s)", s[i].signer);
@@ -206,7 +235,10 @@ typedef struct {
 	int event;
 } button_gadget;
 
-enum { G_CERT_L = 0, G_CERT, G_PW_L, G_PW, G_WHY_L, G_WHY, G_WHERE_L, G_WHERE, G_CANCEL, G_SIGN };
+enum { G_CERT_L = 0, G_CERT, G_PW_L, G_PW, G_WHY_L, G_WHY, G_WHERE_L, G_WHERE, G_CANCEL, G_SIGN,
+	G_KIND_L, G_ORD, G_LOCK, G_CERTIFY, G_ALLOW_L, G_A_NONE, G_A_FORMS, G_A_NOTES };
+
+typedef struct { gadget_hdr h; int group; const char *label; int max_label; int event; } radio_gadget;
 
 typedef struct {
 	label_gadget cert_l;
@@ -218,6 +250,10 @@ typedef struct {
 	label_gadget where_l;
 	writable_gadget where;
 	button_gadget cancel, sign;
+	label_gadget kind_l;
+	radio_gadget ord, lock, certify;
+	label_gadget allow_l;
+	radio_gadget a_none, a_forms, a_notes;
 } sign_gadgets;
 
 static struct {
@@ -231,7 +267,7 @@ static struct {
 } sb;
 
 #define SB_W 760
-#define SB_H 376
+#define SB_H 504
 
 static void hdr(gadget_hdr *h, int type, int size, int id, int x0, int y0, int x1, int y1,
 		const char *help)
@@ -258,6 +294,16 @@ static void row_field(writable_gadget *f, int id, int row, char *buf, int size, 
 	f->max_text = size;
 	f->before = before;
 	f->after = after;
+}
+
+static void radio(radio_gadget *r, int id, int group, int row, int x0, int x1, const char *label,
+		const char *help)
+{
+	hdr(&r->h, 384, sizeof *r, id, x0, -84 - 64 * row, x1, -36 - 64 * row, help);
+	r->group = group;
+	r->label = label;
+	r->max_label = (int)strlen(label) + 1;
+	r->event = 0;
 }
 
 static ObjectId create_signbox(void)
@@ -297,12 +343,26 @@ static ObjectId create_signbox(void)
 	g->sign.text = "Sign";
 	g->sign.max_text = 5;
 	g->sign.event = EV_SG_SIGN;
+	row_label(&g->kind_l, G_KIND_L, 4, "Kind");
+	radio(&g->ord, G_ORD, 1, 4, 200, 380, "Ordinary",
+		"Click for an ordinary signature: changes can still be saved after it (they're shown when it's checked).");
+	radio(&g->lock, G_LOCK, 1, 4, 380, 580, "Lock the PDF",
+		"Click to sign and lock the PDF: no changes are allowed after this signature, and its fields can't be filled in.");
+	radio(&g->certify, G_CERTIFY, 1, 4, 580, SB_W - 16, "Certify",
+		"Click to certify the PDF (only the first signature can): you say which changes are allowed after it.");
+	row_label(&g->allow_l, G_ALLOW_L, 5, "Certify, allow");
+	radio(&g->a_none, G_A_NONE, 2, 5, 200, 380, "No changes",
+		"When certifying: click to allow no changes at all after signing.");
+	radio(&g->a_forms, G_A_FORMS, 2, 5, 380, 580, "Filling in",
+		"When certifying: click to allow filling in the form and signing after this.");
+	radio(&g->a_notes, G_A_NOTES, 2, 5, 580, SB_W - 16, "And notes",
+		"When certifying: click to allow filling in, signing, and notes and markings after this.");
 
 	memset(&t, 0, sizeof t);
 	t.flags = (1 << 1) | (1 << 2);
 	t.help_message = "Use this box to sign the PDF with your certificate: drag the .p12 or .pfx file here.";
 	t.max_help = (int)strlen(t.help_message) + 1;
-	t.num_gadgets = 10;
+	t.num_gadgets = 18;
 	t.gadgets = g;
 	t.default_focus = G_PW;
 	t.show_event = -1;
@@ -345,8 +405,12 @@ void signbox_open(docwin *w, int page, const char *field)
 	int dst[9], pos[2];
 	if (!docwin_can_sign(w))
 		return;
-	if (!sb.box && !(sb.box = create_signbox()))
-		return;
+	if (!sb.box) {
+		if (!(sb.box = create_signbox()))
+			return;
+		tbx_method(sb.box, 388, G_ORD, 1, 0);       /* RadioButton_SetState */
+		tbx_method(sb.box, 388, G_A_FORMS, 1, 0);
+	}
 	sb.w = w;
 	sb.page = page;
 	snprintf(sb.field, sizeof sb.field, "%s", field ? field : "");
@@ -430,8 +494,27 @@ void signbox_event(int code)
 		free(u_where);
 		return;
 	}
-	rc = docwin_sign(sb.w, sb.page, sb.field[0] ? sb.field : NULL, sg, u_why ? u_why : why,
-		u_where ? u_where : where);
+	{
+		int on = 0, mode = FOLIO_SIGN_APPROVE;
+		tbx_method_out(sb.box, 389, G_LOCK, &on);       /* RadioButton_GetState */
+		if (on)
+			mode = FOLIO_SIGN_LOCK;
+		on = 0;
+		tbx_method_out(sb.box, 389, G_CERTIFY, &on);
+		if (on) {
+			mode = FOLIO_CERTIFY_FORMS;
+			on = 0;
+			tbx_method_out(sb.box, 389, G_A_NONE, &on);
+			if (on)
+				mode = FOLIO_CERTIFY_NO_CHANGES;
+			on = 0;
+			tbx_method_out(sb.box, 389, G_A_NOTES, &on);
+			if (on)
+				mode = FOLIO_CERTIFY_ANNOTS;
+		}
+		rc = docwin_sign(sb.w, sb.page, sb.field[0] ? sb.field : NULL, sg, u_why ? u_why : why,
+			u_where ? u_where : where, mode);
+	}
 	core_now();
 	folio_signer_drop(app.fc, sg);
 	core_unlock();

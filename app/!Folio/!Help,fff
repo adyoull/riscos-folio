@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test66)
+Folio (test build 0.0.1-test67)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -205,6 +205,10 @@ Signatures (PDFs)
   changed after it was signed), Folio says so as the PDF opens.
   "Changed since" means changes were saved after the signature, such as a
   form filled in or notes added: what was signed is still as it was.
+  Folio looks at what was changed, as Acrobat does: a certified PDF's
+  signature is broken by changes the certification doesn't allow, and
+  any signature by a change to a field it locks. Clicking a signature
+  lists what has been changed since.
   "Signer not confirmed" means the signature is good but the certificate
   doesn't come from a body Folio trusts, so who signed it can't be
   confirmed.
@@ -219,7 +223,11 @@ Signing a PDF
   export), and its password. Choose Sign... from the document menu, or
   click an empty signature field. Drag the certificate file into the Sign
   box, type its password, and, if you like, a reason (such as "I approve
-  this document") and where you are, then click Sign. A new signature goes
+  this document") and where you are. Choose the kind: Ordinary (changes
+  can still be saved after it, and are shown when it's checked), Lock the
+  PDF (no changes after it; its fields can't be filled in), or Certify
+  (the first signature only), allowing no changes, filling in and
+  signing, or those and notes and markings. Then click Sign. A new signature goes
   at the foot of the page, on the right; an empty field is signed where it
   is. The Save box then opens: the signature is made as the PDF is saved,
   and it can't be undone before then (close the document without saving

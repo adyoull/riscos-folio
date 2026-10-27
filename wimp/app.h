@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test66 (27-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test67 (27-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -453,7 +453,7 @@ int xfaui_menu_selection(int *block);
 void xfaui_menus_deleted(int tree);
 int docwin_xfa_set(docwin *w, const char *path, const char *utf8);
 int docwin_sign(docwin *w, int page, const char *field, folio_signer *sg, const char *reason,
-	const char *location);
+	const char *location, int mode);   /* FOLIO_SIGN_* or FOLIO_CERTIFY_* */
 
 /* formui.c: filling in PDF forms. */
 int formui_click(docwin *w, int page, folio_point p, int x, int y);

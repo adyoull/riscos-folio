@@ -603,6 +603,195 @@ static void text_of(fz_context *ctx, pdf_obj *dict, pdf_obj *key, char *out, siz
 }
 
 /* One signature field: checked, and its details filled in. */
+/* ---- What was changed after a signature, and whether it was allowed --------
+ * As Acrobat judges it: the updates saved after the signature are looked at
+ * object by object (each xref section after the one holding the signature
+ * value), and each change classed as filling in a field, signing, a note or
+ * marking, a change to a page, or something else. A certification (DocMDP)
+ * allows: P 1 nothing; P 2 filling in and signing; P 3 those and notes.
+ * Fields the signature locks (FieldMDP, /Lock) mustn't change at all. With
+ * neither, an ordinary signature allows any later changes: they're listed,
+ * and the signature is still good for what was signed. */
+
+enum { AF_FORM = 1, AF_SIGNING = 2, AF_ANNOT = 4, AF_PAGE = 8, AF_OTHER = 16, AF_LOCKED = 32 };
+
+static int same_except(fz_context *ctx, pdf_obj *a, pdf_obj *b, const char *const *keep)
+{
+	int pass, i;
+	for (pass = 0; pass < 2; pass++) {
+		pdf_obj *x = pass ? b : a, *y = pass ? a : b;
+		int n = pdf_dict_len(ctx, x);
+		for (i = 0; i < n; i++) {
+			pdf_obj *k = pdf_dict_get_key(ctx, x, i);
+			const char *const *kk;
+			int skip = 0;
+			for (kk = keep; *kk; kk++)
+				if (!strcmp(pdf_to_name(ctx, k), *kk))
+					skip = 1;
+			if (!skip && pdf_objcmp(ctx, pdf_dict_get(ctx, x, k), pdf_dict_get(ctx, y, k)))
+				return 0;
+		}
+	}
+	return 1;
+}
+
+static int in_array(fz_context *ctx, pdf_obj *arr, pdf_obj *o)
+{
+	int i, n = pdf_array_len(ctx, arr);
+	for (i = 0; i < n; i++)
+		if (!pdf_objcmp(ctx, pdf_array_get(ctx, arr, i), o))
+			return 1;
+	return 0;
+}
+
+static int is_widget(fz_context *ctx, pdf_obj *o)
+{
+	return pdf_name_eq(ctx, pdf_dict_get(ctx, o, PDF_NAME(Subtype)), PDF_NAME(Widget));
+}
+
+/* One changed object: newer at base j, older at base j + 1. */
+static int classify(fz_context *ctx, pdf_document *pdf, int num, int j, pdf_locked_fields *locked)
+{
+	static const char *const cat_keep[] = { "AcroForm", "Metadata", "Perms", "OCProperties", NULL };
+	static const char *const af_keep[] = { "Fields", "DR", "DA", "SigFlags", "NeedAppearances", "XFA", NULL };
+	static const char *const page_keep[] = { "Annots", NULL };
+	pdf_obj *nw = NULL, *od = NULL, *trailer, *type;
+	int r = 0;
+	fz_var(r);
+	fz_var(nw);
+	fz_var(od);
+	fz_try(ctx) {
+		pdf->xref_base = j + 1;
+		od = pdf_load_object(ctx, pdf, num);
+		pdf->xref_base = j;
+		nw = pdf_load_object(ctx, pdf, num);
+		trailer = pdf_trailer(ctx, pdf);
+		type = pdf_dict_get(ctx, nw, PDF_NAME(Type));
+		if (pdf_is_null(ctx, od) || !pdf_objcmp(ctx, od, nw))
+			r = 0;              /* new (or the same again) */
+		else if (num == pdf_to_num(ctx, pdf_dict_get(ctx, trailer, PDF_NAME(Info))) ||
+				num == pdf_to_num(ctx, pdf_dict_getp(ctx, trailer, "Root/Metadata")) ||
+				num == pdf_to_num(ctx, pdf_dict_get(ctx, trailer, PDF_NAME(Encrypt))) ||
+				pdf_name_eq(ctx, type, PDF_NAME(ObjStm)) || pdf_name_eq(ctx, type, PDF_NAME(XRef)) ||
+				pdf_name_eq(ctx, type, PDF_NAME(Metadata)))
+			r = 0;
+		else if (pdf_name_eq(ctx, type, PDF_NAME(Catalog)))
+			r = same_except(ctx, od, nw, cat_keep) ? 0 : AF_OTHER;
+		else if (num == pdf_to_num(ctx, pdf_dict_getp(ctx, trailer, "Root/AcroForm")))
+			r = same_except(ctx, od, nw, af_keep) ? 0 : AF_OTHER;
+		else if (is_widget(ctx, nw) || pdf_dict_get_inheritable(ctx, nw, PDF_NAME(FT))) {
+			pdf_obj *nv = pdf_dict_get_inheritable(ctx, nw, PDF_NAME(V));
+			pdf_obj *ov;
+			pdf->xref_base = j + 1;
+			ov = pdf_dict_get_inheritable(ctx, od, PDF_NAME(V));
+			pdf->xref_base = j;
+			if (pdf_objcmp(ctx, nv, ov)) {
+				char *name = pdf_load_field_name(ctx, nw);
+				int sig = pdf_name_eq(ctx, pdf_dict_get_inheritable(ctx, nw, PDF_NAME(FT)), PDF_NAME(Sig));
+				r = sig && !ov ? AF_SIGNING : AF_FORM;
+				if (locked && name && pdf_is_field_locked(ctx, locked, name))
+					r |= AF_LOCKED;
+				fz_free(ctx, name);
+			}
+		} else if (pdf_name_eq(ctx, type, PDF_NAME(Annot)) || (pdf_dict_get(ctx, nw, PDF_NAME(Subtype)) &&
+				pdf_dict_get(ctx, nw, PDF_NAME(Rect))))
+			r = AF_ANNOT;
+		else if (pdf_name_eq(ctx, type, PDF_NAME(Page))) {
+			pdf_obj *na = pdf_dict_get(ctx, nw, PDF_NAME(Annots)), *oa;
+			int i;
+			r = same_except(ctx, od, nw, page_keep) ? 0 : AF_PAGE;
+			pdf->xref_base = j + 1;
+			oa = pdf_dict_get(ctx, od, PDF_NAME(Annots));
+			for (i = 0; i < pdf_array_len(ctx, oa); i++)
+				if (!in_array(ctx, na, pdf_array_get(ctx, oa, i)))
+					r |= is_widget(ctx, pdf_array_get(ctx, oa, i)) ? AF_PAGE : AF_ANNOT;
+			pdf->xref_base = j;
+			for (i = 0; i < pdf_array_len(ctx, na); i++)
+				if (!in_array(ctx, oa, pdf_array_get(ctx, na, i)) && !is_widget(ctx, pdf_array_get(ctx, na, i)))
+					r |= AF_ANNOT;
+		} else if (pdf_name_eq(ctx, type, PDF_NAME(XObject)) || pdf_name_eq(ctx, type, PDF_NAME(Font)) ||
+				pdf_name_eq(ctx, type, PDF_NAME(FontDescriptor)) || pdf_name_eq(ctx, type, PDF_NAME(Encoding)))
+			r = 0;              /* appearances and their fonts */
+		else
+			r = AF_OTHER;       /* the page tree, page content, anything else */
+	}
+	fz_always(ctx) {
+		pdf_drop_obj(ctx, nw);
+		pdf_drop_obj(ctx, od);
+	}
+	fz_catch(ctx)
+		r = AF_OTHER;
+	return r;
+}
+
+/* The certification's P (0: not certified), from Perms/DocMDP. */
+static int docmdp_p(fz_context *ctx, pdf_document *pdf)
+{
+	pdf_obj *refs = pdf_dict_getp(ctx, pdf_trailer(ctx, pdf), "Root/Perms/DocMDP/Reference");
+	int k;
+	for (k = 0; k < pdf_array_len(ctx, refs); k++) {
+		pdf_obj *r = pdf_array_get(ctx, refs, k);
+		if (pdf_name_eq(ctx, pdf_dict_get(ctx, r, PDF_NAME(TransformMethod)), PDF_NAME(DocMDP))) {
+			pdf_obj *p = pdf_dict_getp(ctx, r, "TransformParams/P");
+			int v = p ? pdf_to_int(ctx, p) : 2;
+			return v >= 1 && v <= 3 ? v : 2;
+		}
+	}
+	return 0;
+}
+
+static void judge_changes(fz_context *ctx, pdf_document *pdf, pdf_obj *field, folio_signature *s)
+{
+	pdf_obj *val = pdf_dict_get_inheritable(ctx, field, PDF_NAME(V));
+	pdf_locked_fields *locked = NULL;
+	int sv, j, what = 0, p, lockp, base;
+	fz_var(locked);
+	fz_var(what);
+	sv = pdf_find_version_for_obj(ctx, pdf, val);
+	if (sv <= pdf->num_incremental_sections)
+		return;                 /* nothing saved after it */
+	p = docmdp_p(ctx, pdf);
+	lockp = pdf_dict_get_int(ctx, pdf_dict_get(ctx, field, PDF_NAME(Lock)), PDF_NAME(P));
+	if (lockp >= 1 && lockp <= 3 && (!p || lockp < p))
+		p = lockp;          /* "lock the document" (PDF 2.0) */
+	pdf_start_throw_on_repair(ctx, pdf, &base);
+	fz_try(ctx) {
+		locked = pdf_find_locked_fields_for_sig(ctx, pdf, field);
+		for (j = pdf->num_incremental_sections; j < sv && j + 1 < pdf->num_xref_sections; j++) {
+			pdf_xref_subsec *sub;
+			for (sub = pdf->xref_sections[j].subsec; sub; sub = sub->next) {
+				int k;
+				for (k = 0; k < sub->len; k++) {
+					char t = sub->table[k].type;
+					if (t == 'n' || t == 'o')
+						what |= classify(ctx, pdf, sub->start + k, j, locked);
+				}
+			}
+		}
+	}
+	fz_always(ctx) {
+		pdf_drop_locked_fields(ctx, locked);
+		pdf_end_throw_on_repair(ctx, pdf, base);
+	}
+	fz_catch(ctx) {
+		fz_report_error(ctx);
+		return;
+	}
+	s->changes = what & ~AF_LOCKED;
+	if (what & AF_LOCKED)
+		snprintf(s->disallowed, sizeof s->disallowed, "a field it locks has been changed");
+	else if (p == 1 && what)
+		snprintf(s->disallowed, sizeof s->disallowed, "the PDF was certified with no changes allowed, "
+			"and it has been changed");
+	else if (p && (what & (AF_PAGE | AF_OTHER)))
+		snprintf(s->disallowed, sizeof s->disallowed, "the pages have been changed, which the "
+			"certification doesn't allow");
+	else if (p == 2 && (what & AF_ANNOT))
+		snprintf(s->disallowed, sizeof s->disallowed, "notes or markings have been added, which the "
+			"certification doesn't allow");
+	s->certified = p;
+}
+
 static void one_field(fz_context *ctx, pdf_document *pdf, folio_verifier *v, pdf_obj *field, folio_signature *s)
 {
 	pdf_obj *val, *pg;
@@ -681,6 +870,10 @@ static void one_field(fz_context *ctx, pdf_document *pdf, folio_verifier *v, pdf
 		s->changed_after = pdf_signature_incremental_change_since_signing(ctx, pdf, field);
 	fz_catch(ctx)
 		s->changed_after = 0;
+	if (s->changed_after)
+		judge_changes(ctx, pdf, field, s);
+	else
+		s->certified = docmdp_p(ctx, pdf);
 }
 
 /* The form's fields, depth first, for signature fields (FT /Sig, which
@@ -1396,8 +1589,122 @@ void folio_signer_name(folio_signer *s, char *out, size_t size)
 /* Signs: the named empty signature field on the page, or (field NULL) a
  * new one there, at where (folio points). One change in the journal; the
  * signature itself is made when the PDF is saved. */
+/* Other fields read-only (locking the document after signing). */
+static void lock_fields(fz_context *ctx, pdf_obj *fields, pdf_obj *except, int depth)
+{
+	int i, n = pdf_array_len(ctx, fields);
+	if (depth > 16)
+		return;
+	for (i = 0; i < n; i++) {
+		pdf_obj *f = pdf_array_get(ctx, fields, i), *kids = pdf_dict_get(ctx, f, PDF_NAME(Kids));
+		if (!pdf_objcmp(ctx, f, except))
+			continue;
+		if (pdf_is_array(ctx, kids) && pdf_dict_get(ctx, pdf_array_get(ctx, kids, 0), PDF_NAME(T)))
+			lock_fields(ctx, kids, except, depth + 1);
+		else if (!pdf_name_eq(ctx, pdf_dict_get_inheritable(ctx, f, PDF_NAME(FT)), PDF_NAME(Sig)) ||
+				!pdf_dict_get_inheritable(ctx, f, PDF_NAME(V)))
+			pdf_dict_put_int(ctx, f, PDF_NAME(Ff), pdf_dict_get_int(ctx, f, PDF_NAME(Ff)) | 1);
+	}
+}
+
+/* The signature value (what MuPDF's pdf_signature_set_value makes, with
+ * the signer's name, reason and place in it too, and certification or a
+ * lock as asked), and its appearance. The bytes are signed when the PDF is
+ * saved (complete_signatures). ByteRange, Contents and Filter must come
+ * first, in that order: the writer looks for them. */
+static void sign_value(fz_context *ctx, pdf_document *pdf, pdf_annot *w, struct folio_signer *s,
+		const char *reason, const char *location, int mode)
+{
+	pdf_obj *wobj = pdf_annot_obj(ctx, w), *v = NULL, *indv, *refs, *form, *root;
+	fz_display_list *dl = NULL;
+	char who[128], *info = NULL, *buf = NULL;
+	int64_t now = time(NULL);
+	int vnum, sf;
+	size_t max = s->base.max_digest_size(ctx, &s->base);
+	fz_rect rect = pdf_annot_rect(ctx, w);
+	fz_var(v);
+	fz_var(dl);
+	fz_var(info);
+	fz_var(buf);
+	folio_signer_name(s, who, sizeof who);
+	root = pdf_dict_get(ctx, pdf_trailer(ctx, pdf), PDF_NAME(Root));
+	fz_try(ctx) {
+		if (mode == FOLIO_SIGN_LOCK) {
+			pdf_obj *lock = pdf_dict_put_dict(ctx, wobj, PDF_NAME(Lock), 3);
+			pdf_dict_put_name(ctx, lock, PDF_NAME(Type), "SigFieldLock");
+			pdf_dict_put(ctx, lock, PDF_NAME(Action), PDF_NAME(All));
+			pdf_dict_put_int(ctx, lock, PDF_NAME(P), 1);
+		}
+		pdf_dirty_annot(ctx, w);
+		if (!fz_is_empty_rect(rect)) {
+			info = pdf_signature_info(ctx, who[0] ? who : NULL, NULL, reason, location, now, 1);
+			dl = pdf_signature_appearance_signed(ctx, rect, pdf_annot_language(ctx, w), NULL,
+				who[0] ? who : NULL, info, 0);
+			pdf_set_annot_appearance_from_display_list(ctx, w, "N", NULL, fz_identity, dl);
+		}
+		form = pdf_dict_get(ctx, root, PDF_NAME(AcroForm));
+		if (!form)
+			form = pdf_dict_put_dict(ctx, root, PDF_NAME(AcroForm), 1);
+		sf = pdf_dict_get_int(ctx, form, PDF_NAME(SigFlags));
+		if ((sf & 3) != 3)
+			pdf_dict_put_int(ctx, form, PDF_NAME(SigFlags), sf | 3);
+
+		vnum = pdf_create_object(ctx, pdf);
+		indv = pdf_new_indirect(ctx, pdf, vnum, 0);
+		pdf_dict_put_drop(ctx, wobj, PDF_NAME(V), indv);
+		v = pdf_new_dict(ctx, pdf, 12);
+		pdf_update_object(ctx, pdf, vnum, v);
+		buf = fz_calloc(ctx, max, 1);
+		pdf_dict_put_array(ctx, v, PDF_NAME(ByteRange), 4);
+		pdf_dict_put_string(ctx, v, PDF_NAME(Contents), buf, max);
+		pdf_dict_put(ctx, v, PDF_NAME(Filter), PDF_NAME(Adobe_PPKLite));
+		pdf_dict_put(ctx, v, PDF_NAME(SubFilter), PDF_NAME(adbe_pkcs7_detached));
+		pdf_dict_put(ctx, v, PDF_NAME(Type), PDF_NAME(Sig));
+		pdf_dict_put_date(ctx, v, PDF_NAME(M), now);
+		if (who[0])
+			pdf_dict_put_text_string(ctx, v, PDF_NAME(Name), who);
+		if (reason && *reason)
+			pdf_dict_put_text_string(ctx, v, PDF_NAME(Reason), reason);
+		if (location && *location)
+			pdf_dict_put_text_string(ctx, v, PDF_NAME(Location), location);
+		if (mode >= FOLIO_CERTIFY_NO_CHANGES || mode == FOLIO_SIGN_LOCK) {
+			pdf_obj *r, *tp;
+			refs = pdf_dict_put_array(ctx, v, PDF_NAME(Reference), 1);
+			r = pdf_array_put_dict(ctx, refs, 0, 4);
+			pdf_dict_put(ctx, r, PDF_NAME(Type), PDF_NAME(SigRef));
+			tp = pdf_dict_put_dict(ctx, r, PDF_NAME(TransformParams), 4);
+			pdf_dict_put(ctx, tp, PDF_NAME(Type), PDF_NAME(TransformParams));
+			pdf_dict_put(ctx, tp, PDF_NAME(V), PDF_NAME(1_2));
+			if (mode == FOLIO_SIGN_LOCK) {
+				pdf_dict_put(ctx, r, PDF_NAME(TransformMethod), PDF_NAME(FieldMDP));
+				pdf_dict_put(ctx, r, PDF_NAME(Data), root);
+				pdf_dict_put(ctx, tp, PDF_NAME(Action), PDF_NAME(All));
+				pdf_dict_put_int(ctx, tp, PDF_NAME(P), 1);
+			} else {
+				pdf_dict_put(ctx, r, PDF_NAME(TransformMethod), PDF_NAME(DocMDP));
+				pdf_dict_put_int(ctx, tp, PDF_NAME(P), mode - FOLIO_CERTIFY_NO_CHANGES + 1);
+				pdf_dict_put(ctx, pdf_dict_put_dict(ctx, root, PDF_NAME(Perms), 1), PDF_NAME(DocMDP), indv);
+			}
+		}
+		if (mode == FOLIO_SIGN_LOCK)
+			lock_fields(ctx, pdf_dict_get(ctx, form, PDF_NAME(Fields)), wobj, 0);
+		pdf_dict_put_int(ctx, wobj, PDF_NAME(Ff), pdf_dict_get_int(ctx, wobj, PDF_NAME(Ff)) | 1);
+		/* Last: nothing may change after this (a later change goes into
+		 * a section of its own, after the signature's byte range). */
+		pdf_xref_store_unsaved_signature(ctx, pdf, wobj, &s->base);
+	}
+	fz_always(ctx) {
+		pdf_drop_obj(ctx, v);
+		fz_drop_display_list(ctx, dl);
+		fz_free(ctx, info);
+		fz_free(ctx, buf);
+	}
+	fz_catch(ctx)
+		fz_rethrow(ctx);
+}
+
 int folio_sign(folio_doc *doc, folio_loc loc, const char *field, folio_rect where, folio_signer *s,
-		const char *reason, const char *location)
+		const char *reason, const char *location, int mode)
 {
 	fz_context *ctx = doc->ctx;
 	pdf_document *pdf = pdf_specifics(ctx, doc->doc);
@@ -1417,6 +1724,8 @@ int folio_sign(folio_doc *doc, folio_loc loc, const char *field, folio_rect wher
 		pdf_page *page = pdf_page_from_fz_page(ctx, cp->page);
 		pdf_annot *w = NULL;
 		folio_allow(doc, FOLIO_CHANGE_SIGN, NULL);
+		if (mode >= FOLIO_CERTIFY_NO_CHANGES && folio_is_signed(doc))
+			fz_throw(ctx, FZ_ERROR_ARGUMENT, "only the first signature can certify a PDF, and it's signed already");
 		pdf_begin_operation(ctx, pdf, "Sign");
 		op = 1;
 		if (field) {
@@ -1441,14 +1750,16 @@ int folio_sign(folio_doc *doc, folio_loc loc, const char *field, folio_rect wher
 			fz_rect r;
 			snprintf(name, sizeof name, "Signature%d", k);
 			w = pdf_create_signature_widget(ctx, page, name);
+			/* MuPDF gives a new field Lock All; Acrobat's ordinary
+			 * signature locks nothing (FOLIO_SIGN_LOCK asks for it). */
+			pdf_dict_del(ctx, pdf_annot_obj(ctx, w), PDF_NAME(Lock));
 			r.x0 = where.x0 + cp->bounds.x0;
 			r.y0 = where.y0 + cp->bounds.y0;
 			r.x1 = where.x1 + cp->bounds.x0;
 			r.y1 = where.y1 + cp->bounds.y0;
 			pdf_set_annot_rect(ctx, w, r);
 		}
-		pdf_sign_signature(ctx, w, &s->base, PDF_SIGNATURE_DEFAULT_APPEARANCE & ~(PDF_SIGNATURE_SHOW_LOGO | PDF_SIGNATURE_SHOW_DN),
-			NULL, reason && *reason ? reason : NULL, location && *location ? location : NULL);
+		sign_value(ctx, pdf, w, s, reason, location, mode);
 		pdf_end_operation(ctx, pdf);
 		op = 0;
 	}
@@ -1487,6 +1798,10 @@ typedef struct {
 static void lock_of(fz_context *ctx, pdf_obj *lock, sig_state *st)
 {
 	pdf_obj *action = pdf_dict_get(ctx, lock, PDF_NAME(Action));
+	int p = pdf_dict_get_int(ctx, lock, PDF_NAME(P));
+	/* "Lock the document" (PDF 2.0): a P, as a certification's. */
+	if (p >= 1 && p <= 3 && (!st->docmdp || p < st->docmdp))
+		st->docmdp = p;
 	if (!action)
 		return;
 	if (pdf_name_eq(ctx, action, PDF_NAME(All)))

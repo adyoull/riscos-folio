@@ -3996,7 +3996,7 @@ int docwin_can_sign(docwin *w)
 /* Signs field (or a new field at the foot of the page, on the right), then
  * opens the Save box: the signature is made as the PDF is saved. */
 int docwin_sign(docwin *w, int page, const char *field, folio_signer *sg, const char *reason,
-		const char *location)
+		const char *location, int mode)
 {
 	folio_loc loc;
 	folio_rect where = { 0, 0, 0, 0 };
@@ -4015,7 +4015,7 @@ int docwin_sign(docwin *w, int page, const char *field, folio_signer *sg, const 
 		where.y0 = where.y1 - 72 > 0 ? where.y1 - 72 : 0;
 	}
 	if (!rc)
-		rc = folio_sign(w->doc, loc, field, where, sg, reason, location);
+		rc = folio_sign(w->doc, loc, field, where, sg, reason, location, mode);
 	core_unlock();
 	_swix(Hourglass_Off, 0);
 	if (rc) {

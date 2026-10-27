@@ -5,7 +5,7 @@ It's built on [MuPDF](https://mupdf.com) with a native front end that follows
 the RISC OS Style Guide, and takes its ideas for markup and reading from
 Flexcil. "Folio" is a working name.
 
-Status: **test builds** (0.0.1-test66). It's used day to day on a Raspberry Pi
+Status: **test builds** (0.0.1-test67). It's used day to day on a Raspberry Pi
 running RISC OS 5, but expect rough edges. The design is in
 [`docs/DESIGN.md`](docs/DESIGN.md).
 
@@ -50,9 +50,11 @@ running RISC OS 5, but expect rough edges. The design is in
   text, so other programs can find and copy it.
 - **Signatures checked:** who signed a PDF, whether it's unchanged since,
   and whether the signer's certificate leads to a trusted root (Adobe's,
-  CaCertificates', or your own), with mbedTLS.
+  CaCertificates', or your own), with mbedTLS; changes saved after a
+  signature are judged as Acrobat does (certification and field locks).
 - **Signing:** sign a PDF with your own certificate from a .p12 or .pfx
-  file, in an empty signature field or a new one; the signature is made as
+  file, in an empty signature field or a new one, as an ordinary signature,
+  locking the PDF, or certifying it (no changes, filling in, or notes too); the signature is made as
   the PDF is saved, as an incremental update, so earlier signatures stay good.
   A signed PDF's signatures are never changed: its pages, page content and
   password stay as signed, locked fields and certification rules (DocMDP)

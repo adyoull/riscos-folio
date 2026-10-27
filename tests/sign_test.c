@@ -10,7 +10,7 @@
  * With a second directory (from tests/make-p12.sh), signing is tested too:
  * each .p12 signs doc.pdf (a new field) and empty.pdf (its field), and the
  * results are checked here and, by the Makefile, with pdfsig. */
-#include "folio.h"
+#include "folio_int.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,6 +42,8 @@ static folio_signer *load_p12(const char *p12dir, const char *leaf, const char *
 }
 
 /* Signs in (dir/leaf, or a path) into out; field NULL makes a new one. */
+static int sign_mode = FOLIO_SIGN_APPROVE;
+
 static int sign_into(const char *in, const char *out, folio_signer *sg, const char *field)
 {
 	folio_doc *d = folio_open(fc, in, NULL);
@@ -50,7 +52,7 @@ static int sign_into(const char *in, const char *out, folio_signer *sg, const ch
 	int rc;
 	if (!d)
 		return -2;
-	rc = folio_sign(d, loc, field, where, sg, "Approved", "Aldershot");
+	rc = folio_sign(d, loc, field, where, sg, "Approved", "Aldershot", sign_mode);
 	if (rc)
 		printf("sign: %s\n", folio_error(fc));
 	else {
@@ -59,6 +61,13 @@ static int sign_into(const char *in, const char *out, folio_signer *sg, const ch
 	}
 	folio_close(d);
 	return rc;
+}
+
+static const char *dirdata(const char *d)
+{
+	static char b[512];
+	snprintf(b, sizeof b, "%s/../data", d);
+	return b;
 }
 
 static const char *path_out(const char *d)
@@ -192,7 +201,7 @@ int main(int argc, char **argv)
 		const char *p12dir = argv[2];
 		static const char *const kinds[] = { "rsa-aes.p12", "rsa-legacy.p12", "rsa-3des.p12", "ec.p12" };
 		folio_signer *sg;
-		char name[128], in[512], out[512];
+		char name[128], in[700], out[700];
 		int i;
 		CHECK(load_p12(p12dir, "rsa-aes.p12", "wrong") == NULL && strstr(folio_error(fc), "password"),
 			"wrong password: %s", folio_error(fc));
@@ -211,7 +220,8 @@ int main(int argc, char **argv)
 			{
 				folio_doc *d = folio_open(fc, out, NULL);
 				CHECK(d && folio_signatures(d, s, 4) == 1 && s[0].is_signed && s[0].digest == FOLIO_SIG_VALID &&
-					!s[0].changed_after && !strcmp(s[0].field, "Signature1") && !strcmp(s[0].signer, i == 3 ? "Eric Curve" : "Sam Signer"),
+					!s[0].changed_after && !strcmp(s[0].field, "Signature1") && !strcmp(s[0].signer, i == 3 ? "Eric Curve" : "Sam Signer") &&
+					!strcmp(s[0].reason, "Approved") && !strcmp(s[0].location, "Aldershot"),
 					"%s: new field verifies (%d) %s", kinds[i], d ? s[0].digest : -1, d ? s[0].why : "");
 				CHECK(d && (i == 3 ? s[0].cert == FOLIO_CERT_TRUSTED || s[0].cert == FOLIO_CERT_UNTRUSTED
 					: s[0].cert == FOLIO_CERT_SELF_SIGNED), "%s: certificate %d %s", kinds[i], d ? s[0].cert : -1,
@@ -249,6 +259,118 @@ int main(int argc, char **argv)
 				folio_close(d);
 		}
 		folio_signer_drop(fc, sg);
+
+		/* As Acrobat judges changes after signing. */
+		sg = load_p12(p12dir, "rsa-aes.p12", "folio");
+		CHECK(sg != NULL, "rsa-aes again");
+		if (sg) {
+			folio_doc *d;
+			folio_loc l0 = { 0, 0 };
+			folio_point at = { 100, 100 };
+			char a[512], b[512], c[512];
+			int k, n, fi = -1;
+			folio_field f;
+			/* An ordinary signature, then a note: allowed, listed. */
+			snprintf(in, sizeof in, "%s/new-0.pdf", p12dir);
+			d = folio_open(fc, in, NULL);
+			snprintf(a, sizeof a, "%s/note-after.pdf", p12dir);
+			CHECK(d && folio_annot_note(d, l0, at, "after") == 0 && folio_save_pdf(d, in, a) == 0, "note after");
+			if (d)
+				folio_close(d);
+			d = folio_open(fc, a, NULL);
+			CHECK(d && folio_signatures(d, s, 4) == 1 && s[0].digest == FOLIO_SIG_VALID && s[0].changed_after &&
+				(s[0].changes & FOLIO_AFTER_ANNOT) && !s[0].disallowed[0] && !s[0].certified,
+				"approval + note: allowed (changes %d, '%s')", d ? s[0].changes : -1, d ? s[0].disallowed : "");
+			if (d)
+				folio_close(d);
+
+			/* Certified (filling in and signing) on form.pdf. */
+			snprintf(in, sizeof in, "%s/form.pdf", dirdata(dir));
+			snprintf(a, sizeof a, "%s/certified-forms.pdf", p12dir);
+			sign_mode = FOLIO_CERTIFY_FORMS;
+			CHECK(sign_into(in, a, sg, NULL) == 0, "certified (forms)");
+			sign_mode = FOLIO_SIGN_APPROVE;
+			d = folio_open(fc, a, NULL);
+			CHECK(d && folio_signatures(d, s, 4) >= 1, "certified opens");
+			if (d) {
+				for (k = 0, n = folio_signatures(d, s, 4); k < n; k++)
+					if (s[k].is_signed)
+						break;
+				CHECK(k < n && s[k].certified == 2 && s[k].digest == FOLIO_SIG_VALID && !s[k].changed_after,
+					"certified P 2 (%d)", k < n ? s[k].certified : -1);
+				CHECK(folio_annot_note(d, l0, at, "no") == -1, "certified: Folio adds no note");
+				for (k = 0, n = folio_field_count(d, l0); k < n; k++)
+					if (folio_field_get(d, l0, k, &f) == 1 && !strcmp(f.name, "name"))
+						fi = k;
+				snprintf(b, sizeof b, "%s/certified-filled.pdf", p12dir);
+				k = fi >= 0 ? folio_field_set_text(d, l0, fi, "Bea") : -9;
+				CHECK(k == 0 && folio_save_pdf(d, a, b) == 0, "certified: filled in and saved (%d %d %s)", fi, k,
+					folio_error(fc));
+				folio_close(d);
+				d = folio_open(fc, b, NULL);
+				for (k = 0, n = d ? folio_signatures(d, s, 4) : 0; k < n; k++)
+					if (s[k].is_signed)
+						break;
+				CHECK(k < n && s[k].changed_after && (s[k].changes & FOLIO_AFTER_FORM) && !s[k].disallowed[0],
+					"certified + filling in: allowed (%d '%s')", k < n ? s[k].changes : -1, k < n ? s[k].disallowed : "");
+				/* Another program adds a note anyway (MuPDF directly). */
+				if (d) {
+					pdf_document *pdf = pdf_specifics(d->ctx, d->doc);
+					pdf_page *pg = pdf_load_page(d->ctx, pdf, 0);
+					pdf_begin_operation(d->ctx, pdf, "test");
+					pdf_create_annot(d->ctx, pg, PDF_ANNOT_TEXT);
+					pdf_end_operation(d->ctx, pdf);
+					fz_drop_page(d->ctx, &pg->super);
+					snprintf(c, sizeof c, "%s/certified-noted.pdf", p12dir);
+					CHECK(folio_save_pdf(d, b, c) == 0, "saved with the note");
+					folio_close(d);
+					d = folio_open(fc, c, NULL);
+					for (k = 0, n = d ? folio_signatures(d, s, 4) : 0; k < n; k++)
+						if (s[k].is_signed)
+							break;
+					CHECK(k < n && s[k].digest == FOLIO_SIG_VALID && strstr(s[k].disallowed, "notes"),
+						"certified + note: not allowed ('%s')", k < n ? s[k].disallowed : "");
+					if (d)
+						folio_close(d);
+				}
+			}
+
+			/* Signed and locked: fields read-only; a change by another
+			 * program breaks it. */
+			snprintf(in, sizeof in, "%s/form.pdf", dirdata(dir));
+			snprintf(a, sizeof a, "%s/locked.pdf", p12dir);
+			sign_mode = FOLIO_SIGN_LOCK;
+			CHECK(sign_into(in, a, sg, NULL) == 0, "signed and locked");
+			sign_mode = FOLIO_SIGN_APPROVE;
+			d = folio_open(fc, a, NULL);
+			if (d) {
+				for (k = 0, n = folio_field_count(d, l0), fi = -1; k < n; k++)
+					if (folio_field_get(d, l0, k, &f) == 1 && !strcmp(f.name, "name"))
+						fi = k;
+				CHECK(fi >= 0 && folio_field_set_text(d, l0, fi, "Cy") == -1, "locked: no filling in");
+				CHECK(folio_annot_note(d, l0, at, "no") == -1, "locked: no notes");
+				{
+					pdf_document *pdf = pdf_specifics(d->ctx, d->doc);
+					pdf_obj *fld = pdf_lookup_field(d->ctx, pdf_dict_getp(d->ctx, pdf_trailer(d->ctx, pdf),
+						"Root/AcroForm/Fields"), "name");
+					pdf_begin_operation(d->ctx, pdf, "test");
+					pdf_dict_put_text_string(d->ctx, fld, PDF_NAME(V), "Changed");
+					pdf_end_operation(d->ctx, pdf);
+				}
+				snprintf(b, sizeof b, "%s/locked-changed.pdf", p12dir);
+				CHECK(folio_save_pdf(d, a, b) == 0, "locked: changed by another program");
+				folio_close(d);
+				d = folio_open(fc, b, NULL);
+				for (k = 0, n = d ? folio_signatures(d, s, 4) : 0; k < n; k++)
+					if (s[k].is_signed)
+						break;
+				CHECK(k < n && s[k].digest == FOLIO_SIG_VALID && s[k].disallowed[0],
+					"locked + change: not allowed ('%s')", k < n ? s[k].disallowed : "");
+				if (d)
+					folio_close(d);
+			}
+			folio_signer_drop(fc, sg);
+		}
 	}
 	folio_drop(fc);
 	printf("sign_test: %d checks, %d failed\n", checks, fails);

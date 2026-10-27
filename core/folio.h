@@ -329,7 +329,13 @@ typedef struct {
 	char date[40];               /* the PDF date it gives (folio_pdf_date makes it readable) */
 	char reason[160], location[96];
 	char why[200], cert_why[160];
+	int certified;               /* a certification's P: 1 no changes, 2 filling in and signing,
+	                              * 3 and notes; 0 not certified */
+	int changes;                 /* what's been changed since: FOLIO_AFTER_* */
+	char disallowed[160];        /* "" or why those changes break it (as Acrobat judges) */
 } folio_signature;
+enum { FOLIO_AFTER_FORM = 1, FOLIO_AFTER_SIGNING = 2, FOLIO_AFTER_ANNOT = 4, FOLIO_AFTER_PAGE = 8,
+	FOLIO_AFTER_OTHER = 16 };
 /* The document's signature fields, signed or not, with each signature
  * checked. Returns how many (up to max), or -1. */
 int folio_signatures(folio_doc *doc, folio_signature *out, int max);
@@ -356,8 +362,15 @@ void folio_signer_name(folio_signer *s, char *out, size_t size);   /* its common
  * NULL, a new one at where (folio points). The appearance shows the name,
  * date and reason. One change in the journal; the signature itself is made
  * when the PDF is next saved (folio_save_pdf). 0 or -1. */
+enum {
+	FOLIO_SIGN_APPROVE = 0,     /* an ordinary signature */
+	FOLIO_SIGN_LOCK,            /* and lock the document: no changes after it (fields read-only) */
+	FOLIO_CERTIFY_NO_CHANGES,   /* certify (the first signature only): no changes allowed */
+	FOLIO_CERTIFY_FORMS,        /* certify: filling in and signing allowed */
+	FOLIO_CERTIFY_ANNOTS        /* certify: those, and notes and markings */
+};
 int folio_sign(folio_doc *doc, folio_loc loc, const char *field, folio_rect where, folio_signer *s,
-		const char *reason, const char *location);
+		const char *reason, const char *location, int mode);
 
 /* ---- System fonts (fonts.c) ---------------------------------------------- */
 /* What fontconfig found when it started (on the first font asked for), for
