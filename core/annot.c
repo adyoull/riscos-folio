@@ -621,3 +621,93 @@ int folio_annot_recolour(folio_doc *doc, folio_loc loc, int n, int rgb)
 	forget_page(doc, loc);
 	return 0;
 }
+
+/* ---- Measuring ------------------------------------------------------------ */
+
+int folio_page_measure(folio_doc *doc, folio_loc loc, double *per_point, char *unit, size_t unit_size)
+{
+	fz_context *ctx = doc->ctx;
+	pdf_document *pdf = pdf_of(doc);
+	int own = 0;
+	double uu = 1;
+	*per_point = 25.4 / 72;
+	snprintf(unit, unit_size, "mm");
+	if (!pdf)
+		return 0;
+	fz_var(own);
+	fz_try(ctx) {
+		pdf_obj *page = pdf_lookup_page_obj(ctx, pdf, folio_page_number(doc, loc));
+		pdf_obj *vp = pdf_dict_gets(ctx, page, "VP"), *m, *x;
+		if (pdf_is_number(ctx, pdf_dict_get(ctx, page, PDF_NAME(UserUnit))))
+			uu = pdf_to_real(ctx, pdf_dict_get(ctx, page, PDF_NAME(UserUnit)));
+		if (uu <= 0)
+			uu = 1;
+		*per_point = 25.4 / 72 * uu;
+		/* The drawing's own scale: the first viewport's rectilinear measure,
+		 * its X number format's conversion factor and unit. */
+		m = pdf_dict_gets(ctx, pdf_array_get(ctx, vp, 0), "Measure");
+		x = pdf_array_get(ctx, pdf_dict_gets(ctx, m, "X"), 0);
+		if (pdf_name_eq(ctx, pdf_dict_get(ctx, m, PDF_NAME(Subtype)), PDF_NAME(RL)) &&
+				pdf_is_number(ctx, pdf_dict_get(ctx, x, PDF_NAME(C)))) {
+			const char *u = pdf_dict_get_text_string(ctx, x, PDF_NAME(U));
+			double c = pdf_to_real(ctx, pdf_dict_get(ctx, x, PDF_NAME(C)));
+			if (c > 0) {
+				*per_point = c * uu;
+				snprintf(unit, unit_size, "%s", u && *u ? u : "units");
+				own = 1;
+			}
+		}
+	}
+	fz_catch(ctx) {
+		/* paper scale */
+	}
+	return own;
+}
+
+int folio_annot_measure(folio_doc *doc, folio_loc loc, const folio_point *pt, int n, int closed,
+		const char *text)
+{
+	fz_context *ctx = doc->ctx;
+	pdf_document *pdf = pdf_of(doc);
+	int op = 0, i;
+	if (!pdf || n < 2) {
+		snprintf(doc->fc->err, sizeof doc->fc->err, n < 2 ? "it needs two points or more" :
+			"only a PDF can have measurements added");
+		return -1;
+	}
+	fz_var(op);
+	folio_begin(doc);
+	fz_try(ctx) {
+		folio_cpage *cp = folio_get_page(doc, loc);
+		pdf_page *page = pdf_page_from_fz_page(ctx, cp->page);
+		static const float red[3] = { 0.85f, 0.1f, 0.1f };
+		pdf_annot *a;
+		pdf_begin_operation(ctx, pdf, "Measurement");
+		op = 1;
+		if (n == 2) {
+			a = pdf_create_annot(ctx, page, PDF_ANNOT_LINE);
+			pdf_set_annot_line(ctx, a, to_page(cp, pt[0]), to_page(cp, pt[1]));
+			pdf_set_annot_line_ending_styles(ctx, a, PDF_ANNOT_LE_BUTT, PDF_ANNOT_LE_BUTT);
+		} else {
+			a = pdf_create_annot(ctx, page, closed ? PDF_ANNOT_POLYGON : PDF_ANNOT_POLY_LINE);
+			for (i = 0; i < n; i++)
+				pdf_add_annot_vertex(ctx, a, to_page(cp, pt[i]));
+		}
+		pdf_set_annot_color(ctx, a, 3, red);
+		pdf_set_annot_border_width(ctx, a, 1);
+		if (text)
+			pdf_set_annot_contents(ctx, a, text);
+		pdf_update_page(ctx, page);
+		pdf_end_operation(ctx, pdf);
+		op = 0;
+	}
+	fz_catch(ctx) {
+		if (op)
+			pdf_abandon_operation(ctx, pdf);
+		folio_set_error(doc->fc);
+		forget_page(doc, loc);
+		return -1;
+	}
+	forget_page(doc, loc);
+	return 0;
+}

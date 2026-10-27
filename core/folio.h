@@ -246,6 +246,11 @@ int folio_page_is_scan(folio_doc *doc, folio_loc loc);
 int folio_ocr_page(folio_doc *doc, folio_loc loc, const char *datadir, const char *lang,
 		int only_scans);
 int folio_page_has_ocr(folio_doc *doc, folio_loc loc);
+/* A searchable copy: every recognised page of a PDF gets its words as
+ * invisible text over their pictures, so other readers can find and copy
+ * them too. One change in the journal; Save keeps it. Pages done before
+ * are left alone. Returns the pages done (0: none to do), or -1. */
+int folio_ocr_embed(folio_doc *doc);
 int folio_ocr_pages(folio_doc *doc);      /* pages recognised */
 int folio_ocr_changed(folio_doc *doc);    /* recognised since loaded or saved */
 /* The recognised text of every page, kept between sessions: saving with
@@ -466,6 +471,16 @@ typedef struct {
 int folio_annot_list(folio_doc *doc, folio_loc loc, folio_annot_info *out, int max);
 /* Annotation n's colour, as one change in the journal. 0 or -1. */
 int folio_annot_recolour(folio_doc *doc, folio_loc loc, int n, int rgb);
+/* Measuring: how much one point on this page is (*per_point), in unit. By
+ * default millimetres (allowing for the page's UserUnit); if the PDF gives
+ * the page a scale of its own (a /VP viewport with a /Measure, as plans and
+ * drawings do), that scale and its unit, and it returns 1. */
+int folio_page_measure(folio_doc *doc, folio_loc loc, double *per_point, char *unit, size_t unit_size);
+/* A measurement kept on the page: a line (two points), lines or (closed) a
+ * polygon through the points (folio points), red, with text as its note.
+ * One change in the journal. 0 or -1. */
+int folio_annot_measure(folio_doc *doc, folio_loc loc, const folio_point *pt, int n, int closed,
+		const char *text);
 
 /* Undo and redo of annotation changes (every page is redrawn after). */
 int folio_can_undo(folio_doc *doc);

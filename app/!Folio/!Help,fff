@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test61)
+Folio (test build 0.0.1-test62)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -118,6 +118,12 @@ Scanned pages (with the OCR plugin)
   page does just the page you're on. Accurate makes fewer mistakes; Fast
   takes about half as long. What's recognised is kept, so it isn't done
   again next time. OCR.ReadMe has more.
+  Add recognised text to the PDF (on the Text recognition menu) makes a
+  searchable copy: the recognised words go into the PDF itself as
+  invisible text over their pictures, the way scanning programs do it, so
+  other programs (and other readers) can find, select and copy them too.
+  The pages look just the same. Save (F3) to keep it; Ctrl-Z takes it out
+  again. Do it once every page has been recognised.
 
 Filling in forms (PDFs)
   Click on a field to fill it in. A text field opens for typing over the
@@ -129,6 +135,17 @@ Filling in forms (PDFs)
   what you've filled in. Fields worked out by the form (totals, dates
   checked as you type) need its JavaScript, which is off unless Choices
   turn it on; Folio never sends a form anywhere.
+
+Measuring
+  Measure... on the Edit menu opens the Measure window. While it's open,
+  click Select on the page to add points: red lines join them, and Adjust
+  takes the last one off. The window shows the last line's length, all the
+  lines together, and with three points or more the area they enclose.
+  Lengths are in mm, cm, inches or points, at the page's paper size; a
+  plan or drawing whose PDF gives it a scale of its own (1 in = 10 ft,
+  say) is measured in its own units. Add to page keeps the measurement on
+  the page as an annotation, with the figures as its note. Close the
+  window to stop measuring.
 
 Printing
   Print... on the document's menu (or the Print key) opens the Print box:

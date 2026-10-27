@@ -620,3 +620,246 @@ int folio_ocr_load(folio_doc *doc, const char *path)
 	doc->ocr_changed = 0;
 	return pages;
 }
+
+/* ---- Recognised text into the PDF ------------------------------------------
+ * A searchable copy, as scanning programs make: each recognised word is put
+ * on its page as invisible text (render mode 3) exactly over the word's
+ * picture, so other readers can find, select and copy it. The font is
+ * "GlyphLessFont", as Tesseract's own PDFs use: a CID font with no glyphs
+ * (none are drawn), every character half an em wide, and a ToUnicode map so
+ * the codes (UTF-16) read back as the text. Each word's text matrix
+ * stretches it to its box. The words' boxes are in page points from the
+ * page's top left; they go back into the PDF's own space through the
+ * inverse of the page's transform (so a turned page comes out right). A
+ * page that has had this done has /FolioOCR in its fonts and is left alone
+ * the next time. */
+
+#define OCR_FONT "FolioOCR"
+
+static pdf_obj *glyphless_font(fz_context *ctx, pdf_document *pdf)
+{
+	pdf_obj *font = NULL, *cid = NULL, *desc = NULL, *arr = NULL, *info = NULL, *tu = NULL;
+	fz_buffer *cmap = NULL;
+	int hi;
+	fz_var(font); fz_var(cid); fz_var(desc); fz_var(arr); fz_var(info); fz_var(tu); fz_var(cmap);
+	fz_try(ctx) {
+		cmap = fz_new_buffer(ctx, 8192);
+		fz_append_string(ctx, cmap, "/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n"
+			"/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n"
+			"/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n"
+			"1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n");
+		/* Code = UTF-16 unit: 256 ranges, each within one high byte. */
+		for (hi = 0; hi < 256; hi++) {
+			if (hi % 100 == 0)
+				fz_append_printf(ctx, cmap, "%d beginbfrange\n", hi < 200 ? 100 : 56);
+			fz_append_printf(ctx, cmap, "<%02X00> <%02XFF> <%02X00>\n", hi, hi, hi);
+			if (hi % 100 == 99 || hi == 255)
+				fz_append_string(ctx, cmap, "endbfrange\n");
+		}
+		fz_append_string(ctx, cmap, "endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n");
+		tu = pdf_add_stream(ctx, pdf, cmap, NULL, 0);
+
+		desc = pdf_add_new_dict(ctx, pdf, 8);
+		pdf_dict_put(ctx, desc, PDF_NAME(Type), PDF_NAME(FontDescriptor));
+		pdf_dict_put_name(ctx, desc, PDF_NAME(FontName), "GlyphLessFont");
+		pdf_dict_put_int(ctx, desc, PDF_NAME(Flags), 5);
+		pdf_dict_put_rect(ctx, desc, PDF_NAME(FontBBox), fz_make_rect(0, -200, 500, 800));
+		pdf_dict_put_int(ctx, desc, PDF_NAME(ItalicAngle), 0);
+		pdf_dict_put_int(ctx, desc, PDF_NAME(Ascent), 800);
+		pdf_dict_put_int(ctx, desc, PDF_NAME(Descent), -200);
+		pdf_dict_put_int(ctx, desc, PDF_NAME(CapHeight), 800);
+		pdf_dict_put_int(ctx, desc, PDF_NAME(StemV), 80);
+
+		cid = pdf_new_dict(ctx, pdf, 8);
+		pdf_dict_put(ctx, cid, PDF_NAME(Type), PDF_NAME(Font));
+		pdf_dict_put(ctx, cid, PDF_NAME(Subtype), PDF_NAME(CIDFontType2));
+		pdf_dict_put_name(ctx, cid, PDF_NAME(BaseFont), "GlyphLessFont");
+		info = pdf_dict_put_dict(ctx, cid, PDF_NAME(CIDSystemInfo), 3);
+		pdf_dict_put_string(ctx, info, PDF_NAME(Registry), "Adobe", 5);
+		pdf_dict_put_string(ctx, info, PDF_NAME(Ordering), "Identity", 8);
+		pdf_dict_put_int(ctx, info, PDF_NAME(Supplement), 0);
+		pdf_dict_put(ctx, cid, PDF_NAME(FontDescriptor), desc);
+		pdf_dict_put_int(ctx, cid, PDF_NAME(DW), 500);
+		pdf_dict_put(ctx, cid, PDF_NAME(CIDToGIDMap), PDF_NAME(Identity));
+
+		font = pdf_add_new_dict(ctx, pdf, 6);
+		pdf_dict_put(ctx, font, PDF_NAME(Type), PDF_NAME(Font));
+		pdf_dict_put(ctx, font, PDF_NAME(Subtype), PDF_NAME(Type0));
+		pdf_dict_put_name(ctx, font, PDF_NAME(BaseFont), "GlyphLessFont");
+		pdf_dict_put(ctx, font, PDF_NAME(Encoding), PDF_NAME(Identity_H));
+		arr = pdf_dict_put_array(ctx, font, PDF_NAME(DescendantFonts), 1);
+		pdf_array_push(ctx, arr, cid);
+		pdf_dict_put(ctx, font, PDF_NAME(ToUnicode), tu);
+	}
+	fz_always(ctx) {
+		fz_drop_buffer(ctx, cmap);
+		pdf_drop_obj(ctx, cid);
+		pdf_drop_obj(ctx, desc);
+		pdf_drop_obj(ctx, tu);
+	}
+	fz_catch(ctx) {
+		pdf_drop_obj(ctx, font);
+		fz_rethrow(ctx);
+	}
+	return font;
+}
+
+/* UTF-8 to the codes the font uses (UTF-16 units; other planes as '?'),
+ * as hex. Returns how many codes. */
+static int put_codes(fz_context *ctx, fz_buffer *out, const char *s, const char *end)
+{
+	int n = 0;
+	fz_append_byte(ctx, out, '<');
+	while (s < end && *s) {
+		int c;
+		s += fz_chartorune(&c, s);
+		if (c > 0xffff || (c >= 0xd800 && c < 0xe000))
+			c = '?';
+		fz_append_printf(ctx, out, "%04X", c);
+		n++;
+	}
+	fz_append_byte(ctx, out, '>');
+	return n;
+}
+
+static int embed_page(folio_doc *doc, pdf_document *pdf, int i, folio_ocr_store *p, pdf_obj **font)
+{
+	fz_context *ctx = doc->ctx;
+	folio_loc loc;
+	folio_cpage *cp;
+	pdf_page *page;
+	pdf_obj *res, *fonts, *contents, *arr = NULL, *open = NULL, *mine = NULL;
+	fz_buffer *buf = NULL, *qbuf = NULL;
+	fz_rect mediabox;
+	fz_matrix ctm, inv;
+	const char *s, *end;
+	int words = 0;
+	if (folio_loc_from_number(doc, i, &loc))
+		return 0;
+	cp = folio_get_page(doc, loc);
+	page = pdf_page_from_fz_page(ctx, cp->page);
+	res = pdf_dict_get_inheritable(ctx, page->obj, PDF_NAME(Resources));
+	if (!res) {
+		res = pdf_dict_put_dict(ctx, page->obj, PDF_NAME(Resources), 2);
+	} else if (!pdf_dict_get(ctx, page->obj, PDF_NAME(Resources)))
+		pdf_dict_put(ctx, page->obj, PDF_NAME(Resources), res);
+	fonts = pdf_dict_get(ctx, res, PDF_NAME(Font));
+	if (pdf_dict_gets(ctx, fonts, OCR_FONT))
+		return 0;                  /* done before */
+	pdf_page_transform(ctx, page, &mediabox, &ctm);
+	inv = fz_invert_matrix(ctm);
+	fz_var(arr); fz_var(open); fz_var(mine); fz_var(buf); fz_var(qbuf); fz_var(words); fz_var(s);
+	fz_try(ctx) {
+		buf = fz_new_buffer(ctx, p->len + 256);
+		fz_append_string(ctx, buf, "Q\nq\nBT\n3 Tr\n/" OCR_FONT " 1 Tf\n");
+		for (s = p->words, end = p->words + p->len; s < end; ) {
+			const char *nl = memchr(s, '\n', end - s), *eol = nl ? nl : end;
+			fz_rect box;
+			int used = 0;
+			char num[160];
+			size_t len = eol - s < (long)sizeof num - 1 ? (size_t)(eol - s) : sizeof num - 1;
+			memcpy(num, s, len);
+			num[len] = 0;
+			if (sscanf(num, "%f %f %f %f %n", &box.x0, &box.y0, &box.x1, &box.y1, &used) == 4 &&
+					used > 0 && box.x1 > box.x0 && box.y1 > box.y0 && s + used < eol) {
+				/* In the page's space: y down from its top left. Text space
+				 * at size 1: n codes half an em each; baseline a fifth of
+				 * the height up from the bottom (the font's descent). */
+				float x0 = box.x0 + cp->bounds.x0, y1 = box.y1 + cp->bounds.y0, h = box.y1 - box.y0;
+				fz_buffer *codes = fz_new_buffer(ctx, 64);
+				int n;
+				fz_matrix tm;
+				fz_try(ctx) {
+					n = put_codes(ctx, codes, s + used, eol);
+					if (n > 0) {
+						tm = fz_make_matrix((box.x1 - box.x0) / (n * 0.5f), 0, 0, -h, x0, y1 - 0.2f * h);
+						tm = fz_concat(tm, inv);
+						fz_append_printf(ctx, buf, "%g %g %g %g %g %g Tm ", tm.a, tm.b, tm.c, tm.d, tm.e, tm.f);
+						fz_append_buffer(ctx, buf, codes);
+						fz_append_string(ctx, buf, " Tj\n");
+						words++;
+					}
+				}
+				fz_always(ctx)
+					fz_drop_buffer(ctx, codes);
+				fz_catch(ctx)
+					fz_rethrow(ctx);
+			}
+			s = nl ? nl + 1 : end;
+		}
+		fz_append_string(ctx, buf, "ET\nQ\n");
+		if (words) {
+			/* The page's own drawing in q ... Q, so whatever state it leaves
+			 * behind doesn't move the text. */
+			qbuf = fz_new_buffer_from_copied_data(ctx, (const unsigned char *)"q\n", 2);
+			open = pdf_add_stream(ctx, pdf, qbuf, NULL, 0);
+			mine = pdf_add_stream(ctx, pdf, buf, NULL, 0);
+			contents = pdf_dict_get(ctx, page->obj, PDF_NAME(Contents));
+			arr = pdf_new_array(ctx, pdf, 4);
+			pdf_array_push(ctx, arr, open);
+			if (pdf_is_array(ctx, contents)) {
+				int k;
+				for (k = 0; k < pdf_array_len(ctx, contents); k++)
+					pdf_array_push(ctx, arr, pdf_array_get(ctx, contents, k));
+			} else if (contents)
+				pdf_array_push(ctx, arr, contents);
+			pdf_array_push(ctx, arr, mine);
+			pdf_dict_put(ctx, page->obj, PDF_NAME(Contents), arr);
+			if (!*font)
+				*font = glyphless_font(ctx, pdf);
+			if (!fonts)
+				fonts = pdf_dict_put_dict(ctx, res, PDF_NAME(Font), 1);
+			pdf_dict_puts(ctx, fonts, OCR_FONT, *font);
+		}
+	}
+	fz_always(ctx) {
+		fz_drop_buffer(ctx, buf);
+		fz_drop_buffer(ctx, qbuf);
+		pdf_drop_obj(ctx, arr);
+		pdf_drop_obj(ctx, open);
+		pdf_drop_obj(ctx, mine);
+	}
+	fz_catch(ctx)
+		fz_rethrow(ctx);
+	return words > 0;
+}
+
+int folio_ocr_embed(folio_doc *doc)
+{
+	fz_context *ctx = doc->ctx;
+	pdf_document *pdf = pdf_specifics(ctx, doc->doc);
+	pdf_obj *font = NULL;
+	int i, done = 0, op = 0, n;
+	if (!pdf) {
+		snprintf(doc->fc->err, sizeof doc->fc->err, "only a PDF can have its recognised text added");
+		return -1;
+	}
+	fz_var(op);
+	fz_var(done);
+	fz_var(font);
+	folio_begin(doc);
+	fz_try(ctx) {
+		n = pdf_count_pages(ctx, pdf);
+		pdf_begin_operation(ctx, pdf, "Add recognised text");
+		op = 1;
+		for (i = 0; i < n && i < doc->ocr_n; i++)
+			if (doc->ocr[i].words)
+				done += embed_page(doc, pdf, i, &doc->ocr[i], &font);
+		if (done)
+			pdf_end_operation(ctx, pdf);
+		else
+			pdf_abandon_operation(ctx, pdf);
+		op = 0;
+	}
+	fz_always(ctx)
+		pdf_drop_obj(ctx, font);
+	fz_catch(ctx) {
+		if (op)
+			pdf_abandon_operation(ctx, pdf);
+		folio_set_error(doc->fc);
+		folio_forget_pages(doc);
+		return -1;
+	}
+	folio_forget_pages(doc);
+	return done;
+}

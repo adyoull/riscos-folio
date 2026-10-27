@@ -104,6 +104,8 @@ struct docwin {
 	/* What the author allows (a PDF's permissions; read with the core lock
 	 * after opening, saving and the owner password). */
 	int perm_print, perm_copy, perm_access, perm_form, perm_assemble;
+	int meas_on, meas_page, meas_n;   /* measuring: the points, on one page */
+	folio_point meas_pt[MEASURE_MAX];
 	/* Full screen: the window fills the screen with no title bar or scroll
 	 * bars; what it was is kept to go back to. */
 	int full;
@@ -447,6 +449,8 @@ static int current_page(docwin *w);
 static void go_to_page(docwin *w, int i);
 static void rotate(docwin *w, int code);
 static void colour_chosen(docwin *w, int code);
+static void meas_draw(docwin *w, int i, int x0, int y1);
+static void ocr_embed(docwin *w);
 static void remeasure(docwin *w);
 static void page_changed(docwin *w, int page);
 static void link_press(docwin *w, int *b);
@@ -985,6 +989,7 @@ docwin *docwin_open_password(const char *path, const char *password)
 	w->can_annotate = folio_can_annotate(w->doc);
 	read_perms(w);
 	w->asel_page = -1;
+	w->meas_page = -1;
 	/* Count the first chapter now, so page 1 can be shown at once; the rest
 	 * are counted in null polls. */
 	w->counting = folio_count_step(w->doc, 1) == 0;
@@ -1103,6 +1108,7 @@ void docwin_close(docwin *w)
 	contents_forget(w);
 	annotlist_forget(w);
 	pageorg_forget(w);
+	measure_forget(w);
 	annotui_forget(w);
 	passui_forget(w);
 	print_forget(w);
@@ -1232,6 +1238,7 @@ void docwin_redraw(docwin *w, int *b)
 				sel_draw(w, i, x0, y1);
 				asel_draw(w, i, x0, y1);
 				spk_draw(w, i, x0, y1);
+				meas_draw(w, i, x0, y1);
 			} else {
 				fill_rect(page_colour(w), x0, y0, x1, y1);
 				w->want_render = 1;
@@ -2141,6 +2148,26 @@ void docwin_click(docwin *w, int *b)
 	}
 	_swix(Wimp_SetCaretPosition, _INR(0, 5), w->wimp, -1, 0, 0, 1 << 25, -1);
 	formui_commit(w);                        /* a field being typed in: keep it */
+	/* Measuring: Select adds a point, Adjust takes the last off; nothing
+	 * else happens on the page meanwhile. */
+	if (w->meas_on) {
+		if (buttons == 0x400 && (page = point_at(w, b[0], b[1], &pt, -1)) >= 0) {
+			if (page != w->meas_page || w->meas_n >= MEASURE_MAX) {
+				if (w->meas_page >= 0)
+					redraw_page(w, w->meas_page);
+				w->meas_page = page;
+				w->meas_n = 0;
+			}
+			w->meas_pt[w->meas_n++] = pt;
+			redraw_page(w, page);
+			measure_changed(w);
+		} else if (buttons == 0x100 && w->meas_n > 0) {
+			w->meas_n--;
+			redraw_page(w, w->meas_page);
+			measure_changed(w);
+		}
+		return;
+	}
 	if (buttons == 0x400) {                  /* Select click: a form field, an annotation, a link, or deselect */
 		sel_clear(w);
 		if (w->can_annotate && (page = point_at(w, b[0], b[1], &pt, -1)) >= 0 &&
@@ -2702,6 +2729,8 @@ void docwin_event(docwin *w, int code)
 		colour_chosen(w, code);
 		break;
 	case EV_ANNOTS: annotlist_open(w); break;
+	case EV_MEASURE: measure_open(w); break;
+	case EV_OCR_EMBED: ocr_embed(w); break;
 	case EV_SAVE_PICTURES: if (allowed(w, code)) pagesave_open(w, 1); break;
 	case EV_SAVE_TEXT: if (allowed(w, code)) pagesave_open(w, 2); break;
 	case EV_GOTO: gotopage_open(w); break;
@@ -3610,6 +3639,150 @@ static void colour_chosen(docwin *w, int code)
 		else
 			app_log("recolour: %s", folio_error(app.fc));
 	}
+}
+
+/* ---- Measuring ------------------------------------------------------------ */
+
+int docwin_can_annotate(docwin *w)
+{
+	return is_window(w) && w->can_annotate;
+}
+
+void docwin_measure_mode(docwin *w, int on)
+{
+	if (!is_window(w))
+		return;
+	w->meas_on = on;
+	if (!on && w->meas_page >= 0) {
+		int page = w->meas_page;
+		w->meas_page = -1;
+		w->meas_n = 0;
+		redraw_page(w, page);
+	}
+	if (on) {
+		sel_clear(w);
+		asel_clear(w);
+	}
+}
+
+int docwin_measure_points(docwin *w, int *page, folio_point *pt, int max)
+{
+	int n = is_window(w) ? w->meas_n : 0;
+	if (n > max)
+		n = max;
+	*page = is_window(w) ? w->meas_page : -1;
+	if (n)
+		memcpy(pt, w->meas_pt, sizeof *pt * (size_t)n);
+	return n;
+}
+
+int docwin_measure_scale(docwin *w, int page, double *per_point, char *unit, size_t size)
+{
+	folio_loc loc;
+	int own = 0;
+	*per_point = 25.4 / 72;
+	snprintf(unit, size, "mm");
+	if (!is_window(w) || folio_loc_from_number(w->doc, page < 0 ? current_page(w) : page, &loc))
+		return 0;
+	if (core_trylock()) {
+		own = folio_page_measure(w->doc, loc, per_point, unit, size);
+		core_unlock();
+	}
+	return own;
+}
+
+void docwin_measure_clear(docwin *w)
+{
+	if (!is_window(w))
+		return;
+	if (w->meas_page >= 0)
+		redraw_page(w, w->meas_page);
+	w->meas_n = 0;
+	measure_changed(w);
+}
+
+void docwin_measure_keep(docwin *w, const char *utf8)
+{
+	folio_loc loc;
+	int rc = -1, page = w->meas_page;
+	if (!is_window(w) || w->meas_n < 2 || !w->can_annotate || folio_loc_from_number(w->doc, page, &loc))
+		return;
+	core_now();
+	rc = folio_annot_measure(w->doc, loc, w->meas_pt, w->meas_n, w->meas_n >= 3, utf8);
+	core_unlock();
+	if (rc) {
+		char m[300];
+		snprintf(m, sizeof m, "Folio couldn't add the measurement: %s", folio_error(app.fc));
+		tbx_report(m);
+		return;
+	}
+	app_log("measure: kept on page %d (%s)", page + 1, utf8);
+	w->meas_n = 0;
+	page_changed(w, page);
+	measure_changed(w);
+}
+
+/* The points and the lines between them, in red; with three or more, the
+ * line back to the first in pink (the area's edge). */
+static void meas_draw(docwin *w, int i, int x0, int y1)
+{
+	float k = 2.5f * w->zoom;
+	int j, px, py;
+	if (!w->meas_on || w->meas_page != i || w->meas_n == 0)
+		return;
+	if (w->meas_n >= 3) {
+		_swix(ColourTrans_SetGCOL, _IN(0) | _INR(3, 4), 0x9090ff00u, 0, 0);
+		_swix(OS_Plot, _INR(0, 2), 4, x0 + (int)(w->meas_pt[w->meas_n - 1].x * k),
+			y1 - (int)(w->meas_pt[w->meas_n - 1].y * k));
+		_swix(OS_Plot, _INR(0, 2), 5, x0 + (int)(w->meas_pt[0].x * k), y1 - (int)(w->meas_pt[0].y * k));
+	}
+	_swix(ColourTrans_SetGCOL, _IN(0) | _INR(3, 4), 0x2020e000u, 0, 0);
+	for (j = 0; j < w->meas_n; j++) {
+		px = x0 + (int)(w->meas_pt[j].x * k);
+		py = y1 - (int)(w->meas_pt[j].y * k);
+		if (j) {
+			int qx = x0 + (int)(w->meas_pt[j - 1].x * k), qy = y1 - (int)(w->meas_pt[j - 1].y * k);
+			/* Two units thick. */
+			_swix(OS_Plot, _INR(0, 2), 4, qx, qy);
+			_swix(OS_Plot, _INR(0, 2), 5, px, py);
+			_swix(OS_Plot, _INR(0, 2), 4, qx + 2, qy + 2);
+			_swix(OS_Plot, _INR(0, 2), 5, px + 2, py + 2);
+		}
+		_swix(OS_Plot, _INR(0, 2), 4, px - 6, py - 6);
+		_swix(OS_Plot, _INR(0, 2), 96 + 5, px + 6, py + 6);
+	}
+}
+
+/* Text recognition > Add recognised text to the PDF. */
+static void ocr_embed(docwin *w)
+{
+	int n;
+	char m[300];
+	if (!w->can_annotate) {
+		tbx_report("Only a PDF can have its recognised text added. Save pages as PDF makes one.");
+		return;
+	}
+	_swix(Hourglass_On, 0);
+	core_now();
+	n = folio_ocr_embed(w->doc);
+	core_unlock();
+	_swix(Hourglass_Off, 0);
+	if (n < 0) {
+		snprintf(m, sizeof m, "Folio couldn't add the recognised text: %s", folio_error(app.fc));
+		tbx_report(m);
+		return;
+	}
+	if (n == 0) {
+		tbx_report("There's no recognised text to add yet. Choose Recognise all pages first, "
+			"and do this when it has finished.");
+		return;
+	}
+	app_log("%s: recognised text added to %d page(s)", w->title, n);
+	update_title(w);
+	snprintf(m, sizeof m, "The recognised text of %d page%s is now in the PDF, so other programs can find and "
+		"copy it too. Save (F3) to keep it; Undo (Ctrl-Z) takes it out again.%s", n, n == 1 ? "" : "s",
+		ocr_win_all_on(w->ocr) ? " Recognition is still going on: do this again when it has finished." : "");
+	tbx_report(m);
 }
 
 /* An annotation chosen in the Annotations window: go to it, and select it

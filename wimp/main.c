@@ -161,7 +161,8 @@ static void create_objects(void)
 	entry(&em, 8, EDIT_NOTE, "Note...", 0, EV_NOTE, "Click to add a note at the selection, or at the top of the page (PDFs).");
 	entry(&em, 9, EDIT_DELANNOT, "Delete annotation Del", 0, EV_DEL_ANNOT, "Click to delete the annotation you clicked on.");
 	entry(&em, 10, EDIT_COLOUR, "Colour", MENU_SUBMENU, 0, "Move right to choose the colour for new highlights, underlines, strike-outs and notes, or to recolour the annotation you clicked on.");
-	app.edit_menu = make_menu(&em, "Edit", 11, EV_EDIT_SHOWN);
+	entry(&em, 11, EDIT_MEASURE, "Measure...", 0, EV_MEASURE, "Click to measure on the page: lengths between the points you click, and the area they enclose.");
+	app.edit_menu = make_menu(&em, "Edit", 12, EV_EDIT_SHOWN);
 	{
 		static const char *const name[] = { "Yellow", "Green", "Blue", "Pink", "Red", "Orange", "Purple", "Grey" };
 		int k;
@@ -196,8 +197,9 @@ static void create_objects(void)
 		entry(&om, 1, OCR_ALL, "Recognise all pages", MENU_DOTTED, EV_OCR_ALL, "Click to read the text in every scanned page, in the background; click again to stop.");
 		entry(&om, 2, OCR_AUTO, "Scanned pages as I read", MENU_DOTTED, EV_OCR_AUTO, "Click to choose whether scanned pages are read as you come to them.");
 		entry(&om, 3, OCR_ACCURATE, "Accurate", 0, EV_OCR_ACCURATE, "Click to recognise text with the larger data: fewer mistakes, about twice as long.");
-		entry(&om, 4, OCR_FAST, "Fast", 0, EV_OCR_FAST, "Click to recognise text with the smaller data: quicker, a few more mistakes.");
-		app.ocr_menu = make_menu(&om, "Text", 5, EV_OCR_SHOWN);
+		entry(&om, 4, OCR_FAST, "Fast", MENU_DOTTED, EV_OCR_FAST, "Click to recognise text with the smaller data: quicker, a few more mistakes.");
+		entry(&om, 5, OCR_EMBED, "Add recognised text to the PDF", 0, EV_OCR_EMBED, "Click to put the recognised text into the PDF itself, so other programs can find and copy it (a searchable copy). Save to keep it.");
+		app.ocr_menu = make_menu(&om, "Text", 6, EV_OCR_SHOWN);
 	}
 	/* Reading aloud: only with the Speech plugin. */
 	if (speech_available()) {
@@ -433,6 +435,9 @@ static int toolbox_event(int *b)
 		break;
 	case EV_PO_DELETE: case EV_PO_MOVE: case EV_PO_CANCEL:
 		pageorg_event(code);
+		break;
+	case EV_MEAS_CLEAR: case EV_MEAS_ADD: case EV_MEAS_CLOSE: case EV_MEAS_UNITS: case EV_MEAS_HIDDEN:
+		measure_event(code);
 		break;
 	case EV_CREATE_PDF: case EV_CP_UP: case EV_CP_DOWN: case EV_CP_REMOVE: case EV_CP_SORT:
 	case EV_CP_CLEAR: case EV_CP_CREATE:

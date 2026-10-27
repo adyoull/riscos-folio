@@ -140,6 +140,38 @@ int main(int argc, char **argv)
 		CHECK(folio_rotate_pages(d, sel, 2, 90) == 0 && !folio_page_has_ocr(d, p1), "turned: text dropped");
 		CHECK(folio_undo(d) == 0, "undo the turn");
 	}
+	/* A searchable copy: the words into the PDF as invisible text. */
+	{
+		char out[600];
+		folio_doc *e;
+		uint32_t *before = malloc(100 * 140 * 4), *after = malloc(100 * 140 * 4);
+		folio_irect tile2 = { 0, 0, 100, 140 };
+		CHECK(folio_ocr_load(d, save) == 1, "recognised text back");
+		CHECK(folio_render_tile(d, p1, 0.2f, tile2, FOLIO_PAGE_NORMAL, 1, before, 400) == 0, "render before");
+		CHECK(folio_ocr_embed(d) == 1, "one page made searchable: %s", folio_error(fc));
+		CHECK(folio_ocr_embed(d) == 0, "not twice");
+		CHECK(folio_render_tile(d, p1, 0.2f, tile2, FOLIO_PAGE_NORMAL, 1, after, 400) == 0, "render after");
+		CHECK(before && after && !memcmp(before, after, 100 * 140 * 4), "looks just the same");
+		free(before);
+		free(after);
+		snprintf(out, sizeof out, "%s/../out/searchable.pdf", dir);
+		CHECK(folio_save_pdf(d, path, out) == 0, "saved: %s", folio_error(fc));
+		e = folio_open(fc, out, NULL);
+		CHECK(e != NULL, "reopened");
+		if (e) {
+			folio_quad hq[4];
+			int hm[4], k;
+			CHECK(folio_get_page_text(e, p1, &t) == 0 && t.text && strstr(t.text, "quick brown fox"),
+				"its own text now: [%.80s]", t.text ? t.text : "");
+			folio_page_text_free(&t);
+			k = folio_find_on_page(e, p1, "lazy dog", hq, hm, 4);
+			CHECK(k >= 1, "found in the copy: %d", k);
+			if (k >= 1)
+				CHECK(hq[0].ul.y > 120 && hq[0].lr.y < 175, "where the words are: y %.1f-%.1f", hq[0].ul.y, hq[0].lr.y);
+			folio_close(e);
+		}
+		CHECK(folio_undo(d) == 0, "undo");
+	}
 	snprintf(path, sizeof path, "%s/doc.pdf", dir);
 	other = folio_open(fc, path, NULL);
 	CHECK(other && folio_ocr_load(other, save) == -1, "another document's text refused");

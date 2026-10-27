@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test61 (27-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test62 (27-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -21,8 +21,8 @@ enum {
 	EV_VIEW_SHOWN = 0x140, EV_DOCMENU_SHOWN, EV_EDIT_SHOWN, EV_NAV_SHOWN,
 	EV_COPY = 0x150, EV_SELECT_ALL, EV_CLEAR_SEL, EV_DEFINE, EV_FIND, EV_CONTENTS,
 	EV_HIGHLIGHT = 0x160, EV_UNDERLINE, EV_STRIKE, EV_NOTE, EV_UNDO, EV_REDO, EV_DEL_ANNOT, EV_SAVE,
-	EV_ADD_SHELF, EV_PASSWORD, EV_READ_ALOUD, EV_SPEAK_SEL, EV_PRINT, EV_EXPORT_DRAW,
-	EV_OCR_PAGE = 0x170, EV_OCR_ALL, EV_GOTO, EV_DOCINFO, EV_ANNOTS,
+	EV_ADD_SHELF, EV_PASSWORD, EV_READ_ALOUD, EV_SPEAK_SEL, EV_PRINT, EV_EXPORT_DRAW, EV_MEASURE,
+	EV_OCR_PAGE = 0x170, EV_OCR_ALL, EV_GOTO, EV_DOCINFO, EV_ANNOTS, EV_OCR_EMBED,
 	EV_ROT_CW = 0x180, EV_ROT_ACW, EV_ROT_180, EV_ROTALL_CW, EV_ROTALL_ACW,
 	EV_PG_DELETE = 0x188, EV_PG_MOVE, EV_PG_INSERT,
 	EV_COL_USUAL = 0x190, EV_COL_YELLOW, EV_COL_GREEN, EV_COL_BLUE, EV_COL_PINK, EV_COL_RED,
@@ -43,6 +43,7 @@ enum {
 	EV_FULL_SCREEN = 0x2b0, EV_SAVE_PAGES, EV_SAVE_PICTURES, EV_SAVE_TEXT,
 	EV_PAGES_OK = 0x2c0, EV_PAGES_CANCEL,
 	EV_PO_DELETE = 0x2c4, EV_PO_MOVE, EV_PO_CANCEL,     /* the Delete and Move pages boxes */
+	EV_MEAS_CLEAR = 0x2c8, EV_MEAS_ADD, EV_MEAS_CLOSE, EV_MEAS_UNITS, EV_MEAS_HIDDEN,
 	EV_CREATE_PDF = 0x2d0, EV_CP_UP, EV_CP_DOWN, EV_CP_REMOVE, EV_CP_SORT, EV_CP_CLEAR, EV_CP_CREATE,
 	EV_SCAN = 0x2e0, EV_SC_FIND, EV_SC_SCAN, EV_SC_STOP, EV_SC_ADD,
 	EV_SC_PICK = 0x2f0      /* to 0x2ff: the scanner chosen from Find's menu */
@@ -50,7 +51,7 @@ enum {
 
 /* View menu entries (component ids). */
 enum { EDIT_COPY = 1, EDIT_SELECT_ALL, EDIT_CLEAR, EDIT_UNDO, EDIT_REDO, EDIT_HILITE,
-	EDIT_ULINE, EDIT_STRIKE, EDIT_NOTE, EDIT_DELANNOT, EDIT_COLOUR };
+	EDIT_ULINE, EDIT_STRIKE, EDIT_NOTE, EDIT_DELANNOT, EDIT_COLOUR, EDIT_MEASURE };
 /* Document menu entries. */
 enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6, DOC_SHELF = 7, DOC_PASSWORD = 8,
 	DOC_READ = 9, DOC_SPEAKSEL = 10, DOC_SPEED = 11, DOC_PRINT = 12, DOC_EXPORT_DRAW = 13,
@@ -64,7 +65,7 @@ enum { COL_USUAL = 1, COL_YELLOW, COL_GREEN, COL_BLUE, COL_PINK, COL_RED, COL_OR
 /* Rotate submenu entries. */
 enum { ROT_CW = 1, ROT_ACW, ROT_180, ROTALL_CW, ROTALL_ACW };
 /* Text recognition menu entries. */
-enum { OCR_PAGE = 1, OCR_ALL, OCR_AUTO, OCR_ACCURATE, OCR_FAST };
+enum { OCR_PAGE = 1, OCR_ALL, OCR_AUTO, OCR_ACCURATE, OCR_FAST, OCR_EMBED };
 enum { SPEED_SLOW = 1, SPEED_NORMAL, SPEED_FAST };
 /* Navigate menu entries. */
 enum { NAV_CONTENTS = 5, NAV_BACK = 6, NAV_GOTO = 7, NAV_ANNOTS = 8 };
@@ -295,6 +296,18 @@ void annotlist_click(int *block);
 int annotlist_background(void);   /* 1 while still looking */
 void docwin_select_annot(docwin *w, int page, int index, folio_rect r);
 int docwin_colour_rgb(int code);   /* EV_COL_* to 0xRRGGBB, -1 for the usual colours */
+/* Measuring (measure.c), and the window's points. */
+#define MEASURE_MAX 256
+void measure_open(docwin *w);
+void measure_forget(docwin *w);
+void measure_event(int code);
+void measure_changed(docwin *w);
+void docwin_measure_mode(docwin *w, int on);
+int docwin_measure_points(docwin *w, int *page, folio_point *pt, int max);
+int docwin_measure_scale(docwin *w, int page, double *per_point, char *unit, size_t size);
+void docwin_measure_clear(docwin *w);
+void docwin_measure_keep(docwin *w, const char *utf8);
+int docwin_can_annotate(docwin *w);
 /* kind: 0 pages as PDF, 1 page pictures, 2 pages as text */
 void pagesave_open(docwin *w, int kind);
 void pagesave_event(int code);
