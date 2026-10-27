@@ -171,11 +171,13 @@ static void create_objects(void)
 			"For comment", "For public release", "Not for public release", "Experimental", "Expired",
 			"As is", "Departmental", "Sold", "Top secret" };
 		int k;
+		entry(&stm, 0, 16, "My signature", 0, EV_MYSIG_PLACE, "Click, then click on the page where your handwritten signature goes (set it up first).");
+		entry(&stm, 1, 17, "Set up my signature...", MENU_DOTTED, EV_MYSIG_SETUP, "Click to write your signature with the mouse, or give a picture of it, to put on documents.");
 		for (k = 0; k < 14; k++)
-			entry(&stm, k, k + 1, name[k], k == 13 ? MENU_DOTTED : 0, EV_STAMP_0 + k,
+			entry(&stm, k + 2, k + 1, name[k], k == 13 ? MENU_DOTTED : 0, EV_STAMP_0 + k,
 				"Click, then click on the page where the stamp goes.");
-		entry(&stm, 14, 15, "Picture...", 0, EV_STAMP_PICTURE, "Click to put a picture on the page (a scanned signature, a logo): drag it into the box, then click on the page.");
-		app.stamp_menu = make_menu(&stm, "Stamp", 15, 0);
+		entry(&stm, 16, 15, "Picture...", 0, EV_STAMP_PICTURE, "Click to put a picture on the page (a scanned signature, a logo): drag it into the box, then click on the page.");
+		app.stamp_menu = make_menu(&stm, "Stamp", 17, 0);
 	}
 	{
 		static const char *const name[] = { "Yellow", "Green", "Blue", "Pink", "Red", "Orange", "Purple", "Grey" };
@@ -329,6 +331,11 @@ static int message(int *b)
 			ack_load(b);
 			break;
 		}
+		/* Dropped on My signature: a picture of it. */
+		if (mysig_data_load(b)) {
+			ack_load(b);
+			break;
+		}
 		/* Dropped in the Picture box: a picture to put on the page. */
 		if (picbox_data_load(b)) {
 			ack_load(b);
@@ -468,6 +475,9 @@ static int toolbox_event(int *b)
 		break;
 	case EV_PIC_CANCEL:
 		picbox_event(code);
+		break;
+	case EV_MS_CLEAR: case EV_MS_CANCEL: case EV_MS_SAVE:
+		mysig_event(code);
 		break;
 	case EV_XF_OK: case EV_XF_CANCEL:
 		xfaui_event(code);
@@ -681,6 +691,8 @@ int main(int argc, char **argv)
 				annotlist_redraw(block);
 			else if (xfaui_owns(block[0]))
 				xfaui_redraw(block);
+			else if (mysig_owns(block[0]))
+				mysig_redraw(block);
 			else if (docinfo_owns(block[0]))
 				docinfo_redraw(block);
 			else if (combine_owns(block[0]))
@@ -738,7 +750,8 @@ int main(int argc, char **argv)
 			break;
 		case Wimp_EUserDrag:
 			/* A selection drag's button was let go. */
-			docwin_user_drag_done();
+			if (!mysig_drag_done())
+				docwin_user_drag_done();
 			break;
 		case Wimp_EScrollRequest:
 			/* The mouse wheel over a toolbar. */
@@ -762,6 +775,8 @@ int main(int argc, char **argv)
 				annotlist_click(block);
 			else if (xfaui_owns(block[3]))
 				xfaui_click(block);
+			else if (mysig_owns(block[3]))
+				mysig_click(block);
 			else if (combine_owns(block[3]))
 				combine_click(block);
 			else if (thumbs_from_wimp(block[3]))
@@ -804,6 +819,7 @@ int main(int argc, char **argv)
 		busy |= scanui_background(&wake);
 		busy |= annotlist_background();
 		xfaui_background();
+		busy |= mysig_background();
 	}
 	print_quit();
 	speech_quit();

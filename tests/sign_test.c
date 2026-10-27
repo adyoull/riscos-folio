@@ -335,6 +335,24 @@ int main(int argc, char **argv)
 				}
 			}
 
+			/* A handwritten signature shown in a digital one. */
+			{
+				folio_point pts[5] = { { 4, 30 }, { 20, 4 }, { 40, 30 }, { 60, 4 }, { 80, 30 } };
+				int cnt[1] = { 5 };
+				char png[700];
+				snprintf(png, sizeof png, "%s/hand.png", p12dir);
+				CHECK(folio_strokes_png(fc, pts, cnt, 1, 84, 34, 0x1a2b8c, 2, png) == 0, "strokes to PNG");
+				CHECK(folio_signer_set_picture(fc, sg, png, 0) == 0, "picture for the signature");
+				snprintf(in, sizeof in, "%s/../data/doc.pdf", dir);
+				snprintf(a, sizeof a, "%s/hand.pdf", p12dir);
+				CHECK(sign_into(in, a, sg, NULL) == 0, "signed with the handwriting shown");
+				CHECK(folio_signer_set_picture(fc, sg, NULL, 0) == 0, "picture off");
+				d = folio_open(fc, a, NULL);
+				CHECK(d && folio_signatures(d, s, 4) == 1 && s[0].digest == FOLIO_SIG_VALID, "hand.pdf verifies");
+				if (d)
+					folio_close(d);
+			}
+
 			/* Signed and locked: fields read-only; a change by another
 			 * program breaks it. */
 			snprintf(in, sizeof in, "%s/form.pdf", dirdata(dir));

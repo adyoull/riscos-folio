@@ -236,7 +236,7 @@ typedef struct {
 } button_gadget;
 
 enum { G_CERT_L = 0, G_CERT, G_PW_L, G_PW, G_WHY_L, G_WHY, G_WHERE_L, G_WHERE, G_CANCEL, G_SIGN,
-	G_KIND_L, G_ORD, G_LOCK, G_CERTIFY, G_ALLOW_L, G_A_NONE, G_A_FORMS, G_A_NOTES };
+	G_KIND_L, G_ORD, G_LOCK, G_CERTIFY, G_ALLOW_L, G_A_NONE, G_A_FORMS, G_A_NOTES, G_MYSIG };
 
 typedef struct { gadget_hdr h; int group; const char *label; int max_label; int event; } radio_gadget;
 
@@ -254,6 +254,7 @@ typedef struct {
 	radio_gadget ord, lock, certify;
 	label_gadget allow_l;
 	radio_gadget a_none, a_forms, a_notes;
+	struct { gadget_hdr h; const char *label; int max_label; int event; } mysig;
 } sign_gadgets;
 
 static struct {
@@ -267,7 +268,7 @@ static struct {
 } sb;
 
 #define SB_W 760
-#define SB_H 504
+#define SB_H 568
 
 static void hdr(gadget_hdr *h, int type, int size, int id, int x0, int y0, int x1, int y1,
 		const char *help)
@@ -357,12 +358,16 @@ static ObjectId create_signbox(void)
 		"When certifying: click to allow filling in the form and signing after this.");
 	radio(&g->a_notes, G_A_NOTES, 2, 5, 580, SB_W - 16, "And notes",
 		"When certifying: click to allow filling in, signing, and notes and markings after this.");
+	hdr(&g->mysig.h, 192, sizeof g->mysig, G_MYSIG, 200, -84 - 64 * 6, SB_W - 16, -36 - 64 * 6,
+		"Click to show your handwritten signature (Edit > Stamp > Set up my signature) beside your name.");
+	g->mysig.label = "Show my handwritten signature";
+	g->mysig.max_label = (int)strlen(g->mysig.label) + 1;
 
 	memset(&t, 0, sizeof t);
 	t.flags = (1 << 1) | (1 << 2);
 	t.help_message = "Use this box to sign the PDF with your certificate: drag the .p12 or .pfx file here.";
 	t.max_help = (int)strlen(t.help_message) + 1;
-	t.num_gadgets = 18;
+	t.num_gadgets = 19;
 	t.gadgets = g;
 	t.default_focus = G_PW;
 	t.show_event = -1;
@@ -477,6 +482,12 @@ void signbox_event(int code)
 	_swix(Hourglass_On, 0);
 	core_now();
 	sg = folio_signer_open(app.fc, p12, (size_t)len, u_pw ? u_pw : pw);
+	if (sg) {
+		int on = 0;
+		tbx_method_out(sb.box, 197, G_MYSIG, &on);
+		if (on && mysig_have() && mysig_for_signing(sg))
+			app_log("sign: no handwritten signature: %s", folio_error(app.fc));
+	}
 	core_unlock();
 	_swix(Hourglass_Off, 0);
 	wipe_pw(pw, sizeof pw);

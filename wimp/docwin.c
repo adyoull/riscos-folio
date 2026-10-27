@@ -462,6 +462,8 @@ static void meas_draw(docwin *w, int i, int x0, int y1);
 static void pen_draw(docwin *w, int i, int x0, int y1);
 static int pen_tick(docwin *w);
 static void pen_commit(docwin *w);
+#define MYSIG_PENDING "\001mine"
+
 static void place_pending(docwin *w, int page, folio_point pt);
 static void ocr_embed(docwin *w);
 static void remeasure(docwin *w);
@@ -2861,6 +2863,21 @@ void docwin_event(docwin *w, int code)
 		else
 			drawui_open(w);
 		break;
+	case EV_MYSIG_SETUP:
+		mysig_setup();
+		break;
+	case EV_MYSIG_PLACE:
+		if (!w->can_annotate)
+			tbx_report("Only a PDF can be signed this way. Save pages as PDF, or Create PDF, makes one.");
+		else if (!mysig_have())
+			mysig_setup();
+		else {
+			docwin_place_cancel(w);
+			docwin_pen_mode(w, 0, w->pen_rgb, w->pen_width);
+			snprintf(w->stamp_pending, sizeof w->stamp_pending, "%s", MYSIG_PENDING);
+			docwin_set_note(w, " (click on the page to place your signature)");
+		}
+		break;
 	case EV_STAMP_PICTURE:
 		if (!w->can_annotate)
 			tbx_report("Only a PDF can be stamped. Save pages as PDF, or Create PDF, makes one.");
@@ -4053,11 +4070,14 @@ static void place_pending(docwin *w, int page, folio_point pt)
 	folio_loc loc;
 	int rc = -1;
 	char what[40];
-	snprintf(what, sizeof what, "%s", w->stamp_pending[0] ? "place the stamp" : "place the picture");
+	int mine = !strcmp(w->stamp_pending, MYSIG_PENDING);
+	snprintf(what, sizeof what, "%s", mine ? "place your signature" : w->stamp_pending[0] ? "place the stamp" :
+		"place the picture");
 	if (!folio_loc_from_number(w->doc, page, &loc)) {
 		_swix(Hourglass_On, 0);
 		core_now();
-		rc = w->stamp_pending[0] ? folio_annot_stamp(w->doc, loc, pt, w->stamp_pending) :
+		rc = mine ? mysig_place(w->doc, loc, pt) :
+			w->stamp_pending[0] ? folio_annot_stamp(w->doc, loc, pt, w->stamp_pending) :
 			folio_annot_picture(w->doc, loc, pt, 0, w->pic_pending, w->pic_clear);
 		core_unlock();
 		_swix(Hourglass_Off, 0);

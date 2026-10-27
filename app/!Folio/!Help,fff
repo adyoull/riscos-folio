@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test68)
+Folio (test build 0.0.1-test69)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -166,6 +166,15 @@ Drawing, stamps and pictures (PDFs)
   notes. A drawn or scanned signature only looks like a signature: it
   doesn't prove who signed or that the document is unchanged (see
   Signing a PDF for that).
+
+My signature
+  Edit > Stamp > Set up my signature... keeps your handwritten signature
+  for putting on documents: write it on the pad with Select (Adjust takes
+  the last stroke off), or drag a picture of it (written on paper and
+  scanned) into the window, and choose how big it goes on the page. Save
+  keeps it in Choices. Then Edit > Stamp > My signature, and a click on
+  the page, puts it there. In the Sign box, "Show my handwritten
+  signature" puts it beside your name in a digital signature too.
 
 Measuring
   Measure... on the Edit menu opens the Measure window. While it's open,

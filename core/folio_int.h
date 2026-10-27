@@ -127,6 +127,9 @@ int *folio_page_keys(folio_doc *doc, int *n);
 void folio_recount(folio_doc *doc);
 void folio_ocr_follow(folio_doc *doc, const int *before, int n);
 
+/* annot.c: the picture with near-white see-through (a new image). */
+fz_image *folio_image_without_white(fz_context *ctx, fz_image *img);
+
 /* sign.c: throws if the change isn't allowed in a signed PDF. field: a
  * form field's full name (FOLIO_CHANGE_FORM), or NULL. */
 enum { FOLIO_CHANGE_ANNOT, FOLIO_CHANGE_FORM, FOLIO_CHANGE_SIGN, FOLIO_CHANGE_PAGES, FOLIO_CHANGE_CONTENT };

@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test68 (27-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test69 (27-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -22,7 +22,7 @@ enum {
 	EV_COPY = 0x150, EV_SELECT_ALL, EV_CLEAR_SEL, EV_DEFINE, EV_FIND, EV_CONTENTS,
 	EV_HIGHLIGHT = 0x160, EV_UNDERLINE, EV_STRIKE, EV_NOTE, EV_UNDO, EV_REDO, EV_DEL_ANNOT, EV_SAVE,
 	EV_ADD_SHELF, EV_PASSWORD, EV_READ_ALOUD, EV_SPEAK_SEL, EV_PRINT, EV_EXPORT_DRAW, EV_MEASURE,
-	EV_OCR_PAGE = 0x170, EV_OCR_ALL, EV_GOTO, EV_DOCINFO, EV_ANNOTS, EV_OCR_EMBED, EV_SIGN, EV_XFA, EV_DRAW, EV_STAMP_PICTURE,
+	EV_OCR_PAGE = 0x170, EV_OCR_ALL, EV_GOTO, EV_DOCINFO, EV_ANNOTS, EV_OCR_EMBED, EV_SIGN, EV_XFA, EV_DRAW, EV_STAMP_PICTURE, EV_MYSIG_PLACE, EV_MYSIG_SETUP,
 	EV_ROT_CW = 0x180, EV_ROT_ACW, EV_ROT_180, EV_ROTALL_CW, EV_ROTALL_ACW,
 	EV_PG_DELETE = 0x188, EV_PG_MOVE, EV_PG_INSERT,
 	EV_COL_USUAL = 0x190, EV_COL_YELLOW, EV_COL_GREEN, EV_COL_BLUE, EV_COL_PINK, EV_COL_RED,
@@ -51,7 +51,8 @@ enum {
 	EV_SCAN = 0x2e0, EV_SC_FIND, EV_SC_SCAN, EV_SC_STOP, EV_SC_ADD,
 	EV_SC_PICK = 0x2f0,     /* to 0x2ff: the scanner chosen from Find's menu */
 	EV_DR_UNDO = 0x300, EV_DR_CLEAR, EV_DR_KEEP, EV_DR_CLOSE, EV_DR_HIDDEN, EV_DR_STYLE,   /* the Draw window */
-	EV_PIC_CANCEL = 0x308   /* the Picture box */
+	EV_PIC_CANCEL = 0x308,  /* the Picture box */
+	EV_MS_CLEAR = 0x309, EV_MS_CANCEL, EV_MS_SAVE   /* My signature */
 };
 
 /* View menu entries (component ids). */
@@ -474,6 +475,18 @@ void docwin_pen_undo(docwin *w);
 void docwin_pen_keep(docwin *w);
 void docwin_place_picture(docwin *w, const char *path, int clear_white);
 void docwin_place_cancel(docwin *w);
+/* My signature (mysig.c). */
+int mysig_have(void);                       /* 0 none, 1 drawn, 2 a picture */
+int mysig_place(folio_doc *doc, folio_loc loc, folio_point centre);   /* -2: none set up */
+int mysig_for_signing(folio_signer *sg);
+void mysig_setup(void);
+int mysig_owns(int wimp_handle);
+void mysig_redraw(int *block);
+void mysig_click(int *block);
+int mysig_background(void);
+int mysig_drag_done(void);
+int mysig_data_load(int *block);
+void mysig_event(int code);
 int docwin_sign(docwin *w, int page, const char *field, folio_signer *sg, const char *reason,
 	const char *location, int mode);   /* FOLIO_SIGN_* or FOLIO_CERTIFY_* */
 

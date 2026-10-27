@@ -358,6 +358,10 @@ typedef struct folio_signer folio_signer;
 folio_signer *folio_signer_open(folio_ctx *fc, const unsigned char *p12, size_t len, const char *password);
 void folio_signer_drop(folio_ctx *fc, folio_signer *s);
 void folio_signer_name(folio_signer *s, char *out, size_t size);   /* its common name, UTF-8 */
+/* A picture (a handwritten signature) for the signature's appearance, on
+ * the left with the name and date beside it; NULL for none. clear_white
+ * makes white see-through. 0 or -1. */
+int folio_signer_set_picture(folio_ctx *fc, folio_signer *s, const char *path, int clear_white);
 /* Signs the empty signature field called field on the page, or, with field
  * NULL, a new one at where (folio points). The appearance shows the name,
  * date and reason. One change in the journal; the signature itself is made
@@ -595,6 +599,11 @@ int folio_annot_stamp(folio_doc *doc, folio_loc loc, folio_point centre, const c
  * see-through (a signature on paper). 0 or -1. */
 int folio_annot_picture(folio_doc *doc, folio_loc loc, folio_point centre, float width, const char *path,
 		int clear_white);
+/* Strokes (as folio_annot_ink, in a box_w x box_h point box) drawn into a
+ * PNG with a see-through background: a handwritten signature as a
+ * picture. 0 or -1. */
+int folio_strokes_png(folio_ctx *fc, const folio_point *pts, const int *counts, int strokes, float box_w,
+		float box_h, int rgb, float width, const char *path);
 
 /* Undo and redo of annotation changes (every page is redrawn after). */
 int folio_can_undo(folio_doc *doc);

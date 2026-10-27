@@ -966,6 +966,7 @@ struct folio_signer {
 	mbedtls_x509_crt chain;         /* the signer's certificate first */
 	mbedtls_ctr_drbg_context drbg;
 	int drbg_ready;
+	fz_image *picture;              /* a handwritten signature to show, or NULL */
 };
 
 /* ---- Random numbers: /dev/urandom (on RISC OS, UnixLib reads CryptRandom). */
@@ -1488,6 +1489,7 @@ static void signer_drop(fz_context *ctx, pdf_pkcs7_signer *ps)
 	struct folio_signer *s = (struct folio_signer *)ps;
 	if (!s || --s->refs > 0)
 		return;
+	fz_drop_image(ctx, s->picture);
 	mbedtls_pk_free(&s->key);
 	mbedtls_x509_crt_free(&s->chain);
 	if (s->drbg_ready)
@@ -1567,6 +1569,28 @@ fail:
 	return NULL;
 }
 
+int folio_signer_set_picture(folio_ctx *fc, folio_signer *s, const char *path, int clear_white)
+{
+	fz_context *ctx = fc->ctx;
+	fz_image *img = NULL;
+	fz_var(img);
+	fz_drop_image(ctx, s->picture);
+	s->picture = NULL;
+	if (!path)
+		return 0;
+	fz_try(ctx) {
+		img = fz_new_image_from_file(ctx, path);
+		s->picture = clear_white ? folio_image_without_white(ctx, img) : fz_keep_image(ctx, img);
+	}
+	fz_always(ctx)
+		fz_drop_image(ctx, img);
+	fz_catch(ctx) {
+		folio_set_error(fc);
+		return -1;
+	}
+	return 0;
+}
+
 void folio_signer_drop(folio_ctx *fc, folio_signer *s)
 {
 	if (s)
@@ -1638,8 +1662,8 @@ static void sign_value(fz_context *ctx, pdf_document *pdf, pdf_annot *w, struct 
 		pdf_dirty_annot(ctx, w);
 		if (!fz_is_empty_rect(rect)) {
 			info = pdf_signature_info(ctx, who[0] ? who : NULL, NULL, reason, location, now, 1);
-			dl = pdf_signature_appearance_signed(ctx, rect, pdf_annot_language(ctx, w), NULL,
-				who[0] ? who : NULL, info, 0);
+			dl = pdf_signature_appearance_signed(ctx, rect, pdf_annot_language(ctx, w), s->picture,
+				s->picture ? NULL : who[0] ? who : NULL, info, 0);
 			pdf_set_annot_appearance_from_display_list(ctx, w, "N", NULL, fz_identity, dl);
 		}
 		form = pdf_dict_get(ctx, root, PDF_NAME(AcroForm));

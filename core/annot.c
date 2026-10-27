@@ -857,7 +857,7 @@ int folio_annot_stamp(folio_doc *doc, folio_loc loc, folio_point centre, const c
 }
 
 /* The picture with near-white made see-through (an alpha channel). */
-static fz_image *without_white(fz_context *ctx, fz_image *img)
+fz_image *folio_image_without_white(fz_context *ctx, fz_image *img)
 {
 	fz_pixmap *pix = NULL, *rgb = NULL, *rgba = NULL;
 	fz_image *out = NULL;
@@ -922,7 +922,7 @@ static int picture(folio_doc *doc, folio_loc loc, const folio_point *at, const f
 		float h;
 		img = fz_new_image_from_file(ctx, path);
 		if (clear_white)
-			see = without_white(ctx, img);
+			see = folio_image_without_white(ctx, img);
 		h = width * img->h / (img->w ? img->w : 1);
 		folio_allow(doc, FOLIO_CHANGE_ANNOT, NULL);
 		pdf_begin_operation(ctx, pdf, "Picture");
@@ -955,4 +955,62 @@ int folio_annot_picture(folio_doc *doc, folio_loc loc, folio_point centre, float
 {
 	float w = wanted > 0 ? wanted : 144;
 	return picture(doc, loc, &centre, &w, path, clear_white);
+}
+
+/* Strokes (folio points in a box_w x box_h box) drawn into a PNG with a
+ * see-through background, at 4 pixels a point: a handwritten signature as
+ * a picture (for a digital signature's appearance). 0 or -1. */
+int folio_strokes_png(folio_ctx *fc, const folio_point *pts, const int *counts, int strokes, float box_w,
+		float box_h, int rgb, float width, const char *path)
+{
+	fz_context *ctx = fc->ctx;
+	fz_pixmap *pix = NULL;
+	fz_device *dev = NULL;
+	fz_path *p = NULL;
+	fz_stroke_state *ss = NULL;
+	int rc = 0;
+	fz_var(pix);
+	fz_var(dev);
+	fz_var(p);
+	fz_var(ss);
+	fz_var(rc);
+	fz_try(ctx) {
+		const float k = 4;
+		fz_irect bb = { 0, 0, (int)(box_w * k + 0.5f), (int)(box_h * k + 0.5f) };
+		float c[3];
+		int s, j, at = 0;
+		if (strokes <= 0 || bb.x1 <= 0 || bb.y1 <= 0)
+			fz_throw(ctx, FZ_ERROR_ARGUMENT, "nothing has been drawn");
+		pix = fz_new_pixmap_with_bbox(ctx, fz_device_rgb(ctx), bb, NULL, 1);
+		fz_clear_pixmap(ctx, pix);
+		dev = fz_new_draw_device(ctx, fz_scale(k, k), pix);
+		p = fz_new_path(ctx);
+		for (s = 0; s < strokes; s++) {
+			fz_moveto(ctx, p, pts[at].x, pts[at].y);
+			for (j = 1; j < counts[s]; j++)
+				fz_lineto(ctx, p, pts[at + j].x, pts[at + j].y);
+			if (counts[s] == 1)
+				fz_lineto(ctx, p, pts[at].x + 0.1f, pts[at].y);
+			at += counts[s];
+		}
+		ss = fz_new_stroke_state(ctx);
+		ss->linewidth = width > 0 ? width : 1.5f;
+		ss->start_cap = ss->end_cap = FZ_LINECAP_ROUND;
+		ss->linejoin = FZ_LINEJOIN_ROUND;
+		rgb_to(rgb, c);
+		fz_stroke_path(ctx, dev, p, ss, fz_identity, fz_device_rgb(ctx), c, 1, fz_default_color_params);
+		fz_close_device(ctx, dev);
+		fz_save_pixmap_as_png(ctx, pix, path);
+	}
+	fz_always(ctx) {
+		fz_drop_stroke_state(ctx, ss);
+		fz_drop_path(ctx, p);
+		fz_drop_device(ctx, dev);
+		fz_drop_pixmap(ctx, pix);
+	}
+	fz_catch(ctx) {
+		folio_set_error(fc);
+		rc = -1;
+	}
+	return rc;
 }
