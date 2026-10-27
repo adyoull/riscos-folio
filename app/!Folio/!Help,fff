@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test60)
+Folio (test build 0.0.1-test61)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -76,13 +76,23 @@ Two pages side by side
 Notes and markings (PDFs)
   Select some text, then click Highlight, Underline or Strike out on the
   toolbar (or use the Edit menu). A selection over several pages is marked
-  on each of them (Ctrl-Z then undoes one page at a time). Note adds a note at the selection, or at
-  the top of the page; click on a note to read, change or delete it.
-  Click on a highlight to select it; Delete removes it.
-  Ctrl-Z undoes the last change and Ctrl-Y redoes it.
-  F3 (or Save... on the menu) saves the PDF with its notes and markings;
-  the window's title shows * while there are changes to save, and
-  closing the window or quitting asks first. Ebooks can't be marked yet.
+  on each of them (Ctrl-Z then undoes one page at a time). Note adds a
+  note at the selection, or at the top of the page; click on a note to
+  read, change or delete it. Click on a highlight to select it; Delete
+  removes it.
+  Edit > Colour chooses the colour of new markings: yellow, green, blue,
+  pink, red, orange, purple or grey, or the usual colours (yellow
+  highlights and notes, blue underlines, red strike-outs). Folio remembers
+  it. If you've clicked on an annotation first, it changes to that colour
+  too.
+  Navigate > Annotations... lists every annotation in the document,
+  including those made in other programs: its page, its colour, what kind
+  it is, the note's text or the text it marks, and who made it. Click on
+  one to go to it and select it. The list keeps up as you make changes.
+  Ctrl-Z undoes the last change and Ctrl-Y redoes it. F3 (or Save... on
+  the menu) saves the PDF with its notes and markings; the window's title
+  shows * while there are changes to save, and closing the window or
+  quitting asks first. Ebooks can't be marked yet.
 
 Reading aloud (with the Speech plugin)
   Drag the !Folio in FolioSpeech-<version>.zip over this !Folio (the Filer
@@ -291,13 +301,23 @@ Scanning (network scanners)
   Scanners that only accept secure (https) connections aren't supported
   yet, nor are USB scanners.
 
-Turning pages (PDFs)
-  Rotate on the document menu turns the page you pressed Menu over (or all
-  pages) a quarter turn either way or a half turn: for a page fed in the
-  wrong way up, or a landscape page scanned upright. Ctrl-R and Ctrl-L turn
-  the page under the pointer clockwise and anticlockwise. A PDF keeps its
-  pages' turns, so Save (F3) to keep them; Undo (Ctrl-Z) turns them back.
-  Text recognised on a page that's turned is read again.
+Turning, deleting, moving and inserting pages (PDFs)
+  Pages on the document menu has Rotate, Delete pages..., Move pages...
+  and Insert pages from file.... Rotate turns the page you pressed Menu
+  over (or all pages) a quarter turn either way or a half turn: for a page
+  fed in the wrong way up, or a landscape page scanned upright. Ctrl-R and
+  Ctrl-L turn the page under the pointer clockwise and anticlockwise.
+  Delete pages and Move pages open a small box with the page you pressed
+  Menu over; type others if you like (3, or 1-3, 20, 45-50). Move puts
+  them, in their order, in front of the page you type, or at the end if
+  you leave that empty. Insert pages from file asks which page the new
+  pages go in front of (empty: the end); then drag a PDF, a picture or
+  another document Folio reads into the box, and its pages go in.
+  Each change is one step: Undo (Ctrl-Z) puts it back, and Save (F3) keeps
+  it. Text recognised on a page goes with the page when it moves; on a
+  page that's turned it's read again. A PDF whose author doesn't allow its
+  pages to be changed says so, and offers to lift that with the owner
+  password.
 
 Opening at a page
   To open a document at a given page, from an Obey file, a program or the

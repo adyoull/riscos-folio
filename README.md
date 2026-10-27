@@ -5,7 +5,7 @@ It's built on [MuPDF](https://mupdf.com) with a native front end that follows
 the RISC OS Style Guide, and takes its ideas for markup and reading from
 Flexcil. "Folio" is a working name.
 
-Status: **test builds** (0.0.1-test60). It's used day to day on a Raspberry Pi
+Status: **test builds** (0.0.1-test61). It's used day to day on a Raspberry Pi
 running RISC OS 5, but expect rough edges. The design is in
 [`docs/DESIGN.md`](docs/DESIGN.md).
 
@@ -38,8 +38,12 @@ running RISC OS 5, but expect rough edges. The design is in
   glass or feeder (both sides), colour or grey, resolution, size, brightness
   and contrast (done by the scanner), and the
   pages open as a new PDF with the scanner's JPEGs as they came.
-- **Rotate** (PDFs): turn the page under the pointer (Ctrl-R, Ctrl-L) or every
-  page; kept when saved, undoable.
+- **Pages** (PDFs): turn the page under the pointer (Ctrl-R, Ctrl-L) or every
+  page; delete pages; move them; insert the pages of another PDF, picture or
+  document. Each is undoable and kept when saved; recognised text goes with
+  its page.
+- **Annotations:** a list of every annotation in the document (go to one by
+  clicking it), and a choice of colour for new markings, or to recolour one.
 - **Create PDF** (icon bar menu): drag PDFs, pictures and other documents
   into a list, put them in order, and join them into one new PDF (PDF pages
   copied as they are, JPEGs unchanged).

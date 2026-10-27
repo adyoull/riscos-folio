@@ -103,7 +103,7 @@ struct docwin {
 	ocr_win *ocr;             /* text recognition (NULL without the plugin) */
 	/* What the author allows (a PDF's permissions; read with the core lock
 	 * after opening, saving and the owner password). */
-	int perm_print, perm_copy, perm_access, perm_form;
+	int perm_print, perm_copy, perm_access, perm_form, perm_assemble;
 	/* Full screen: the window fills the screen with no title bar or scroll
 	 * bars; what it was is kept to go back to. */
 	int full;
@@ -446,6 +446,7 @@ static void drag_stop(docwin *w);
 static int current_page(docwin *w);
 static void go_to_page(docwin *w, int i);
 static void rotate(docwin *w, int code);
+static void colour_chosen(docwin *w, int code);
 static void remeasure(docwin *w);
 static void page_changed(docwin *w, int page);
 static void link_press(docwin *w, int *b);
@@ -514,6 +515,7 @@ static void read_perms(docwin *w)
 	w->perm_copy = folio_permitted(w->doc, FOLIO_PERM_COPY);
 	w->perm_access = folio_permitted(w->doc, FOLIO_PERM_ACCESSIBILITY) || w->perm_copy;
 	w->perm_form = folio_permitted(w->doc, FOLIO_PERM_FORM);
+	w->perm_assemble = folio_permitted(w->doc, FOLIO_PERM_ASSEMBLE);
 	if (!w->perm_print || !w->perm_copy)
 		app_log("%s: the author allows%s%s%s", leafname(w->path), w->perm_print ? " printing" : "",
 			w->perm_copy ? " copying" : "", w->perm_access ? " reading aloud" : "");
@@ -549,6 +551,11 @@ static int allowed(docwin *w, int event)
 		if (!w->perm_form)
 			what = "its form to be filled in";
 		break;
+	case EV_PG_DELETE: case EV_PG_MOVE: case EV_PG_INSERT:
+	case EV_ROT_CW: case EV_ROT_ACW: case EV_ROT_180: case EV_ROTALL_CW: case EV_ROTALL_ACW:
+		if (!w->perm_assemble)
+			what = "its pages to be turned, deleted, moved or added to";
+		break;
 	}
 	if (!what)
 		return 1;
@@ -567,6 +574,9 @@ int docwin_allows(docwin *w, int event)
 		return w->perm_copy;
 	case EV_READ_ALOUD: case EV_SPEAK_SEL: return w->perm_access;
 	case EV_FILL_FORM: return w->perm_form;
+	case EV_PG_DELETE: case EV_PG_MOVE: case EV_PG_INSERT:
+	case EV_ROT_CW: case EV_ROT_ACW: case EV_ROT_180: case EV_ROTALL_CW: case EV_ROTALL_ACW:
+		return w->perm_assemble;
 	}
 	return 1;
 }
@@ -1091,6 +1101,8 @@ void docwin_close(docwin *w)
 	gotopage_forget(w);
 	docinfo_forget(w);
 	contents_forget(w);
+	annotlist_forget(w);
+	pageorg_forget(w);
 	annotui_forget(w);
 	passui_forget(w);
 	print_forget(w);
@@ -2675,8 +2687,21 @@ void docwin_event(docwin *w, int code)
 	case EV_EXPORT_DRAW: if (allowed(w, code)) export_open(w); break;
 	case EV_SAVE_PAGES: if (allowed(w, code)) pagesave_open(w, 0); break;
 	case EV_ROT_CW: case EV_ROT_ACW: case EV_ROT_180: case EV_ROTALL_CW: case EV_ROTALL_ACW:
-		rotate(w, code);
+		if (allowed(w, code))
+			rotate(w, code);
 		break;
+	case EV_PG_DELETE: case EV_PG_MOVE: case EV_PG_INSERT:
+		if (!w->can_annotate)
+			tbx_report("Only a PDF's pages can be organised. Save pages as PDF, or Create PDF, makes one.");
+		else if (allowed(w, code))
+			pageorg_open(w, code == EV_PG_DELETE ? PO_DELETE : code == EV_PG_MOVE ? PO_MOVE : PO_INSERT,
+				app.idb.self_id == app.pages_menu && w->menu_page >= 0 ? w->menu_page : current_page(w));
+		break;
+	case EV_COL_USUAL: case EV_COL_YELLOW: case EV_COL_GREEN: case EV_COL_BLUE: case EV_COL_PINK:
+	case EV_COL_RED: case EV_COL_ORANGE: case EV_COL_PURPLE: case EV_COL_GREY:
+		colour_chosen(w, code);
+		break;
+	case EV_ANNOTS: annotlist_open(w); break;
 	case EV_SAVE_PICTURES: if (allowed(w, code)) pagesave_open(w, 1); break;
 	case EV_SAVE_TEXT: if (allowed(w, code)) pagesave_open(w, 2); break;
 	case EV_GOTO: gotopage_open(w); break;
@@ -3547,6 +3572,116 @@ void docwin_delete_annot(docwin *w, int page, int index)
 	}
 	w->asel_page = -1;
 	page_changed(w, page);
+}
+
+/* The colours of the Colour menu, in COL order after COL_USUAL. */
+static const int colours[] = { 0xffdb00, 0x5cd65c, 0x3d8bff, 0xff7fc8, 0xe02424, 0xff9a1f,
+	0xa35cff, 0x999999 };
+
+int docwin_colour_rgb(int code)
+{
+	int k = code - EV_COL_YELLOW;
+	return k >= 0 && k < (int)(sizeof colours / sizeof colours[0]) ? colours[k] : -1;
+}
+
+/* Colour menu: the colour for new markings (saved in Choices), and the
+ * annotation selected, if there is one, recoloured. */
+static void colour_chosen(docwin *w, int code)
+{
+	int rgb = docwin_colour_rgb(code), k;
+	app.ch.annot_rgb = rgb;
+	for (k = 0; k < 4; k++)
+		folio_set_annot_colour(app.fc, (folio_annot_kind)k, rgb);
+	for (k = COL_USUAL; k < COL_COUNT; k++)
+		menu_set_tick(app.colour_menu, k, k - COL_USUAL + EV_COL_USUAL == code);
+	choices_save();
+	app_log("annotation colour: %s", rgb < 0 ? "the usual ones" : "chosen");
+	if (w->asel_page >= 0 && w->can_annotate) {
+		folio_loc loc;
+		int rc = -1, page = w->asel_page;
+		if (!folio_loc_from_number(w->doc, page, &loc)) {
+			core_now();
+			/* The usual colour for a recolour is the kind's: yellow. */
+			rc = folio_annot_recolour(w->doc, loc, w->asel_index, rgb < 0 ? colours[0] : rgb);
+			core_unlock();
+		}
+		if (rc == 0)
+			page_changed(w, page);
+		else
+			app_log("recolour: %s", folio_error(app.fc));
+	}
+}
+
+/* An annotation chosen in the Annotations window: go to it, and select it
+ * (so Delete and Colour act on it). */
+void docwin_select_annot(docwin *w, int page, int index, folio_rect r)
+{
+	if (!is_window(w) || page < 0 || page >= w->pages)
+		return;
+	asel_clear(w);
+	sel_clear(w);
+	w->asel_page = page;
+	w->asel_index = index;
+	w->asel_rect = r;
+	docwin_jump(w, page);
+	redraw_page(w, page);
+}
+
+/* Delete, move or insert pages (pageorg.c), and everything that follows. */
+int docwin_organise(docwin *w, int kind, const unsigned char *sel, int to, const char *path)
+{
+	int rc, first = to, i, before = w->pages;
+	if (!is_window(w))
+		return -1;
+	if (kind != PO_INSERT)
+		for (first = 0; first < w->pages && !sel[first]; first++)
+			;
+	_swix(Hourglass_On, 0);
+	core_now();
+	rc = kind == PO_DELETE ? folio_delete_pages(w->doc, sel, w->pages) :
+		kind == PO_MOVE ? folio_move_pages(w->doc, sel, w->pages, to) :
+		folio_insert_file(w->doc, path, to);
+	if (!rc) {
+		remeasure(w);
+		ocr_win_resync(w->ocr);
+	}
+	core_unlock();
+	_swix(Hourglass_Off, 0);
+	if (rc) {
+		char m[300];
+		snprintf(m, sizeof m, "Folio couldn't %s: %s", kind == PO_DELETE ? "delete the pages" :
+			kind == PO_MOVE ? "move the pages" : "insert the pages", folio_error(app.fc));
+		tbx_report(m);
+		return -1;
+	}
+	sel_clear(w);
+	w->asel_page = -1;
+	contents_forget(w);
+	relayout_keep(w);
+	page_changed(w, -1);
+	update_title(w);
+	/* Where the change is: the first page deleted (or what's there now),
+	 * the pages' new place, or the first page inserted. */
+	if (kind == PO_MOVE) {
+		int k = 0, n = 0;
+		for (i = 0; i < before; i++)
+			if (sel[i]) {
+				n++;
+				if (i < to)
+					k++;
+			}
+		first = (to > before ? before : to) - k;
+		(void)n;
+	} else if (kind == PO_INSERT && (to < 0 || to > before))
+		first = before;
+	if (first >= w->pages)
+		first = w->pages - 1;
+	if (first < 0)
+		first = 0;
+	app_log("%s: pages %s; %d now", w->title, kind == PO_DELETE ? "deleted" : kind == PO_MOVE ? "moved" : "inserted",
+		w->pages);
+	go_to_page(w, first);
+	return 0;
 }
 
 /* Pages may have changed size (turned): measure them all again, from the

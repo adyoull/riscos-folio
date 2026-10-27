@@ -62,20 +62,65 @@ static void ocr_clear(folio_doc *doc, folio_ocr_store *p)
 	memset(p, 0, sizeof *p);
 }
 
-void folio_ocr_forget_turned(folio_doc *doc, const int *before, int n)
+typedef struct { int key, at; } key_at;
+
+static int key_order(const void *a, const void *b)
 {
-	int *now, nn, i;
-	if (!before)
+	const key_at *x = a, *y = b;
+	return x->key < y->key ? -1 : x->key > y->key;
+}
+
+void folio_ocr_follow(folio_doc *doc, const int *before, int n)
+{
+	int *now, nn, i, moved = 0;
+	key_at *old;
+	folio_ocr_store *fresh;
+	if (!before || !doc->ocr_n)
 		return;
-	now = folio_rotations(doc, &nn);
-	if (!now)
+	now = folio_page_keys(doc, &nn);
+	old = malloc(sizeof *old * (size_t)(n > 0 ? n : 1));
+	fresh = calloc((size_t)(nn > doc->ocr_n ? nn : doc->ocr_n), sizeof *fresh);
+	if (!now || !old || !fresh) {
+		/* Can't tell where pages went: forget it all. */
+		for (i = 0; i < doc->ocr_n; i++)
+			if (doc->ocr[i].words) {
+				ocr_clear(doc, &doc->ocr[i]);
+				doc->ocr_changed = 1;
+			}
+		free(now);
+		free(old);
+		free(fresh);
 		return;
-	for (i = 0; i < n && i < nn && i < doc->ocr_n; i++)
-		if (now[i] != before[i] && doc->ocr[i].words) {
-			ocr_clear(doc, &doc->ocr[i]);
-			doc->ocr_changed = 1;
+	}
+	for (i = 0; i < n; i++) {
+		old[i].key = before[i];
+		old[i].at = i;
+	}
+	qsort(old, (size_t)n, sizeof *old, key_order);
+	for (i = 0; i < nn; i++) {
+		key_at want = { now[i], 0 }, *hit = bsearch(&want, old, (size_t)n, sizeof *old, key_order);
+		int j = hit ? hit->at : -1;
+		if (j >= 0 && j < doc->ocr_n && doc->ocr[j].words) {
+			fresh[i] = doc->ocr[j];
+			memset(&doc->ocr[j], 0, sizeof doc->ocr[j]);
+			if (j != i)
+				moved = 1;
 		}
+	}
+	/* What's left belonged to pages that went, or turned. */
+	for (i = 0; i < doc->ocr_n; i++)
+		if (doc->ocr[i].words) {
+			ocr_clear(doc, &doc->ocr[i]);
+			moved = 1;
+		}
+	free(doc->ocr);
+	doc->ocr = fresh;
+	if (nn > doc->ocr_n)
+		doc->ocr_n = nn;
+	if (moved)
+		doc->ocr_changed = 1;
 	free(now);
+	free(old);
 }
 
 void folio_ocr_free(folio_doc *doc)

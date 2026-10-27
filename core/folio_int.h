@@ -14,6 +14,7 @@ struct folio_ctx {
 	fz_context *ctx;
 	char err[256];
 	int code;                   /* FOLIO_ERR_* for the last folio_open */
+	int annot_rgb[4];           /* new markup and notes: 0xRRGGBB, or -1 for the kind's own */
 };
 
 typedef struct {
@@ -116,11 +117,13 @@ fz_point folio_sel_point(fz_context *ctx, fz_stext_page *st, folio_cpage *cp, fo
 void folio_fonts_install(fz_context *ctx);
 void folio_fonts_drop(fz_context *ctx);
 
-/* Every page's /Rotate (PDFs; malloc'd, *n of them; NULL otherwise), and,
- * after something may have turned pages (Rotate, undo, redo), the
- * recognised text of each page whose turn differs from before[] dropped. */
-int *folio_rotations(folio_doc *doc, int *n);
+/* Every page's key, its object number x 4 + its quarter turns (PDFs;
+ * malloc'd, *n of them; NULL otherwise). After the pages may have changed
+ * (Rotate, delete, move, insert, undo, redo), folio_ocr_follow moves each
+ * page's recognised text to where its page now is, and drops it where the
+ * page has gone or turned. */
+int *folio_page_keys(folio_doc *doc, int *n);
 void folio_recount(folio_doc *doc);
-void folio_ocr_forget_turned(folio_doc *doc, const int *before, int n);
+void folio_ocr_follow(folio_doc *doc, const int *before, int n);
 
 #endif

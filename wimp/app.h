@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test60 (23-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test61 (27-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -22,8 +22,11 @@ enum {
 	EV_COPY = 0x150, EV_SELECT_ALL, EV_CLEAR_SEL, EV_DEFINE, EV_FIND, EV_CONTENTS,
 	EV_HIGHLIGHT = 0x160, EV_UNDERLINE, EV_STRIKE, EV_NOTE, EV_UNDO, EV_REDO, EV_DEL_ANNOT, EV_SAVE,
 	EV_ADD_SHELF, EV_PASSWORD, EV_READ_ALOUD, EV_SPEAK_SEL, EV_PRINT, EV_EXPORT_DRAW,
-	EV_OCR_PAGE = 0x170, EV_OCR_ALL, EV_GOTO, EV_DOCINFO,
+	EV_OCR_PAGE = 0x170, EV_OCR_ALL, EV_GOTO, EV_DOCINFO, EV_ANNOTS,
 	EV_ROT_CW = 0x180, EV_ROT_ACW, EV_ROT_180, EV_ROTALL_CW, EV_ROTALL_ACW,
+	EV_PG_DELETE = 0x188, EV_PG_MOVE, EV_PG_INSERT,
+	EV_COL_USUAL = 0x190, EV_COL_YELLOW, EV_COL_GREEN, EV_COL_BLUE, EV_COL_PINK, EV_COL_RED,
+	EV_COL_ORANGE, EV_COL_PURPLE, EV_COL_GREY,
 	EV_DICT_COPY = 0x200,  /* the pop-up's, not a window's */
 	EV_FIND_NEXT = 0x210, EV_FIND_PREV, EV_FIND_CANCEL,
 	EV_NOTE_OK = 0x220, EV_NOTE_DELETE, EV_NOTE_CANCEL,
@@ -39,6 +42,7 @@ enum {
 	EV_FILL_FORM = 0x2a0,   /* not a menu entry: filling in a form (docwin_allows) */
 	EV_FULL_SCREEN = 0x2b0, EV_SAVE_PAGES, EV_SAVE_PICTURES, EV_SAVE_TEXT,
 	EV_PAGES_OK = 0x2c0, EV_PAGES_CANCEL,
+	EV_PO_DELETE = 0x2c4, EV_PO_MOVE, EV_PO_CANCEL,     /* the Delete and Move pages boxes */
 	EV_CREATE_PDF = 0x2d0, EV_CP_UP, EV_CP_DOWN, EV_CP_REMOVE, EV_CP_SORT, EV_CP_CLEAR, EV_CP_CREATE,
 	EV_SCAN = 0x2e0, EV_SC_FIND, EV_SC_SCAN, EV_SC_STOP, EV_SC_ADD,
 	EV_SC_PICK = 0x2f0      /* to 0x2ff: the scanner chosen from Find's menu */
@@ -46,19 +50,24 @@ enum {
 
 /* View menu entries (component ids). */
 enum { EDIT_COPY = 1, EDIT_SELECT_ALL, EDIT_CLEAR, EDIT_UNDO, EDIT_REDO, EDIT_HILITE,
-	EDIT_ULINE, EDIT_STRIKE, EDIT_NOTE, EDIT_DELANNOT };
+	EDIT_ULINE, EDIT_STRIKE, EDIT_NOTE, EDIT_DELANNOT, EDIT_COLOUR };
 /* Document menu entries. */
 enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6, DOC_SHELF = 7, DOC_PASSWORD = 8,
 	DOC_READ = 9, DOC_SPEAKSEL = 10, DOC_SPEED = 11, DOC_PRINT = 12, DOC_EXPORT_DRAW = 13,
 	DOC_OCR = 14, DOC_INFO = 15, DOC_SAVE_PAGES = 16, DOC_SAVE_PICTURES = 17,
 	DOC_ROTATE = 18, DOC_SAVE_TEXT = 19 };
+/* Pages submenu entries. */
+enum { PG_ROTATE = 1, PG_DELETE, PG_MOVE, PG_INSERT };
+/* Colour submenu entries: COL_USUAL, then the colours in COL order. */
+enum { COL_USUAL = 1, COL_YELLOW, COL_GREEN, COL_BLUE, COL_PINK, COL_RED, COL_ORANGE,
+	COL_PURPLE, COL_GREY, COL_COUNT };
 /* Rotate submenu entries. */
 enum { ROT_CW = 1, ROT_ACW, ROT_180, ROTALL_CW, ROTALL_ACW };
 /* Text recognition menu entries. */
 enum { OCR_PAGE = 1, OCR_ALL, OCR_AUTO, OCR_ACCURATE, OCR_FAST };
 enum { SPEED_SLOW = 1, SPEED_NORMAL, SPEED_FAST };
 /* Navigate menu entries. */
-enum { NAV_CONTENTS = 5, NAV_BACK = 6, NAV_GOTO = 7 };
+enum { NAV_CONTENTS = 5, NAV_BACK = 6, NAV_GOTO = 7, NAV_ANNOTS = 8 };
 enum { VIEW_DARK = 1, VIEW_SEPIA, VIEW_ZOOM_IN, VIEW_ZOOM_OUT, VIEW_ZOOM_100, VIEW_FIT_WIDTH,
 	VIEW_TOOLBAR, VIEW_THUMBS, VIEW_TWO_PAGES, VIEW_COVER_ALONE, VIEW_DEFAULT_ZOOM, VIEW_FULL_SCREEN };
 
@@ -76,6 +85,7 @@ typedef struct {
 	int underline_links;        /* draw a line under links */
 	int warn_content;           /* say when a PDF has scripts, attachments, actions */
 	int run_js;                 /* let forms' JavaScript run */
+	int annot_rgb;              /* new markings' colour: 0xRRGGBB, or -1 the usual ones */
 } choices;
 
 typedef struct {
@@ -83,6 +93,7 @@ typedef struct {
 	folio_ctx *fc;
 	ObjectId iconbar, iconbar_menu, proginfo;
 	ObjectId rotate_menu, doc_menu, edit_menu, view_menu, nav_menu, speed_menu;
+	ObjectId pages_menu, colour_menu;
 	int task;                   /* our Wimp task handle */
 	ObjectId menu_window;       /* the window the document menu was opened from */
 	int xeig, yeig, log2bpp;
@@ -268,6 +279,22 @@ int export_event(int *block);            /* 1 if it was its SaveAs box's */
 /* pagesave.c: Save pages as PDF... / Save page pictures... (pictures = 1);
  * a directory of pictures dropped on Folio made into a new PDF (returns 1
  * if it dealt with it). */
+/* Organising pages (pageorg.c): Delete, Move and Insert boxes. */
+enum { PO_DELETE, PO_MOVE, PO_INSERT };
+void pageorg_open(docwin *w, int kind, int page);   /* page: 0-based, the one to suggest */
+void pageorg_event(int code);
+int pageorg_data_load(int *block);
+void pageorg_forget(docwin *w);
+int docwin_organise(docwin *w, int kind, const unsigned char *sel, int to, const char *path);
+/* The Annotations window (annotlist.c). */
+void annotlist_open(docwin *w);
+void annotlist_forget(docwin *w);
+int annotlist_owns(int wimp_handle);
+void annotlist_redraw(int *block);
+void annotlist_click(int *block);
+int annotlist_background(void);   /* 1 while still looking */
+void docwin_select_annot(docwin *w, int page, int index, folio_rect r);
+int docwin_colour_rgb(int code);   /* EV_COL_* to 0xRRGGBB, -1 for the usual colours */
 /* kind: 0 pages as PDF, 1 page pictures, 2 pages as text */
 void pagesave_open(docwin *w, int kind);
 void pagesave_event(int code);

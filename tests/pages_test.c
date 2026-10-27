@@ -175,6 +175,71 @@ static folio_loc L(int page)
 	return l;
 }
 
+/* A five-page PDF, each page's text naming it ("Page A" ... "Page E");
+ * D and E sit under a second Pages node that gives them a 300 x 300 size,
+ * so moving them out of it must keep that. */
+static void write_five(const char *path)
+{
+	static const char *const obj[] = {
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R 6 0 R] /Count 5 /MediaBox [0 0 400 200] "
+			"/Resources << /Font << /F1 7 0 R >> >> >>",
+		"<< /Type /Page /Parent 2 0 R /Contents 8 0 R >>",
+		"<< /Type /Page /Parent 2 0 R /Contents 9 0 R >>",
+		"<< /Type /Page /Parent 2 0 R /Contents 10 0 R >>",
+		"<< /Type /Pages /Parent 2 0 R /Kids [11 0 R 12 0 R] /Count 2 /MediaBox [0 0 300 300] >>",
+		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+		"S(Page A)", "S(Page B)", "S(Page C)",
+		"<< /Type /Page /Parent 6 0 R /Contents 13 0 R >>",
+		"<< /Type /Page /Parent 6 0 R /Contents 14 0 R >>",
+		"S(Page D)", "S(Page E)",
+	};
+	int n = (int)(sizeof obj / sizeof obj[0]), i;
+	long off[32], xref;
+	FILE *f = fopen(path, "wb");
+	if (!f)
+		return;
+	fprintf(f, "%%PDF-1.4\n");
+	for (i = 0; i < n; i++) {
+		off[i] = ftell(f);
+		if (obj[i][0] == 'S') {
+			char c[64];
+			int len = snprintf(c, sizeof c, "BT /F1 24 Tf 20 100 Td %s Tj ET", obj[i] + 1);
+			fprintf(f, "%d 0 obj\n<< /Length %d >>\nstream\n%s\nendstream\nendobj\n", i + 1, len, c);
+		} else
+			fprintf(f, "%d 0 obj\n%s\nendobj\n", i + 1, obj[i]);
+	}
+	xref = ftell(f);
+	fprintf(f, "xref\n0 %d\n0000000000 65535 f \n", n + 1);
+	for (i = 0; i < n; i++)
+		fprintf(f, "%010ld 00000 n \n", off[i]);
+	fprintf(f, "trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%ld\n%%%%EOF\n", n + 1, xref);
+	fclose(f);
+}
+
+/* The pages' letters in order: "ABCDE". */
+static const char *order(folio_doc *d)
+{
+	static char out[64];
+	int i, n, exact;
+	while (folio_count_step(d, 100) == 0)
+		;
+	n = folio_page_count(d, &exact);
+	for (i = 0; i < n && i < 60; i++) {
+		folio_loc l;
+		folio_page_text t;
+		const char *p;
+		out[i] = '?';
+		if (folio_loc_from_number(d, i, &l) == 0 && folio_get_page_text(d, l, &t) == 0) {
+			if ((p = strstr(t.text, "Page ")) != NULL)
+				out[i] = p[5];
+			folio_page_text_free(&t);
+		}
+	}
+	out[i] = 0;
+	return out;
+}
+
 int main(int argc, char **argv)
 {
 	const char *dir = argc > 1 ? argv[1] : "tests/data";
@@ -297,6 +362,55 @@ int main(int argc, char **argv)
 	}
 
 	printf("Joining files\n");
+	/* Organising pages. */
+	{
+		folio_doc *od;
+		unsigned char sel[8];
+		float w, h;
+		write_five(OUT "/five.pdf");
+		od = folio_open(fc, OUT "/five.pdf", NULL);
+		CHECK(od != NULL, "open five.pdf");
+		if (od) {
+			CHECK(!strcmp(order(od), "ABCDE"), "five pages: %s", order(od));
+			memset(sel, 0, sizeof sel);
+			sel[1] = sel[3] = 1;
+			CHECK(folio_delete_pages(od, sel, 5) == 0, "delete B and D: %s", folio_error(fc));
+			CHECK(!strcmp(order(od), "ACE"), "after delete: %s", order(od));
+			CHECK(folio_undo(od) == 0 && !strcmp(order(od), "ABCDE"), "undo delete: %s", order(od));
+			CHECK(folio_redo(od) == 0 && !strcmp(order(od), "ACE"), "redo delete: %s", order(od));
+			CHECK(folio_undo(od) == 0, "undo again");
+			memset(sel, 1, sizeof sel);
+			CHECK(folio_delete_pages(od, sel, 5) == -1, "deleting every page is refused");
+			memset(sel, 0, sizeof sel);
+			sel[3] = sel[4] = 1;
+			CHECK(folio_move_pages(od, sel, 5, 0) == 0, "move D, E to the front: %s", folio_error(fc));
+			CHECK(!strcmp(order(od), "DEABC"), "after move: %s", order(od));
+			CHECK(folio_page_size(od, L(0), &w, &h) == 0 && w > 299 && w < 301 && h > 299 && h < 301,
+				"D keeps its inherited 300 x 300 (%g x %g)", w, h);
+			CHECK(folio_page_size(od, L(2), &w, &h) == 0 && w > 399 && w < 401, "A keeps 400 wide (%g)", w);
+			memset(sel, 0, sizeof sel);
+			sel[0] = 1;
+			CHECK(folio_move_pages(od, sel, 5, 5) == 0 && !strcmp(order(od), "EABCD"), "D to the end: %s", order(od));
+			sel[0] = 0;
+			sel[2] = 1;
+			CHECK(folio_move_pages(od, sel, 5, 2) == 0 && !strcmp(order(od), "EABCD"), "B where it is: %s", order(od));
+			CHECK(folio_insert_file(od, OUT "/five.pdf", 2) == 0, "insert five.pdf at 3: %s", folio_error(fc));
+			CHECK(!strcmp(order(od), "EAABCDEBCD"), "after insert: %s", order(od));
+			CHECK(folio_insert_file(od, OUT "/scan2.jpg", -1) == 0, "insert a JPEG at the end: %s", folio_error(fc));
+			CHECK(strlen(order(od)) == 11, "11 pages (%s)", order(od));
+			CHECK(folio_undo(od) == 0 && folio_undo(od) == 0 && !strcmp(order(od), "EABCD"), "undo inserts: %s", order(od));
+			CHECK(folio_insert_file(od, OUT "/nosuch.pdf", 0) == -1, "a missing file is refused");
+			CHECK(!strcmp(order(od), "EABCD"), "and nothing changed: %s", order(od));
+			CHECK(folio_save_pdf(od, OUT "/five.pdf", OUT "/five-saved.pdf") == 0, "save: %s", folio_error(fc));
+			folio_close(od);
+			od = folio_open(fc, OUT "/five-saved.pdf", NULL);
+			CHECK(od && !strcmp(order(od), "EABCD"), "saved and reopened: %s", od ? order(od) : "");
+			if (od) {
+				CHECK(folio_page_size(od, L(0), &w, &h) == 0 && w > 299 && w < 301, "E still 300 wide (%g)", w);
+				folio_close(od);
+			}
+		}
+	}
 	/* Pages as text. */
 	{
 		char path[512], *t;

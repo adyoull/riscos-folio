@@ -398,6 +398,15 @@ int folio_combine(folio_ctx *fc, const char *const *paths, int n, const char *pa
  * the usual scanning resolution (96, 150, 200, 300, 400, 600, 1200) that
  * makes it no bigger than 8.5 x 14 inches. */
 int folio_paper_dpi(int w, int h);
+/* Organising a PDF's pages, each one change in the journal (Undo puts it
+ * back); recognised text goes with its page. Deleting every page is refused.
+ * folio_move_pages: the chosen pages, in order, to stand before page `to`
+ * (0-based, as numbered before the move; the page count: at the end).
+ * folio_insert_file: the pages of a PDF, picture or other document Folio
+ * reads, before page `at` (-1: at the end). 0 or -1 (folio_error). */
+int folio_delete_pages(folio_doc *doc, const unsigned char *sel, int count);
+int folio_move_pages(folio_doc *doc, const unsigned char *sel, int count, int to);
+int folio_insert_file(folio_doc *doc, const char *path, int at);
 /* The chosen pages' text (UTF-8, malloc'd; free()), in reading order: each
  * paragraph one line, a blank line between paragraphs and between pages; a
  * re-flowed book's sentence carried over a page break is joined. Scanned
@@ -439,11 +448,31 @@ int folio_annot_at(folio_doc *doc, folio_loc loc, folio_point p, folio_annot_kin
 char *folio_annot_text(folio_doc *doc, folio_loc loc, int n);
 int folio_annot_set_text(folio_doc *doc, folio_loc loc, int n, const char *text);
 int folio_annot_delete(folio_doc *doc, folio_loc loc, int n);
+/* The colour new highlights, underlines, strike-outs or notes get:
+ * 0xRRGGBB, or -1 for the kind's own (yellow, blue, red, yellow). */
+void folio_set_annot_colour(folio_ctx *fc, folio_annot_kind kind, int rgb);
+/* The page's annotations (not links, form fields or pop-ups), in order, up
+ * to max: their numbers (as folio_annot_at's), kinds, colours, and the note's
+ * text or, for markup with none, the text it marks. Returns how many, or -1. */
+typedef struct {
+	int n;
+	folio_annot_kind kind;
+	char type[24];         /* MuPDF's name: "Highlight", "Text", "Ink", "FreeText"... */
+	folio_rect rect;       /* folio points */
+	int rgb;               /* 0xRRGGBB, or -1 if it has none */
+	char text[200];        /* UTF-8, line breaks as spaces, cut */
+	char author[64];
+} folio_annot_info;
+int folio_annot_list(folio_doc *doc, folio_loc loc, folio_annot_info *out, int max);
+/* Annotation n's colour, as one change in the journal. 0 or -1. */
+int folio_annot_recolour(folio_doc *doc, folio_loc loc, int n, int rgb);
 
 /* Undo and redo of annotation changes (every page is redrawn after). */
 int folio_can_undo(folio_doc *doc);
 int folio_can_redo(folio_doc *doc);
 int folio_undo(folio_doc *doc);
+/* A number that changes whenever a change is made, undone or redone. */
+int folio_change_count(folio_doc *doc);
 int folio_redo(folio_doc *doc);
 /* Unsaved changes? */
 int folio_is_modified(folio_doc *doc);
@@ -473,7 +502,8 @@ typedef enum {
 	FOLIO_PERM_PRINT, FOLIO_PERM_COPY,
 	FOLIO_PERM_ACCESSIBILITY,   /* text for screen readers (reading aloud) */
 	FOLIO_PERM_ANNOTATE,
-	FOLIO_PERM_FORM             /* filling in its form */
+	FOLIO_PERM_FORM,            /* filling in its form */
+	FOLIO_PERM_ASSEMBLE         /* turning, deleting, moving or inserting pages */
 } folio_permission;
 int folio_permitted(folio_doc *doc, folio_permission what);
 /* Is this the document's owner password? 1 (and the document now has full

@@ -649,7 +649,10 @@ int folio_page_rotation(folio_doc *doc, folio_loc loc)
 	return r;
 }
 
-int *folio_rotations(folio_doc *doc, int *n)
+/* Each page's identity: its object number and its quarter turns. After a
+ * change to the pages (or undo, redo), recognised text follows its page by
+ * this, and is dropped where the turn is different. */
+int *folio_page_keys(folio_doc *doc, int *n)
 {
 	fz_context *ctx = doc->ctx;
 	pdf_document *pdf = pdf_specifics(ctx, doc->doc);
@@ -662,7 +665,7 @@ int *folio_rotations(folio_doc *doc, int *n)
 		count = pdf_count_pages(ctx, pdf);
 		r = malloc(sizeof *r * (size_t)(count > 0 ? count : 1));
 		for (i = 0; r && i < count; i++)
-			r[i] = rot_of(ctx, pdf, i);
+			r[i] = pdf_to_num(ctx, pdf_lookup_page_obj(ctx, pdf, i)) * 4 + rot_of(ctx, pdf, i) / 90;
 	}
 	fz_catch(ctx) {
 		free(r);
@@ -682,7 +685,7 @@ int folio_rotate_pages(folio_doc *doc, const unsigned char *sel, int count, int 
 		snprintf(doc->fc->err, sizeof doc->fc->err, "only a PDF's pages can be turned");
 		return -1;
 	}
-	before = folio_rotations(doc, &nb);
+	before = folio_page_keys(doc, &nb);
 	folio_forget_pages(doc);
 	fz_var(op);
 	fz_var(i);
@@ -709,7 +712,7 @@ int folio_rotate_pages(folio_doc *doc, const unsigned char *sel, int count, int 
 	}
 	folio_forget_pages(doc);
 	/* Recognised text on a page that turned is in the wrong place now. */
-	folio_ocr_forget_turned(doc, before, nb);
+	folio_ocr_follow(doc, before, nb);
 	free(before);
 	return 0;
 }
@@ -803,4 +806,153 @@ char *folio_pages_text(folio_doc *doc, const unsigned char *sel, int count, int 
 		folio_set_error(doc->fc);
 	}
 	return res;
+}
+
+/* ---- Organising pages (PDFs) ---------------------------------------------- */
+
+/* A page that takes its size, resources or turn from a node of the page
+ * tree above it is given its own copies first, so moving it elsewhere in
+ * the tree doesn't change it. */
+static void own_inherited(fz_context *ctx, pdf_obj *page)
+{
+	static pdf_obj *const keys[] = { PDF_NAME(MediaBox), PDF_NAME(CropBox), PDF_NAME(Resources),
+		PDF_NAME(Rotate) };
+	int k;
+	for (k = 0; k < (int)(sizeof keys / sizeof keys[0]); k++)
+		if (!pdf_dict_get(ctx, page, keys[k])) {
+			pdf_obj *v = pdf_dict_get_inheritable(ctx, page, keys[k]);
+			if (v)
+				pdf_dict_put(ctx, page, keys[k], v);
+		}
+}
+
+/* Pages idx[0..k-1] (ascending) moved to stand before page `to` (0..count,
+ * numbered as before the move), in their order. Inside an operation. */
+static void move_pages(fz_context *ctx, pdf_document *pdf, const int *idx, int k, int to)
+{
+	pdf_obj **objs = fz_malloc_array(ctx, k, pdf_obj *);
+	int i, dest = to, got = 0;
+	fz_var(got);
+	fz_try(ctx) {
+		for (i = 0; i < k; i++) {
+			objs[i] = pdf_keep_obj(ctx, pdf_lookup_page_obj(ctx, pdf, idx[i]));
+			got = i + 1;
+			own_inherited(ctx, objs[i]);
+			if (idx[i] < to)
+				dest--;
+		}
+		for (i = k - 1; i >= 0; i--)
+			pdf_delete_page(ctx, pdf, idx[i]);
+		for (i = 0; i < k; i++)
+			pdf_insert_page(ctx, pdf, dest + i, objs[i]);
+	}
+	fz_always(ctx) {
+		for (i = 0; i < got; i++)
+			pdf_drop_obj(ctx, objs[i]);
+		fz_free(ctx, objs);
+	}
+	fz_catch(ctx)
+		fz_rethrow(ctx);
+}
+
+/* Shared by delete, move and insert: one operation in the journal, then the
+ * page count and the recognised text brought up to date. */
+typedef enum { ORG_DELETE, ORG_MOVE, ORG_INSERT } org_kind;
+
+static int organise(folio_doc *doc, org_kind kind, const unsigned char *sel, int count, int to_page,
+		const char *path)
+{
+	int to = to_page;
+	fz_context *ctx = doc->ctx;
+	pdf_document *pdf = pdf_specifics(ctx, doc->doc);
+	int *before, nb, op = 0, *idx = NULL, k = 0, i, n;
+	static const char *const what[] = { "Delete pages", "Move pages", "Insert pages" };
+	if (!pdf) {
+		snprintf(doc->fc->err, sizeof doc->fc->err, "only a PDF's pages can be organised");
+		return -1;
+	}
+	n = pdf_count_pages(ctx, pdf);
+	if (kind != ORG_INSERT) {
+		idx = malloc(sizeof *idx * (size_t)(n > 0 ? n : 1));
+		if (!idx) {
+			snprintf(doc->fc->err, sizeof doc->fc->err, "not enough memory");
+			return -1;
+		}
+		for (i = 0; i < count && i < n; i++)
+			if (sel[i])
+				idx[k++] = i;
+		if (k == 0) {
+			free(idx);
+			snprintf(doc->fc->err, sizeof doc->fc->err, "no pages were chosen");
+			return -1;
+		}
+		if (kind == ORG_DELETE && k == n) {
+			free(idx);
+			snprintf(doc->fc->err, sizeof doc->fc->err, "a PDF must keep at least one page");
+			return -1;
+		}
+	}
+	if (to < 0 || to > n)
+		to = n;
+	before = folio_page_keys(doc, &nb);
+	folio_forget_pages(doc);
+	fz_var(op);
+	fz_var(to);
+	fz_try(ctx) {
+		pdf_begin_operation(ctx, pdf, what[kind]);
+		op = 1;
+		if (kind == ORG_DELETE) {
+			for (i = k - 1; i >= 0; i--)
+				pdf_delete_page(ctx, pdf, idx[i]);
+		} else if (kind == ORG_MOVE) {
+			move_pages(ctx, pdf, idx, k, to);
+		} else {
+			/* The file's pages go on the end, then move to where they belong. */
+			int n1, *added;
+			combine_one(ctx, pdf, path);
+			n1 = pdf_count_pages(ctx, pdf);
+			if (n1 > n && to < n) {
+				added = fz_malloc_array(ctx, n1 - n, int);
+				for (i = n; i < n1; i++)
+					added[i - n] = i;
+				fz_try(ctx)
+					move_pages(ctx, pdf, added, n1 - n, to);
+				fz_always(ctx)
+					fz_free(ctx, added);
+				fz_catch(ctx)
+					fz_rethrow(ctx);
+			}
+		}
+		pdf_end_operation(ctx, pdf);
+		op = 0;
+	}
+	fz_catch(ctx) {
+		if (op)
+			pdf_abandon_operation(ctx, pdf);
+		folio_set_error(doc->fc);
+		free(idx);
+		free(before);
+		folio_recount(doc);
+		return -1;
+	}
+	free(idx);
+	folio_recount(doc);
+	folio_ocr_follow(doc, before, nb);
+	free(before);
+	return 0;
+}
+
+int folio_delete_pages(folio_doc *doc, const unsigned char *sel, int count)
+{
+	return organise(doc, ORG_DELETE, sel, count, 0, NULL);
+}
+
+int folio_move_pages(folio_doc *doc, const unsigned char *sel, int count, int to)
+{
+	return organise(doc, ORG_MOVE, sel, count, to, NULL);
+}
+
+int folio_insert_file(folio_doc *doc, const char *path, int at)
+{
+	return organise(doc, ORG_INSERT, NULL, 0, at, path);
 }

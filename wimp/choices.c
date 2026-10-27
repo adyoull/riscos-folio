@@ -313,6 +313,7 @@ void choices_defaults(choices *c)
 	c->underline_links = 1;
 	c->warn_content = 1;
 	c->run_js = 0;
+	c->annot_rgb = -1;
 }
 
 void choices_load(void)
@@ -325,6 +326,7 @@ void choices_load(void)
 		if (fgets(line, sizeof line, f) && !strncmp(line, "folio-choices 1", 15))
 			while (fgets(line, sizeof line, f)) {
 				int v;
+				unsigned hv;
 				char word[16];
 				if (sscanf(line, "zoom %d", &v) == 1 && v >= 10 && v <= 800)
 					c->zoom = v / 100.0f;
@@ -352,6 +354,10 @@ void choices_load(void)
 					c->ask_links = v != 0;
 				else if (sscanf(line, "warn-content %d", &v) == 1)
 					c->warn_content = v != 0;
+				else if (!strncmp(line, "annot-colour usual", 18))
+					c->annot_rgb = -1;
+				else if (sscanf(line, "annot-colour %x", &hv) == 1)
+					c->annot_rgb = (int)(hv & 0xffffff);
 				else if (sscanf(line, "run-javascript %d", &v) == 1)
 					c->run_js = v != 0;
 			}
@@ -390,6 +396,10 @@ void choices_save(void)
 		c->speed == SPEED_SLOW ? "slower" : c->speed == SPEED_FAST ? "faster" : "normal",
 		c->ocr_fast ? "fast" : "accurate", c->ocr_auto, c->obey_restrictions, c->ask_links,
 		c->warn_content, c->run_js, c->underline_links);
+	if (c->annot_rgb < 0)
+		fprintf(f, "annot-colour usual\n");
+	else
+		fprintf(f, "annot-colour %06x\n", c->annot_rgb);
 	fclose(f);
 	_swix(OS_File, _INR(0, 2), 18, path, 0xfff);
 }

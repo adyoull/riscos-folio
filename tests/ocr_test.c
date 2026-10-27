@@ -122,6 +122,24 @@ int main(int argc, char **argv)
 	CHECK(folio_ocr_load(d, save) == 1, "loaded one page");
 	CHECK(folio_find_on_page(d, p1, "lazy dog", q, mark, 16) >= 1, "found after loading");
 	CHECK(!folio_ocr_changed(d), "unchanged after loading");
+	/* Recognised text goes with its page when pages move. */
+	{
+		unsigned char sel[2] = { 1, 0 };
+		while (folio_count_step(d, 100) == 0)
+			;
+		CHECK(folio_move_pages(d, sel, 2, 2) == 0, "scan moved to the end: %s", folio_error(fc));
+		CHECK(!folio_page_has_ocr(d, p1) && folio_page_has_ocr(d, p2), "its text moved with it");
+		CHECK(folio_find_on_page(d, p2, "lazy dog", q, mark, 16) >= 1, "found on its new page");
+		CHECK(folio_undo(d) == 0 && folio_page_has_ocr(d, p1) && !folio_page_has_ocr(d, p2), "undo: back again");
+		sel[0] = 0;
+		sel[1] = 1;
+		CHECK(folio_delete_pages(d, sel, 2) == 0 && folio_page_has_ocr(d, p1), "another page deleted: text stays");
+		CHECK(folio_undo(d) == 0 && folio_page_has_ocr(d, p1), "undo the delete: still there");
+		sel[0] = 1;
+		sel[1] = 0;
+		CHECK(folio_rotate_pages(d, sel, 2, 90) == 0 && !folio_page_has_ocr(d, p1), "turned: text dropped");
+		CHECK(folio_undo(d) == 0, "undo the turn");
+	}
 	snprintf(path, sizeof path, "%s/doc.pdf", dir);
 	other = folio_open(fc, path, NULL);
 	CHECK(other && folio_ocr_load(other, save) == -1, "another document's text refused");

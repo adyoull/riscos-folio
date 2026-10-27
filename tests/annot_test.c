@@ -102,6 +102,36 @@ int main(int argc, char **argv)
 	n = folio_annot_at(d, p2, centre(page_word), &kind, NULL);
 	CHECK(n == 2 && kind == FOLIO_ANNOT_STRIKEOUT, "top of page word: %d kind %d", n, (int)kind);
 
+	/* The list: highlight (the word it marks), underline, strike-out. */
+	{
+		folio_annot_info info[8];
+		int k = folio_annot_list(d, p2, info, 8);
+		CHECK(k == 3, "listed %d", k);
+		if (k == 3) {
+			CHECK(info[0].n == 0 && info[0].kind == FOLIO_ANNOT_HIGHLIGHT && !strcmp(info[0].type, "Highlight"),
+				"first: %d %s", info[0].n, info[0].type);
+			CHECK(!strcmp(info[0].text, "test"), "marked text '%s'", info[0].text);
+			CHECK(info[0].rgb == 0xffdb00, "yellow 0x%06x", info[0].rgb);
+			CHECK(info[1].kind == FOLIO_ANNOT_UNDERLINE && info[1].rgb == 0x1a59d9, "underline blue 0x%06x", info[1].rgb);
+			CHECK(info[2].n == 2 && info[2].kind == FOLIO_ANNOT_STRIKEOUT, "third: %s", info[2].type);
+		}
+		/* Recolour the highlight green, then undo. */
+		CHECK(folio_annot_recolour(d, p2, 0, 0x33cc33) == 0, "recolour: %s", folio_error(fc));
+		k = folio_annot_list(d, p2, info, 8);
+		CHECK(k == 3 && info[0].rgb == 0x33cc33, "green now 0x%06x", k ? info[0].rgb : 0);
+		colour_at(d, p2, centre(word), &red, &green, &blue);
+		CHECK(green > red + 40, "drawn green: %d,%d,%d", red, green, blue);
+		CHECK(folio_undo(d) == 0 && folio_annot_list(d, p2, info, 8) == 3 && info[0].rgb == 0xffdb00,
+			"undo: yellow again 0x%06x", info[0].rgb);
+		/* A chosen colour for new highlights. */
+		folio_set_annot_colour(fc, FOLIO_ANNOT_HIGHLIGHT, 0xff88cc);
+		CHECK(folio_annot_markup(d, p2, FOLIO_ANNOT_HIGHLIGHT, mid_left(word), mid_right(word)) == 0, "pink");
+		k = folio_annot_list(d, p2, info, 8);
+		CHECK(k == 4 && info[3].rgb == 0xff88cc, "new one pink 0x%06x", k == 4 ? info[3].rgb : 0);
+		CHECK(folio_undo(d) == 0 && folio_annot_list(d, p2, info, 8) == 3, "undo the pink one");
+		folio_set_annot_colour(fc, FOLIO_ANNOT_HIGHLIGHT, -1);
+	}
+
 	/* Nothing selected: refused, nothing changes. */
 	{
 		folio_point a = { 500, 800 }, b = { 501, 801 };

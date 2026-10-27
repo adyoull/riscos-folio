@@ -33,6 +33,7 @@ folio_ctx *folio_new(size_t store_limit)
 		return NULL;
 	}
 	/* Warnings go nowhere: the Wimp front end has no stderr to show. */
+	fc->annot_rgb[0] = fc->annot_rgb[1] = fc->annot_rgb[2] = fc->annot_rgb[3] = -1;
 	fz_set_warning_callback(fc->ctx, NULL, NULL);
 	fz_set_error_callback(fc->ctx, NULL, NULL);
 	/* Fonts MuPDF doesn't have built in come from the system (fonts.c). */

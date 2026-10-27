@@ -457,11 +457,12 @@ void ocr_win_resync(ocr_win *o)
 		o->n = pages;
 	if (o->all_next > o->n)
 		o->all_next = o->n;
+	/* Pages may have turned, gone, moved or come in: a page with
+	 * recognised text is done, and every other page is looked at again
+	 * (what was known about page i may be about another page now). */
 	for (i = 0; i < o->n; i++) {
 		folio_loc loc;
-		if (o->st[i] == S_DONE && !folio_loc_from_number(doc, i, &loc) &&
-				!folio_page_has_ocr(doc, loc))
-			o->st[i] = S_UNKNOWN;
+		o->st[i] = !folio_loc_from_number(doc, i, &loc) && folio_page_has_ocr(doc, loc) ? S_DONE : S_UNKNOWN;
 	}
 	if (o->all)
 		o->all_next = 0;

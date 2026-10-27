@@ -100,7 +100,7 @@ static void entry(menu_block *b, int i, int comp, const char *text, int flags,
 
 static void create_objects(void)
 {
-	static menu_block ib, dm, em, vm, nm, sm, om, rm;
+	static menu_block ib, dm, em, vm, nm, sm, om, rm, pm, cm;
 	int ndm;
 	static tbx_proginfo pi;
 	static tbx_iconbar icon;
@@ -145,8 +145,9 @@ static void create_objects(void)
 	entry(&nm, 3, 4, "Last page         End", 0, EV_LAST, "Click to go to the last page.");
 	entry(&nm, 4, NAV_GOTO, "Go to page...      F5", MENU_DOTTED, EV_GOTO, "Click to type a page number to go to.");
 	entry(&nm, 5, NAV_CONTENTS, "Contents...", MENU_DOTTED, EV_CONTENTS, "Click to see the document's contents list, and go to any part of it.");
-	entry(&nm, 6, NAV_BACK, "Back          ^Left", 0, EV_BACK, "Click to go back to where you were before following a link or going to a page.");
-	app.nav_menu = make_menu(&nm, "Navigate", 7, EV_NAV_SHOWN);
+	entry(&nm, 6, NAV_ANNOTS, "Annotations...", MENU_DOTTED, EV_ANNOTS, "Click to see a list of the document's highlights, notes and other annotations, and go to any of them.");
+	entry(&nm, 7, NAV_BACK, "Back          ^Left", 0, EV_BACK, "Click to go back to where you were before following a link or going to a page.");
+	app.nav_menu = make_menu(&nm, "Navigate", 8, EV_NAV_SHOWN);
 
 	/* Undo and Redo first (Style Guide p40; DESIGN §3.8). */
 	entry(&em, 0, EDIT_UNDO, "Undo              ^Z", 0, EV_UNDO, "Click to undo the last change to the notes and markings.");
@@ -159,7 +160,16 @@ static void create_objects(void)
 	entry(&em, 7, EDIT_STRIKE, "Strike out", 0, EV_STRIKE, "Click to strike out the selected text (PDFs).");
 	entry(&em, 8, EDIT_NOTE, "Note...", 0, EV_NOTE, "Click to add a note at the selection, or at the top of the page (PDFs).");
 	entry(&em, 9, EDIT_DELANNOT, "Delete annotation Del", 0, EV_DEL_ANNOT, "Click to delete the annotation you clicked on.");
-	app.edit_menu = make_menu(&em, "Edit", 10, EV_EDIT_SHOWN);
+	entry(&em, 10, EDIT_COLOUR, "Colour", MENU_SUBMENU, 0, "Move right to choose the colour for new highlights, underlines, strike-outs and notes, or to recolour the annotation you clicked on.");
+	app.edit_menu = make_menu(&em, "Edit", 11, EV_EDIT_SHOWN);
+	{
+		static const char *const name[] = { "Yellow", "Green", "Blue", "Pink", "Red", "Orange", "Purple", "Grey" };
+		int k;
+		entry(&cm, 0, COL_USUAL, "Usual colours", MENU_DOTTED, EV_COL_USUAL, "Click to give new markings the usual colours: yellow highlights and notes, blue underlines, red strike-outs.");
+		for (k = 0; k < 8; k++)
+			entry(&cm, k + 1, COL_YELLOW + k, name[k], 0, EV_COL_YELLOW + k, "Click to give new markings this colour, and the annotation you clicked on (if any).");
+		app.colour_menu = make_menu(&cm, "Colour", 9, 0);
+	}
 
 	entry(&dm, 0, DOC_SAVE, "Save...        F3", 0, EV_SAVE, "Click to save the document with its notes and markings (PDFs).");
 	entry(&dm, 1, DOC_PRINT, "Print...    Print", 0, EV_PRINT, "Click to print the document (with !Printers loaded).");
@@ -167,7 +177,7 @@ static void create_objects(void)
 	entry(&dm, 3, DOC_SAVE_PAGES, "Save pages as PDF...", 0, EV_SAVE_PAGES, "Click to make a new PDF of some of the pages, such as 1-10. A PDF's pages are copied just as they are.");
 	entry(&dm, 4, DOC_SAVE_PICTURES, "Save page pictures...", 0, EV_SAVE_PICTURES, "Click to save pages as picture files in a directory: a scanned page's own JPEG, unchanged; other pages drawn as PNG.");
 	entry(&dm, 5, DOC_SAVE_TEXT, "Save pages as text...", 0, EV_SAVE_TEXT, "Click to save the text of some of the pages, such as 1-10, as a text file: a paragraph a line, with scanned pages' recognised text.");
-	entry(&dm, 6, DOC_ROTATE, "Rotate", MENU_SUBMENU, 0, "Move right to turn the page, or every page, a quarter or half turn (PDFs). Save to keep it.");
+	entry(&dm, 6, DOC_ROTATE, "Pages", MENU_SUBMENU, 0, "Move right to turn, delete, move or insert pages (PDFs). Save to keep the changes.");
 	entry(&dm, 7, DOC_PASSWORD, "Password...", 0, EV_PASSWORD, "Click to put a password on the document, or take one off (PDFs).");
 	entry(&dm, 8, DOC_INFO, "Document info...", MENU_DOTTED, EV_DOCINFO, "Click to see the document's properties: title, author, dates, page size, security and more.");
 	entry(&dm, 9, 3, "Edit", MENU_SUBMENU, 0, "Move right for undo, copying, highlighting and notes.");
@@ -207,13 +217,26 @@ static void create_objects(void)
 	entry(&rm, 3, ROTALL_CW, "All pages clockwise", 0, EV_ROTALL_CW, "Click to turn every page a quarter turn clockwise.");
 	entry(&rm, 4, ROTALL_ACW, "All pages anticlockwise", 0, EV_ROTALL_ACW, "Click to turn every page a quarter turn anticlockwise.");
 	app.rotate_menu = make_menu(&rm, "Rotate", 5, 0);
+	/* Pages: turning, deleting, moving and inserting (PDFs). */
+	entry(&pm, 0, PG_ROTATE, "Rotate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right to turn the page, or every page, a quarter or half turn.");
+	entry(&pm, 1, PG_DELETE, "Delete pages...", 0, EV_PG_DELETE, "Click to delete pages (this one, or others you type). Undo (^Z) puts them back.");
+	entry(&pm, 2, PG_MOVE, "Move pages...", 0, EV_PG_MOVE, "Click to move pages to another place in the document.");
+	entry(&pm, 3, PG_INSERT, "Insert pages from file...", 0, EV_PG_INSERT, "Click to add the pages of another PDF, a picture or a document, here or at the end.");
+	app.pages_menu = make_menu(&pm, "Pages", 4, 0);
 	app.doc_menu = make_menu(&dm, "Folio", ndm, EV_DOCMENU_SHOWN);
 	if (app.speed_menu)
 		check(menu_set_submenu(app.doc_menu, DOC_SPEED, app.speed_menu));
 	if (app.ocr_menu)
 		check(menu_set_submenu(app.doc_menu, DOC_OCR, app.ocr_menu));
 	check(menu_set_submenu(app.doc_menu, 3, app.edit_menu));
-	check(menu_set_submenu(app.doc_menu, DOC_ROTATE, app.rotate_menu));
+	check(menu_set_submenu(app.pages_menu, PG_ROTATE, app.rotate_menu));
+	check(menu_set_submenu(app.doc_menu, DOC_ROTATE, app.pages_menu));
+	check(menu_set_submenu(app.edit_menu, EDIT_COLOUR, app.colour_menu));
+	{
+		int k;
+		for (k = COL_USUAL; k < COL_COUNT; k++)
+			menu_set_tick(app.colour_menu, k, docwin_colour_rgb(EV_COL_USUAL + k - COL_USUAL) == app.ch.annot_rgb);
+	}
 	check(menu_set_submenu(app.doc_menu, 1, app.view_menu));
 	check(menu_set_submenu(app.doc_menu, 2, app.nav_menu));
 
@@ -282,6 +305,11 @@ static int message(int *b)
 			ack_load(b);
 			break;
 		}
+		/* Dropped in the Insert pages box: its pages go into the PDF. */
+		if (pageorg_data_load(b)) {
+			ack_load(b);
+			break;
+		}
 		/* Dropped in the Create PDF window: added to its list. */
 		if (combine_data_load(b)) {
 			ack_load(b);
@@ -333,7 +361,7 @@ static docwin *window_for_event(void)
 	 * document menu's show event arrives, whose parent is that window). */
 	ObjectId self = app.idb.self_id;
 	if (self == app.doc_menu || self == app.view_menu || self == app.nav_menu || self == app.edit_menu ||
-			self == app.rotate_menu ||
+			self == app.rotate_menu || self == app.pages_menu || self == app.colour_menu ||
 			(self == app.ocr_menu && self))
 		return docwin_from_object(app.menu_window);
 	return docwin_from_object(self);
@@ -402,6 +430,9 @@ static int toolbox_event(int *b)
 		break;
 	case EV_SCAN: case EV_SC_FIND: case EV_SC_SCAN: case EV_SC_STOP: case EV_SC_ADD:
 		scanui_event(code);
+		break;
+	case EV_PO_DELETE: case EV_PO_MOVE: case EV_PO_CANCEL:
+		pageorg_event(code);
 		break;
 	case EV_CREATE_PDF: case EV_CP_UP: case EV_CP_DOWN: case EV_CP_REMOVE: case EV_CP_SORT:
 	case EV_CP_CLEAR: case EV_CP_CREATE:
@@ -529,6 +560,11 @@ int main(int argc, char **argv)
 		tbx_report("Folio couldn't start MuPDF (not enough memory?).");
 		return 1;
 	}
+	{
+		int k;
+		for (k = 0; k < 4; k++)
+			folio_set_annot_colour(app.fc, (folio_annot_kind)k, app.ch.annot_rgb);
+	}
 	if (worker_init())
 		app_log("no worker thread: pages will be drawn in the poll loop");
 	speech_init();
@@ -597,6 +633,8 @@ int main(int argc, char **argv)
 				dict_redraw(block);
 			else if (contents_owns(block[0]))
 				contents_redraw(block);
+			else if (annotlist_owns(block[0]))
+				annotlist_redraw(block);
 			else if (docinfo_owns(block[0]))
 				docinfo_redraw(block);
 			else if (combine_owns(block[0]))
@@ -673,6 +711,8 @@ int main(int argc, char **argv)
 				dict_click(block);
 			else if (contents_owns(block[3]))
 				contents_click(block);
+			else if (annotlist_owns(block[3]))
+				annotlist_click(block);
 			else if (combine_owns(block[3]))
 				combine_click(block);
 			else if (thumbs_from_wimp(block[3]))
@@ -713,6 +753,7 @@ int main(int argc, char **argv)
 		busy |= print_background();
 		busy |= speech_background(&wake);
 		busy |= scanui_background(&wake);
+		busy |= annotlist_background();
 	}
 	print_quit();
 	speech_quit();

@@ -89,14 +89,28 @@ static const char *op_name(folio_annot_kind kind)
 }
 
 /* Colours as the common readers use: yellow highlight, blue underline, red
- * strike-out, yellow note. */
-static void set_colour(fz_context *ctx, pdf_annot *a, folio_annot_kind kind)
+ * strike-out, yellow note; or the one chosen for the kind. */
+static void set_colour(folio_doc *doc, pdf_annot *a, folio_annot_kind kind)
 {
 	static const float yellow[3] = { 1.0f, 0.86f, 0.0f };
 	static const float blue[3] = { 0.1f, 0.35f, 0.85f };
 	static const float red[3] = { 0.85f, 0.1f, 0.1f };
 	const float *c = kind == FOLIO_ANNOT_UNDERLINE ? blue : kind == FOLIO_ANNOT_STRIKEOUT ? red : yellow;
-	pdf_set_annot_color(ctx, a, 3, c);
+	int rgb = kind >= 0 && kind < 4 ? doc->fc->annot_rgb[kind] : -1;
+	float own[3];
+	if (rgb >= 0) {
+		own[0] = ((rgb >> 16) & 255) / 255.0f;
+		own[1] = ((rgb >> 8) & 255) / 255.0f;
+		own[2] = (rgb & 255) / 255.0f;
+		c = own;
+	}
+	pdf_set_annot_color(doc->ctx, a, 3, c);
+}
+
+void folio_set_annot_colour(folio_ctx *fc, folio_annot_kind kind, int rgb)
+{
+	if (kind >= 0 && kind < 4)
+		fc->annot_rgb[kind] = rgb < 0 ? -1 : rgb & 0xffffff;
 }
 
 int folio_annot_markup(folio_doc *doc, folio_loc loc, folio_annot_kind kind,
@@ -125,7 +139,7 @@ int folio_annot_markup(folio_doc *doc, folio_loc loc, folio_annot_kind kind,
 		pdf_begin_operation(ctx, pdf, op_name(kind));
 		op = 1;
 		annot = pdf_create_annot(ctx, page, pdf_type(kind));
-		set_colour(ctx, annot, kind);
+		set_colour(doc, annot, kind);
 		pdf_set_annot_quad_points(ctx, annot, n, q);
 		pdf_update_page(ctx, page);
 		pdf_end_operation(ctx, pdf);
@@ -166,7 +180,7 @@ int folio_annot_note(folio_doc *doc, folio_loc loc, folio_point at, const char *
 		annot = pdf_create_annot(ctx, page, PDF_ANNOT_TEXT);
 		pdf_set_annot_rect(ctx, annot, fz_make_rect(p.x, p.y, p.x + 20, p.y + 20));
 		pdf_set_annot_icon_name(ctx, annot, "Note");
-		set_colour(ctx, annot, FOLIO_ANNOT_NOTE);
+		set_colour(doc, annot, FOLIO_ANNOT_NOTE);
 		pdf_set_annot_contents(ctx, annot, text ? text : "");
 		pdf_update_page(ctx, page);
 		pdf_end_operation(ctx, pdf);
@@ -367,7 +381,7 @@ static int step(folio_doc *doc, int redo)
 	if (!pdf || !(redo ? folio_can_redo(doc) : folio_can_undo(doc)))
 		return -1;
 	/* Pages may turn back (or again): their recognised text goes. */
-	before = folio_rotations(doc, &nb);
+	before = folio_page_keys(doc, &nb);
 	folio_forget_pages(doc);
 	fz_try(ctx) {
 		if (redo)
@@ -382,12 +396,25 @@ static int step(folio_doc *doc, int redo)
 		return -1;
 	}
 	folio_recount(doc);         /* pages may have been added or taken away */
-	folio_ocr_forget_turned(doc, before, nb);
+	folio_ocr_follow(doc, before, nb);
 	free(before);
 	return 0;
 }
 
 int folio_undo(folio_doc *doc) { return step(doc, 0); }
+
+int folio_change_count(folio_doc *doc)
+{
+	pdf_document *pdf = pdf_of(doc);
+	int pos = 0, steps = 0;
+	if (!pdf)
+		return 0;
+	fz_try(doc->ctx)
+		pos = pdf_undoredo_state(doc->ctx, pdf, &steps);
+	fz_catch(doc->ctx)
+		return 0;
+	return pos * 100003 + steps;
+}
 int folio_redo(folio_doc *doc) { return step(doc, 1); }
 
 int folio_is_modified(folio_doc *doc)
@@ -458,5 +485,139 @@ int folio_save_pdf(folio_doc *doc, const char *original, const char *path)
 		folio_set_error(doc->fc);
 		return -1;
 	}
+	return 0;
+}
+
+/* ---- Listing and recolouring --------------------------------------------- */
+
+static int rgb_of(fz_context *ctx, pdf_annot *a)
+{
+	float c[4];
+	int n = 0;
+	pdf_annot_color(ctx, a, &n, c);
+	if (n == 1)
+		c[1] = c[2] = c[0];
+	else if (n == 4) {
+		float k = c[3];
+		c[0] = (1 - c[0]) * (1 - k);
+		c[1] = (1 - c[1]) * (1 - k);
+		c[2] = (1 - c[2]) * (1 - k);
+	} else if (n != 3)
+		return -1;
+	return ((int)(c[0] * 255 + 0.5f) << 16) | ((int)(c[1] * 255 + 0.5f) << 8) | (int)(c[2] * 255 + 0.5f);
+}
+
+/* Copies UTF-8 s into out, spaces for line breaks, cut at a character. */
+static void put_text(char *out, size_t size, const char *s)
+{
+	size_t n = 0;
+	for (; s && *s && n + 1 < size; s++) {
+		unsigned char c = (unsigned char)*s;
+		if ((c & 0xc0) != 0x80 && n + 4 >= size)
+			break;
+		out[n++] = c < ' ' ? ' ' : (char)c;
+	}
+	out[n] = 0;
+}
+
+int folio_annot_list(folio_doc *doc, folio_loc loc, folio_annot_info *out, int max)
+{
+	fz_context *ctx = doc->ctx;
+	int count = 0;
+	if (!pdf_of(doc))
+		return 0;
+	fz_var(count);
+	folio_begin(doc);
+	fz_try(ctx) {
+		folio_cpage *cp = folio_get_page(doc, loc);
+		pdf_page *page = pdf_page_from_fz_page(ctx, cp->page);
+		pdf_annot *a;
+		int i = 0;
+		for (a = pdf_first_annot(ctx, page); a && count < max; a = pdf_next_annot(ctx, a), i++) {
+			enum pdf_annot_type t = pdf_annot_type(ctx, a);
+			folio_annot_info *f = &out[count];
+			fz_rect r;
+			const char *s;
+			if (t == PDF_ANNOT_POPUP || t == PDF_ANNOT_LINK || t == PDF_ANNOT_WIDGET)
+				continue;
+			memset(f, 0, sizeof *f);
+			f->n = i;
+			f->kind = kind_of(t);
+			snprintf(f->type, sizeof f->type, "%s", pdf_string_from_annot_type(ctx, t));
+			r = pdf_bound_annot(ctx, a);
+			f->rect.x0 = r.x0 - cp->bounds.x0;
+			f->rect.y0 = r.y0 - cp->bounds.y0;
+			f->rect.x1 = r.x1 - cp->bounds.x0;
+			f->rect.y1 = r.y1 - cp->bounds.y0;
+			f->rgb = rgb_of(ctx, a);
+			s = pdf_dict_get_text_string(ctx, pdf_annot_obj(ctx, a), PDF_NAME(T));
+			put_text(f->author, sizeof f->author, s);
+			s = pdf_annot_contents(ctx, a);
+			if (s && *s)
+				put_text(f->text, sizeof f->text, s);
+			else if (t == PDF_ANNOT_HIGHLIGHT || t == PDF_ANNOT_UNDERLINE ||
+					t == PDF_ANNOT_STRIKE_OUT || t == PDF_ANNOT_SQUIGGLY) {
+				/* The text it marks. */
+				fz_stext_page *st = folio_get_text(doc, cp);
+				int k, nq = pdf_annot_quad_point_count(ctx, a);
+				size_t len = 0;
+				for (k = 0; k < nq && len + 2 < sizeof f->text; k++) {
+					char *piece = fz_copy_rectangle(ctx, st, fz_rect_from_quad(pdf_annot_quad_point(ctx, a, k)), 0);
+					if (piece && *piece) {
+						if (len)
+							f->text[len++] = ' ';
+						put_text(f->text + len, sizeof f->text - len, piece);
+						len = strlen(f->text);
+					}
+					fz_free(ctx, piece);
+				}
+			}
+			count++;
+		}
+	}
+	fz_catch(ctx) {
+		folio_set_error(doc->fc);
+		return -1;
+	}
+	return count;
+}
+
+int folio_annot_recolour(folio_doc *doc, folio_loc loc, int n, int rgb)
+{
+	fz_context *ctx = doc->ctx;
+	pdf_document *pdf = pdf_of(doc);
+	int op = 0;
+	if (!pdf)
+		return -1;
+	fz_var(op);
+	folio_begin(doc);
+	fz_try(ctx) {
+		folio_cpage *cp = folio_get_page(doc, loc);
+		pdf_page *page = pdf_page_from_fz_page(ctx, cp->page);
+		pdf_annot *a = pdf_first_annot(ctx, page);
+		float c[3];
+		int i;
+		for (i = 0; a && i < n; i++)
+			a = pdf_next_annot(ctx, a);
+		if (!a)
+			fz_throw(ctx, FZ_ERROR_ARGUMENT, "no such annotation");
+		c[0] = ((rgb >> 16) & 255) / 255.0f;
+		c[1] = ((rgb >> 8) & 255) / 255.0f;
+		c[2] = (rgb & 255) / 255.0f;
+		pdf_begin_operation(ctx, pdf, "Colour");
+		op = 1;
+		pdf_set_annot_color(ctx, a, 3, c);
+		pdf_update_page(ctx, page);
+		pdf_end_operation(ctx, pdf);
+		op = 0;
+	}
+	fz_catch(ctx) {
+		if (op)
+			pdf_abandon_operation(ctx, pdf);
+		folio_set_error(doc->fc);
+		forget_page(doc, loc);
+		return -1;
+	}
+	forget_page(doc, loc);
 	return 0;
 }
