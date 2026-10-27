@@ -57,7 +57,7 @@ WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c wimp/clip.c wimp/
 	wimp/readtext.c wimp/speaker.c wimp/speech.c wimp/print.c wimp/printlay.c wimp/export.c wimp/ocrui.c wimp/gotopage.c wimp/docinfo.c wimp/choices.c wimp/ask.c wimp/formui.c wimp/fontsetup.c wimp/pagesave.c wimp/combine.c wimp/scanui.c wimp/pageorg.c wimp/annotlist.c wimp/measure.c wimp/signui.c
 WIMP_HDR := wimp/app.h wimp/tbx.h wimp/worker.h wimp/shelfdata.h wimp/readtext.h wimp/speaker.h \
 	core/folio.h core/dict.h
-VERSION ?= 0.0.1-test63
+VERSION ?= 0.0.1-test64
 # The plugins and the font pack have versions of their own, raised only
 # when what's in them changes (not with each Folio build).
 SPEECH_VERSION ?= 1.0
@@ -287,7 +287,10 @@ test: build/al/core_test build/al/worker_test build/al/dict_test build/al/find_t
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/fonts_test tests/data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/pages_test tests/data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/info_test tests/data
-	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/sign_test tests/sig
+	rm -rf build/p12 && tests/make-p12.sh build/p12
+	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/sign_test tests/sig build/p12
+	for f in build/p12/new-*.pdf build/p12/field-*.pdf build/p12/twice.pdf; do \
+		pdfsig $$f | grep -q "Signature Validation: Signature is Valid" || { echo "pdfsig: $$f"; exit 1; }; done
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH tests/escl-test.sh $(RCD_DIR)/qemu/aligntrap.sh build/al/escl_test
 
 check: build/ro/core_test.elf

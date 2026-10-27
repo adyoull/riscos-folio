@@ -351,8 +351,10 @@ int folio_can_undo(folio_doc *doc)
 	int r = 0;
 	if (!pdf)
 		return 0;
+	/* A signature waiting for the save that makes it can't be undone
+	 * (MuPDF would still try to sign it); close without saving instead. */
 	fz_try(doc->ctx)
-		r = pdf_can_undo(doc->ctx, pdf);
+		r = pdf_can_undo(doc->ctx, pdf) && !pdf_has_unsaved_sigs(doc->ctx, pdf);
 	fz_catch(doc->ctx)
 		r = 0;
 	return r;

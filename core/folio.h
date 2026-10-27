@@ -340,6 +340,19 @@ int folio_has_signatures(folio_doc *doc);
  * is always trusted. Returns how many were added, or -1. */
 int folio_set_trust_roots(folio_ctx *fc, const unsigned char *data, size_t len);
 int folio_trust_root_count(void);
+/* Signing with a certificate from a .p12 / .pfx file (PKCS#12: a private
+ * key and its certificates, under a password). NULL, with folio_error
+ * saying why ("the password isn't right"...), if it can't be used. */
+typedef struct folio_signer folio_signer;
+folio_signer *folio_signer_open(folio_ctx *fc, const unsigned char *p12, size_t len, const char *password);
+void folio_signer_drop(folio_ctx *fc, folio_signer *s);
+void folio_signer_name(folio_signer *s, char *out, size_t size);   /* its common name, UTF-8 */
+/* Signs the empty signature field called field on the page, or, with field
+ * NULL, a new one at where (folio points). The appearance shows the name,
+ * date and reason. One change in the journal; the signature itself is made
+ * when the PDF is next saved (folio_save_pdf). 0 or -1. */
+int folio_sign(folio_doc *doc, folio_loc loc, const char *field, folio_rect where, folio_signer *s,
+		const char *reason, const char *location);
 
 /* ---- System fonts (fonts.c) ---------------------------------------------- */
 /* What fontconfig found when it started (on the first font asked for), for

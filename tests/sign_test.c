@@ -6,7 +6,10 @@
  * against what poppler's pdfsig says of it: rsa.pdf and ec.pdf signed by
  * keys the test CA certified (untrusted, then trusted once ca.pem is given),
  * self.pdf self-signed, tampered.pdf changed inside what was signed,
- * updated.pdf changed by a save after signing, empty.pdf unsigned. */
+ * updated.pdf changed by a save after signing, empty.pdf unsigned.
+ * With a second directory (from tests/make-p12.sh), signing is tested too:
+ * each .p12 signs doc.pdf (a new field) and empty.pdf (its field), and the
+ * results are checked here and, by the Makefile, with pdfsig. */
 #include "folio.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,6 +21,45 @@ static int fails, checks;
 
 static folio_ctx *fc;
 static const char *dir;
+
+static folio_signer *load_p12(const char *p12dir, const char *leaf, const char *pw)
+{
+	static unsigned char buf[16384];
+	char path[512];
+	FILE *f;
+	size_t n;
+	folio_signer *sg;
+	snprintf(path, sizeof path, "%s/%s", p12dir, leaf);
+	f = fopen(path, "rb");
+	if (!f)
+		return NULL;
+	n = fread(buf, 1, sizeof buf, f);
+	fclose(f);
+	sg = folio_signer_open(fc, buf, n, pw);
+	if (!sg)
+		printf("%s: %s\n", leaf, folio_error(fc));
+	return sg;
+}
+
+/* Signs in (dir/leaf, or a path) into out; field NULL makes a new one. */
+static int sign_into(const char *in, const char *out, folio_signer *sg, const char *field)
+{
+	folio_doc *d = folio_open(fc, in, NULL);
+	folio_loc loc = { 0, 0 };
+	folio_rect where = { 340, 700, 556, 772 };
+	int rc;
+	if (!d)
+		return -2;
+	rc = folio_sign(d, loc, field, where, sg, "Approved", "Aldershot");
+	if (rc)
+		printf("sign: %s\n", folio_error(fc));
+	else {
+		CHECK(!folio_can_undo(d), "a signature can't be undone before it's saved");
+		rc = folio_save_pdf(d, in, out);
+	}
+	folio_close(d);
+	return rc;
+}
 
 static int sigs(const char *leaf, folio_signature *s, int max)
 {
@@ -89,6 +131,68 @@ int main(int argc, char **argv)
 		CHECK(d && folio_signatures(d, s, 4) == 0, "no signature fields");
 		if (d)
 			folio_close(d);
+	}
+	if (argc > 2) {
+		const char *p12dir = argv[2];
+		static const char *const kinds[] = { "rsa-aes.p12", "rsa-legacy.p12", "rsa-3des.p12", "ec.p12" };
+		folio_signer *sg;
+		char name[128], in[512], out[512];
+		int i;
+		CHECK(load_p12(p12dir, "rsa-aes.p12", "wrong") == NULL && strstr(folio_error(fc), "password"),
+			"wrong password: %s", folio_error(fc));
+		CHECK(folio_signer_open(fc, (const unsigned char *)"rubbish", 7, "folio") == NULL, "not a .p12");
+		for (i = 0; i < 4; i++) {
+			sg = load_p12(p12dir, kinds[i], "folio");
+			CHECK(sg != NULL, "%s opens", kinds[i]);
+			if (!sg)
+				continue;
+			folio_signer_name(sg, name, sizeof name);
+			CHECK(!strcmp(name, i == 3 ? "Eric Curve" : "Sam Signer"), "%s: name '%s'", kinds[i], name);
+			/* A new field on a page that had none. */
+			snprintf(in, sizeof in, "%s/../data/doc.pdf", dir);
+			snprintf(out, sizeof out, "%s/new-%d.pdf", p12dir, i);
+			CHECK(sign_into(in, out, sg, NULL) == 0, "%s: signed a new field", kinds[i]);
+			{
+				folio_doc *d = folio_open(fc, out, NULL);
+				CHECK(d && folio_signatures(d, s, 4) == 1 && s[0].is_signed && s[0].digest == FOLIO_SIG_VALID &&
+					!s[0].changed_after && !strcmp(s[0].field, "Signature1") && !strcmp(s[0].signer, i == 3 ? "Eric Curve" : "Sam Signer"),
+					"%s: new field verifies (%d) %s", kinds[i], d ? s[0].digest : -1, d ? s[0].why : "");
+				CHECK(d && (i == 3 ? s[0].cert == FOLIO_CERT_TRUSTED || s[0].cert == FOLIO_CERT_UNTRUSTED
+					: s[0].cert == FOLIO_CERT_SELF_SIGNED), "%s: certificate %d %s", kinds[i], d ? s[0].cert : -1,
+					d ? s[0].cert_why : "");
+				if (d)
+					folio_close(d);
+			}
+			/* An existing empty field. */
+			snprintf(in, sizeof in, "%s/empty.pdf", dir);
+			snprintf(out, sizeof out, "%s/field-%d.pdf", p12dir, i);
+			CHECK(sign_into(in, out, sg, "SignHere") == 0, "%s: signed SignHere", kinds[i]);
+			{
+				folio_doc *d = folio_open(fc, out, NULL);
+				CHECK(d && folio_signatures(d, s, 4) == 1 && s[0].is_signed && s[0].digest == FOLIO_SIG_VALID &&
+					!strcmp(s[0].field, "SignHere"), "%s: field verifies", kinds[i]);
+				if (d)
+					folio_close(d);
+			}
+			/* Signing a signed field is refused. */
+			CHECK(sign_into(out, in, sg, "SignHere") != 0, "%s: can't sign twice", kinds[i]);
+			folio_signer_drop(fc, sg);
+		}
+		/* A second signature after the first leaves both valid. */
+		sg = load_p12(p12dir, "ec.p12", "folio");
+		snprintf(in, sizeof in, "%s/new-0.pdf", p12dir);
+		snprintf(out, sizeof out, "%s/twice.pdf", p12dir);
+		CHECK(sg && sign_into(in, out, sg, NULL) == 0, "second signature");
+		{
+			folio_doc *d = folio_open(fc, out, NULL);
+			int n = d ? folio_signatures(d, s, 4) : -1;
+			CHECK(n == 2 && s[0].digest == FOLIO_SIG_VALID && s[0].changed_after && s[1].digest == FOLIO_SIG_VALID &&
+				!s[1].changed_after && !strcmp(s[1].field, "Signature2"), "two signatures (%d) %d/%d %d/%d", n,
+				s[0].digest, s[0].changed_after, s[1].digest, s[1].changed_after);
+			if (d)
+				folio_close(d);
+		}
+		folio_signer_drop(fc, sg);
 	}
 	folio_drop(fc);
 	printf("sign_test: %d checks, %d failed\n", checks, fails);

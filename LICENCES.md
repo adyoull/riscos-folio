@@ -12,7 +12,7 @@
 | riscos-pvoice (the Piper voice engine) and eSpeak NG, linked into the program for reading aloud | GPL-3.0-or-later (combined with the AGPL under its section 13) | riscos-pvoice's `COPYING`; `eSpeakLicence` in !Folio |
 | The Speech plugin's voice (Piper, trained on OpenSLR SLR83) | CC BY-SA 4.0 | `VoiceLicence` in the plugin |
 | fontconfig 2.14.1, expat 2.2.9 | MIT-style | !Folio.FontconfigLicence, !Folio.ExpatLicence |
-| mbedTLS 3.6.7 (checking signatures), fetched by `crypto/build.sh`; Folio's configuration `crypto/folio-mbedtls-config.h` is MIT | Apache-2.0 (Folio takes it under Apache-2.0, which the AGPL-3.0 can include) | !Folio.MbedTLSLicence |
+| mbedTLS 3.6.7 (checking and making signatures), fetched by `crypto/build.sh`; Folio's configuration `crypto/folio-mbedtls-config.h` is MIT | Apache-2.0 (Folio takes it under Apache-2.0, which the AGPL-3.0 can include) | !Folio.MbedTLSLicence |
 | The Adobe Root CA certificate (`core/adobe_ca.h`, from MuPDF's source) | as MuPDF | MuPDF's `COPYING` |
 
 **Why the program is AGPL:** MuPDF is AGPL-3.0. A program that includes it can be

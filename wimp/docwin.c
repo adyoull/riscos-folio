@@ -1109,6 +1109,7 @@ void docwin_close(docwin *w)
 	contents_forget(w);
 	annotlist_forget(w);
 	pageorg_forget(w);
+	signbox_forget(w);
 	measure_forget(w);
 	annotui_forget(w);
 	passui_forget(w);
@@ -2365,6 +2366,7 @@ void docwin_doc_menu_shown(docwin *w)
 	menu_set_fade(app.doc_menu, DOC_ROTATE, !w->can_annotate);
 	menu_set_fade(app.doc_menu, DOC_SAVE, !w->can_annotate);
 	menu_set_fade(app.doc_menu, DOC_PASSWORD, !w->can_annotate);
+	menu_set_fade(app.doc_menu, DOC_SIGN, !w->can_annotate);
 	if (speech_available()) {
 		menu_set_tick(app.doc_menu, DOC_READ, speech_window() == w);
 		menu_set_fade(app.doc_menu, DOC_SPEAKSEL, !sel_any(w));
@@ -2778,6 +2780,9 @@ void docwin_event(docwin *w, int code)
 	case EV_PASSWORD:
 		if (w->can_annotate)
 			passui_security(w);
+		break;
+	case EV_SIGN:
+		signbox_open(w, app.idb.self_id == app.doc_menu && w->menu_page >= 0 ? w->menu_page : current_page(w), NULL);
 		break;
 	case EV_READ_ALOUD:
 		/* Read aloud again stops it: always allowed. */
@@ -3948,6 +3953,63 @@ static void undo_redo(docwin *w, int redo)
 	w->asel_page = -1;
 	relayout_keep(w);
 	page_changed(w, -1);
+}
+
+/* ---- Signing (signui.c has the box) --------------------------------------- */
+
+int docwin_can_sign(docwin *w)
+{
+	if (!is_window(w))
+		return 0;
+	if (!w->can_annotate) {
+		tbx_report("Only a PDF can be signed. Save pages as PDF, or Create PDF, makes one.");
+		return 0;
+	}
+	if (w->unsaved_new) {
+		tbx_report("Save the PDF first, then sign it.");
+		return 0;
+	}
+	return 1;
+}
+
+/* Signs field (or a new field at the foot of the page, on the right), then
+ * opens the Save box: the signature is made as the PDF is saved. */
+int docwin_sign(docwin *w, int page, const char *field, folio_signer *sg, const char *reason,
+		const char *location)
+{
+	folio_loc loc;
+	folio_rect where = { 0, 0, 0, 0 };
+	float pw = 612, ph = 792;
+	int rc;
+	if (!is_window(w))
+		return -1;
+	_swix(Hourglass_On, 0);
+	core_now();
+	rc = folio_loc_from_number(w->doc, page, &loc);
+	if (!rc && !field) {
+		folio_page_size(w->doc, loc, &pw, &ph);
+		where.x0 = pw - 36 - 216 > 0 ? pw - 36 - 216 : 0;
+		where.x1 = pw - 36 > where.x0 + 72 ? pw - 36 : where.x0 + 72;
+		where.y1 = ph - 36 > 72 ? ph - 36 : ph;
+		where.y0 = where.y1 - 72 > 0 ? where.y1 - 72 : 0;
+	}
+	if (!rc)
+		rc = folio_sign(w->doc, loc, field, where, sg, reason, location);
+	core_unlock();
+	_swix(Hourglass_Off, 0);
+	if (rc) {
+		char m[300];
+		snprintf(m, sizeof m, "Folio couldn't sign the PDF: %s", folio_error(app.fc));
+		tbx_report(m);
+		return -1;
+	}
+	app_log("%s: signed %s on page %d; to be saved", w->title, field ? field : "a new field", page + 1);
+	w->asel_page = -1;
+	page_changed(w, page);
+	update_title(w);
+	go_to_page(w, page);
+	save_open(w, 0);
+	return 0;
 }
 
 const char *docwin_path(docwin *w)

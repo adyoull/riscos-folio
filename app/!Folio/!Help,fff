@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test63)
+Folio (test build 0.0.1-test64)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -198,6 +198,20 @@ Signatures (PDFs)
   it's installed (from PackMan; the same ones web browsers trust). To
   trust others, such as your company's, put them (PEM, one after another)
   in a file called Trusted in <Choices$Write>.Folio, and run Folio again.
+
+Signing a PDF
+  To sign, you need a certificate with its private key, in a .p12 or .pfx
+  file (the kind a certificate authority issues, or that other programs
+  export), and its password. Choose Sign... from the document menu, or
+  click an empty signature field. Drag the certificate file into the Sign
+  box, type its password, and, if you like, a reason (such as "I approve
+  this document") and where you are, then click Sign. A new signature goes
+  at the foot of the page, on the right; an empty field is signed where it
+  is. The Save box then opens: the signature is made as the PDF is saved,
+  and it can't be undone before then (close the document without saving
+  instead). Other signatures in the PDF stay good: changes are added to
+  the end of the file. Folio keeps the certificate file's name until it
+  quits, but never the password.
 
 Security
   Folio asks before following a link out of a document (to a web page, an

@@ -68,7 +68,7 @@ static void check(_kernel_oserror *e)
 /* A menu template: header fields then entries, in one block. */
 typedef struct {
 	tbx_menu m;
-	tbx_menu_entry e[20];
+	tbx_menu_entry e[24];
 } menu_block;
 
 static ObjectId make_menu(menu_block *b, const char *title, int n, int show_event)
@@ -180,16 +180,17 @@ static void create_objects(void)
 	entry(&dm, 5, DOC_SAVE_TEXT, "Save pages as text...", 0, EV_SAVE_TEXT, "Click to save the text of some of the pages, such as 1-10, as a text file: a paragraph a line, with scanned pages' recognised text.");
 	entry(&dm, 6, DOC_ROTATE, "Pages", MENU_SUBMENU, 0, "Move right to turn, delete, move or insert pages (PDFs). Save to keep the changes.");
 	entry(&dm, 7, DOC_PASSWORD, "Password...", 0, EV_PASSWORD, "Click to put a password on the document, or take one off (PDFs).");
-	entry(&dm, 8, DOC_INFO, "Document info...", MENU_DOTTED, EV_DOCINFO, "Click to see the document's properties: title, author, dates, page size, security and more.");
-	entry(&dm, 9, 3, "Edit", MENU_SUBMENU, 0, "Move right for undo, copying, highlighting and notes.");
-	entry(&dm, 10, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
-	entry(&dm, 11, 2, "Navigate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right for moving through the document.");
+	entry(&dm, 8, DOC_SIGN, "Sign...", 0, EV_SIGN, "Click to sign the PDF with your certificate (a .p12 or .pfx file). Clicking an empty signature field signs that.");
+	entry(&dm, 9, DOC_INFO, "Document info...", MENU_DOTTED, EV_DOCINFO, "Click to see the document's properties: title, author, dates, page size, security and more.");
+	entry(&dm, 10, 3, "Edit", MENU_SUBMENU, 0, "Move right for undo, copying, highlighting and notes.");
+	entry(&dm, 11, 1, "View", MENU_SUBMENU, 0, "Move right for the view options.");
+	entry(&dm, 12, 2, "Navigate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right for moving through the document.");
 	/* The context item (DESIGN §3.4): its text names the word when it's shown. */
-	entry(&dm, 12, DOC_FIND, "Find...        F4", 0, EV_FIND, "Click to find text in the document.");
-	entry(&dm, 13, DOC_DEFINE, "Define", MENU_FADED | MENU_DOTTED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
-	dm.e[13].max_text = 80;
-	entry(&dm, 14, DOC_SHELF, "On bookshelf", 0, EV_ADD_SHELF, "Click to put this document on the bookshelf, or take it off.");
-	ndm = 15;
+	entry(&dm, 13, DOC_FIND, "Find...        F4", 0, EV_FIND, "Click to find text in the document.");
+	entry(&dm, 14, DOC_DEFINE, "Define", MENU_FADED | MENU_DOTTED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
+	dm.e[14].max_text = 80;
+	entry(&dm, 15, DOC_SHELF, "On bookshelf", 0, EV_ADD_SHELF, "Click to put this document on the bookshelf, or take it off.");
+	ndm = 16;
 	/* Text recognition: only with the OCR plugin. */
 	if (ocr_available()) {
 		entry(&dm, ndm++, DOC_OCR, "Text recognition", MENU_SUBMENU, 0, "Move right to read the text in scanned pages, so it can be found, selected, copied and read aloud.");
@@ -309,6 +310,11 @@ static int message(int *b)
 		}
 		/* Dropped in the Insert pages box: its pages go into the PDF. */
 		if (pageorg_data_load(b)) {
+			ack_load(b);
+			break;
+		}
+		/* Dropped in the Sign box: the certificate to sign with. */
+		if (signbox_data_load(b)) {
 			ack_load(b);
 			break;
 		}
@@ -432,6 +438,9 @@ static int toolbox_event(int *b)
 		break;
 	case EV_SCAN: case EV_SC_FIND: case EV_SC_SCAN: case EV_SC_STOP: case EV_SC_ADD:
 		scanui_event(code);
+		break;
+	case EV_SG_SIGN: case EV_SG_CANCEL:
+		signbox_event(code);
 		break;
 	case EV_PO_DELETE: case EV_PO_MOVE: case EV_PO_CANCEL:
 		pageorg_event(code);
