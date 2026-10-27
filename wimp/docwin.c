@@ -3986,8 +3986,9 @@ static void pen_line(docwin *w, int ax, int ay, int bx, int by)
 
 static unsigned pen_gcol(docwin *w)
 {
-	return ((unsigned)(w->pen_rgb & 0xff) << 8) | ((unsigned)((w->pen_rgb >> 8) & 0xff) << 16) |
-		((unsigned)((w->pen_rgb >> 16) & 0xff) << 24);
+	/* pen_rgb is 0xRRGGBB; ColourTrans wants 0xBBGGRR00. */
+	return ((unsigned)((w->pen_rgb >> 16) & 0xff) << 8) | ((unsigned)((w->pen_rgb >> 8) & 0xff) << 16) |
+		((unsigned)(w->pen_rgb & 0xff) << 24);
 }
 
 static void pen_draw(docwin *w, int i, int x0, int y1)

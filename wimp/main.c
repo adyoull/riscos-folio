@@ -398,6 +398,7 @@ static docwin *window_for_event(void)
 	ObjectId self = app.idb.self_id;
 	if (self == app.doc_menu || self == app.view_menu || self == app.nav_menu || self == app.edit_menu ||
 			self == app.rotate_menu || self == app.pages_menu || self == app.colour_menu ||
+			(self == app.stamp_menu && self) ||
 			(self == app.ocr_menu && self))
 		return docwin_from_object(app.menu_window);
 	return docwin_from_object(self);
