@@ -126,6 +126,8 @@ void docinfo_open(docwin *w)
 {
 	folio_info in;
 	folio_fonts *fonts = malloc(sizeof *fonts);
+	folio_signature sig[16];
+	int nsig = 0;
 	const char *path = docwin_path(w), *leaf, *dot, *colon;
 	char buf[300];
 	int st[9], dst[9], h, i, type = 0, len = 0, box[4];
@@ -140,6 +142,13 @@ void docinfo_open(docwin *w)
 		fonts = NULL;
 	}
 	core_unlock();
+	/* Signatures, checked (the roots first: they're read once). */
+	if (folio_has_signatures(docwin_doc(w)) > 0) {
+		signui_roots();
+		core_now();
+		nsig = folio_signatures(docwin_doc(w), sig, 16);
+		core_unlock();
+	}
 	_swix(Hourglass_Off, 0);
 	di.w = w;
 	di.n = 0;
@@ -160,6 +169,25 @@ void docinfo_open(docwin *w)
 	}
 	for (i = 0; i < in.n; i++)
 		add(in.item[i].label, in.item[i].value);
+	if (nsig > 0) {
+		int good = 0, broken = 0, empty = 0, k;
+		for (k = 0; k < nsig; k++) {
+			if (!sig[k].is_signed)
+				empty++;
+			else if (sig[k].digest == FOLIO_SIG_VALID)
+				good++;
+			else
+				broken++;
+		}
+		snprintf(buf, sizeof buf, "%d signed%s%s%s", good + broken,
+			broken ? " (" : "", broken ? (good ? "some broken)" : "broken)") : "",
+			empty ? (empty == 1 ? ", 1 place to sign" : ", places to sign") : "");
+		add("Signatures", buf);
+		for (k = 0; k < nsig; k++) {
+			signui_brief(&sig[k], buf, sizeof buf);
+			add("", buf);
+		}
+	}
 	if (fonts) {
 		int missing = 0, len2;
 		snprintf(buf, sizeof buf, "%d", fonts->pictures);

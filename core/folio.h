@@ -306,6 +306,41 @@ typedef struct {
 } folio_content;
 int folio_get_content(folio_doc *doc, folio_content *c);
 
+/* ---- Signatures (sign.c) ---------------------------------------------------- */
+
+enum { FOLIO_SIG_VALID = 1,      /* the bytes are as signed, and the signature is the signer's */
+	FOLIO_SIG_CHANGED,           /* the signed bytes have been changed */
+	FOLIO_SIG_UNREADABLE };      /* the signature can't be checked (why says) */
+enum { FOLIO_CERT_TRUSTED = 1,   /* leads to a trusted root */
+	FOLIO_CERT_SELF_SIGNED,      /* the signer vouches for itself */
+	FOLIO_CERT_UNTRUSTED,        /* doesn't lead to a root Folio trusts */
+	FOLIO_CERT_NONE,             /* no certificate in the signature */
+	FOLIO_CERT_OTHER };          /* something else wrong with it (cert_why says) */
+typedef struct {
+	char field[64];              /* the field's name */
+	int page;                    /* 0-based */
+	folio_rect rect;             /* its box on the page, folio points */
+	int is_signed;               /* 0: an empty signature field */
+	int digest;                  /* FOLIO_SIG_* */
+	int cert;                    /* FOLIO_CERT_* */
+	int expired;                 /* the certificate is out of date now */
+	int changed_after;           /* the file has had changes since this signature */
+	char signer[128], organisation[128], email[96];   /* UTF-8 */
+	char date[40];               /* the PDF date it gives (folio_pdf_date makes it readable) */
+	char reason[160], location[96];
+	char why[200], cert_why[160];
+} folio_signature;
+/* The document's signature fields, signed or not, with each signature
+ * checked. Returns how many (up to max), or -1. */
+int folio_signatures(folio_doc *doc, folio_signature *out, int max);
+/* How many signature fields a PDF has (signed or not), cheaply. */
+int folio_has_signatures(folio_doc *doc);
+/* Certificates to trust as roots: a PEM bundle (such as CaCertificates'
+ * ca-certificates.crt) or one DER certificate; added to Adobe's root, which
+ * is always trusted. Returns how many were added, or -1. */
+int folio_set_trust_roots(folio_ctx *fc, const unsigned char *data, size_t len);
+int folio_trust_root_count(void);
+
 /* ---- System fonts (fonts.c) ---------------------------------------------- */
 /* What fontconfig found when it started (on the first font asked for), for
  * the log: "fontconfig 2.14.1: 61 fonts", or why not. */

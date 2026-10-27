@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test62 (27-Oct-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test63 (27-Oct-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -427,6 +427,13 @@ void ask_show(const char *title, const char *desktop_text, const char *ok, const
 		ask_done_fn *done, void *data);
 void ask_event(int code);
 void ask_forget(void *data);
+
+/* signui.c: signatures. */
+void signui_roots(void);
+void signui_describe(const folio_signature *s, char *out, size_t size);
+void signui_brief(const folio_signature *s, char *out, size_t size);
+void signui_click(docwin *w, int page, const char *field);
+void signui_on_open(docwin *w);
 
 /* formui.c: filling in PDF forms. */
 int formui_click(docwin *w, int page, folio_point p, int x, int y);

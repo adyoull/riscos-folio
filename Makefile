@@ -36,7 +36,7 @@ MUPDF ?= $(CURDIR)/mupdf/src
 MU_RO := $(MUPDF)/build/ro-release-tesseract-tofu_cjk
 MU_AL := $(MUPDF)/build/armlinux-release-tesseract-tofu_cjk
 # MuPDF with Tesseract (OCR) is part C++.
-MU_LIBS := -lfontconfig -lexpat -lftextra -lmupdf -lmupdf-third -lstdc++ -lm -lpthread
+MU_LIBS := -lfontconfig -lexpat -lftextra -lmupdf -lmupdf-third -lmbedfolio -lstdc++ -lm -lpthread
 
 RO_CC := $(RISCOS_TOOLCHAIN)/bin/arm-riscos-gnueabihf-gcc
 RO_AR := $(RISCOS_TOOLCHAIN)/bin/arm-riscos-gnueabihf-ar
@@ -49,15 +49,15 @@ WARN := -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -std=gnu99
 INC := -Icore -Ithird/cjson -I$(MUPDF)/include
 
 CORE_SRC := core/doc.c core/render.c core/text.c core/dict.c core/annot.c core/security.c core/drawfile.c \
-	core/ocr.c core/info.c core/content.c core/form.c core/fonts.c core/pages.c core/escl.c
+	core/ocr.c core/info.c core/content.c core/form.c core/fonts.c core/pages.c core/escl.c core/sign.c
 CORE_HDR := core/folio.h core/folio_int.h core/dict.h core/escl.h
 CORE_OBJ = $(CORE_SRC:core/%.c=build/$(1)/%.o) build/$(1)/cJSON.o
 
 WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c wimp/clip.c wimp/dict.c wimp/contents.c wimp/find.c wimp/toolbar.c wimp/thumbs.c wimp/annotui.c wimp/passui.c wimp/bookshelf.c wimp/shelfdata.c \
-	wimp/readtext.c wimp/speaker.c wimp/speech.c wimp/print.c wimp/printlay.c wimp/export.c wimp/ocrui.c wimp/gotopage.c wimp/docinfo.c wimp/choices.c wimp/ask.c wimp/formui.c wimp/fontsetup.c wimp/pagesave.c wimp/combine.c wimp/scanui.c wimp/pageorg.c wimp/annotlist.c wimp/measure.c
+	wimp/readtext.c wimp/speaker.c wimp/speech.c wimp/print.c wimp/printlay.c wimp/export.c wimp/ocrui.c wimp/gotopage.c wimp/docinfo.c wimp/choices.c wimp/ask.c wimp/formui.c wimp/fontsetup.c wimp/pagesave.c wimp/combine.c wimp/scanui.c wimp/pageorg.c wimp/annotlist.c wimp/measure.c wimp/signui.c
 WIMP_HDR := wimp/app.h wimp/tbx.h wimp/worker.h wimp/shelfdata.h wimp/readtext.h wimp/speaker.h \
 	core/folio.h core/dict.h
-VERSION ?= 0.0.1-test62
+VERSION ?= 0.0.1-test63
 # The plugins and the font pack have versions of their own, raised only
 # when what's in them changes (not with each Folio build).
 SPEECH_VERSION ?= 1.0
@@ -73,6 +73,15 @@ build/ro/fonts.o: core/fonts.c $(CORE_HDR)
 build/al/fonts.o: core/fonts.c $(CORE_HDR)
 	@mkdir -p $(dir $@)
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -DFOLIO_FONTCONFIG -Ifontconfig/out/al/include -c $< -o $@
+
+# Signatures: mbedTLS (crypto/build.sh), with Folio's configuration.
+MBED_INC := -Icrypto/out/include -DMBEDTLS_CONFIG_FILE='"folio-mbedtls-config.h"'
+build/ro/sign.o: core/sign.c core/adobe_ca.h $(CORE_HDR)
+	@mkdir -p $(dir $@)
+	$(RO_CC) $(RO_CFLAGS) $(WARN) $(INC) $(MBED_INC) -c $< -o $@
+build/al/sign.o: core/sign.c core/adobe_ca.h $(CORE_HDR)
+	@mkdir -p $(dir $@)
+	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) $(MBED_INC) -c $< -o $@
 
 # Scanning (eSCL): expat for the scanner's XML, as fontconfig has it.
 build/ro/escl.o: core/escl.c core/escl.h
@@ -104,11 +113,11 @@ build/al/libfolio.a: $(call CORE_OBJ,al)
 
 build/al/core_test: tests/core_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
-		-L$(MU_AL) -Lfontconfig/out/al/lib $(MU_LIBS) -o $@
+		-L$(MU_AL) -Lfontconfig/out/al/lib -Lcrypto/out/al/lib $(MU_LIBS) -o $@
 # Built for RISC OS too, so the checks see the core and MuPDF linked together.
 build/ro/core_test.elf: tests/core_test.c build/ro/libfolio.a build/ro/rostubs.o
 	$(RO_CC) $(RO_CFLAGS) $(WARN) $(INC) -static $< build/ro/libfolio.a build/ro/rostubs.o \
-		-L$(MU_RO) -Lfontconfig/out/ro/lib $(MU_LIBS) -o $@
+		-L$(MU_RO) -Lfontconfig/out/ro/lib -Lcrypto/out/ro/lib $(MU_LIBS) -o $@
 
 build/ro/wimp/%.o: wimp/%.c $(WIMP_HDR)
 	@mkdir -p $(@D)
@@ -117,7 +126,7 @@ build/ro/wimp/%.o: wimp/%.c $(WIMP_HDR)
 # The application (RISC OS only).
 build/ro/folio.elf: $(WIMP_SRC:wimp/%.c=build/ro/wimp/%.o) build/ro/libfolio.a build/ro/rostubs.o
 	$(RO_CC) $(RO_CFLAGS) -static $(WIMP_SRC:wimp/%.c=build/ro/wimp/%.o) build/ro/libfolio.a build/ro/rostubs.o \
-		$(PVOICE_DIR)/build/ro/libpvoice.a -L$(MU_RO) -Lfontconfig/out/ro/lib $(MU_LIBS) -o $@
+		$(PVOICE_DIR)/build/ro/libpvoice.a -L$(MU_RO) -Lfontconfig/out/ro/lib -Lcrypto/out/ro/lib $(MU_LIBS) -o $@
 
 # !Folio in build/app, and a zip with RISC OS filetypes.
 app: build/ro/folio.elf
@@ -135,6 +144,7 @@ app: build/ro/folio.elf
 	cp $(PVOICE_DIR)/third/espeak-ng/COPYING 'build/app/!Folio/eSpeakLicence,fff'
 	cp fontconfig/src/ro/fontconfig-2.14.1/COPYING 'build/app/!Folio/FontconfigLicence,fff'
 	cp fontconfig/src/ro/libexpat-R_2_2_9/expat/COPYING 'build/app/!Folio/ExpatLicence,fff'
+	cp crypto/out/LICENSE 'build/app/!Folio/MbedTLSLicence,fff'
 	mkdir -p 'build/app/!Folio/Plugins'
 	cp app/Plugins-ReadMe 'build/app/!Folio/Plugins/ReadMe,fff'
 	python3 $(RCD_DIR)/package/rozip.py build/Folio-$(VERSION).zip -C build/app '!Folio'
@@ -191,15 +201,15 @@ tests/data/stamp: tests/make-data.sh tests/make-epub.py tests/make-form.py
 # The page worker, with a stand-in for the one RISC OS call it makes.
 build/al/worker_test: tests/worker_test.c wimp/worker.c wimp/worker.h build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -Iwimp -Itests/stub -no-pie tests/worker_test.c wimp/worker.c \
-		build/al/libfolio.a -L$(MU_AL) -Lfontconfig/out/al/lib $(MU_LIBS) -o $@
+		build/al/libfolio.a -L$(MU_AL) -Lfontconfig/out/al/lib -Lcrypto/out/al/lib $(MU_LIBS) -o $@
 
 build/al/dict_test: tests/dict_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
-		-L$(MU_AL) -Lfontconfig/out/al/lib $(MU_LIBS) -o $@
+		-L$(MU_AL) -Lfontconfig/out/al/lib -Lcrypto/out/al/lib $(MU_LIBS) -o $@
 
 build/al/annot_test: tests/annot_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
-		-L$(MU_AL) -Lfontconfig/out/al/lib $(MU_LIBS) -o $@
+		-L$(MU_AL) -Lfontconfig/out/al/lib -Lcrypto/out/al/lib $(MU_LIBS) -o $@
 
 build/al/printlay_test: tests/printlay_test.c wimp/printlay.c wimp/printlay.h
 	$(AL_CC) $(AL_CFLAGS) $(WARN) -Iwimp -no-pie tests/printlay_test.c wimp/printlay.c -lm -o $@
@@ -213,38 +223,42 @@ build/al/speaker_test: tests/speaker_test.c wimp/speaker.c wimp/speaker.h
 
 build/al/pagetext_test: tests/pagetext_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
-		-L$(MU_AL) -Lfontconfig/out/al/lib $(MU_LIBS) -o $@
+		-L$(MU_AL) -Lfontconfig/out/al/lib -Lcrypto/out/al/lib $(MU_LIBS) -o $@
 
 build/al/draw_test: tests/draw_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
-		-L$(MU_AL) -Lfontconfig/out/al/lib $(MU_LIBS) -o $@
+		-L$(MU_AL) -Lfontconfig/out/al/lib -Lcrypto/out/al/lib $(MU_LIBS) -o $@
 
 build/al/password_test: tests/password_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
-		-L$(MU_AL) -Lfontconfig/out/al/lib $(MU_LIBS) -o $@
+		-L$(MU_AL) -Lfontconfig/out/al/lib -Lcrypto/out/al/lib $(MU_LIBS) -o $@
 
 build/al/ocr_test: tests/ocr_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
-		-L$(MU_AL) -Lfontconfig/out/al/lib $(MU_LIBS) -o $@
+		-L$(MU_AL) -Lfontconfig/out/al/lib -Lcrypto/out/al/lib $(MU_LIBS) -o $@
 
 build/al/form_test: tests/form_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
-		-L$(MU_AL) -Lfontconfig/out/al/lib $(MU_LIBS) -o $@
+		-L$(MU_AL) -Lfontconfig/out/al/lib -Lcrypto/out/al/lib $(MU_LIBS) -o $@
 
 build/al/escl_test: tests/escl_test.c build/al/escl.o
-	$(AL_CC) $(AL_CFLAGS) $(WARN) -Icore -no-pie $< build/al/escl.o -Lfontconfig/out/al/lib -lexpat -o $@
+	$(AL_CC) $(AL_CFLAGS) $(WARN) -Icore -no-pie $< build/al/escl.o -Lfontconfig/out/al/lib -Lcrypto/out/al/lib -lexpat -o $@
 
 build/al/pages_test: tests/pages_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
-		-L$(MU_AL) -Lfontconfig/out/al/lib $(MU_LIBS) -o $@
+		-L$(MU_AL) -Lfontconfig/out/al/lib -Lcrypto/out/al/lib $(MU_LIBS) -o $@
+
+build/al/sign_test: tests/sign_test.c build/al/libfolio.a
+	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
+		-L$(MU_AL) -Lfontconfig/out/al/lib -Lcrypto/out/al/lib $(MU_LIBS) -o $@
 
 build/al/info_test: tests/info_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
-		-L$(MU_AL) -Lfontconfig/out/al/lib $(MU_LIBS) -o $@
+		-L$(MU_AL) -Lfontconfig/out/al/lib -Lcrypto/out/al/lib $(MU_LIBS) -o $@
 
 build/al/fonts_test: tests/fonts_test.c build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -no-pie $< build/al/libfolio.a \
-		-L$(MU_AL) -Lfontconfig/out/al/lib $(MU_LIBS) -o $@
+		-L$(MU_AL) -Lfontconfig/out/al/lib -Lcrypto/out/al/lib $(MU_LIBS) -o $@
 
 build/al/shelf_test: tests/shelf_test.c wimp/shelfdata.c wimp/shelfdata.h
 	$(AL_CC) $(AL_CFLAGS) $(WARN) -Iwimp -no-pie tests/shelf_test.c wimp/shelfdata.c -o $@
@@ -252,9 +266,9 @@ build/al/shelf_test: tests/shelf_test.c wimp/shelfdata.c wimp/shelfdata.h
 # Find, with stand-ins for the Toolbox and the document window.
 build/al/find_test: tests/find_test.c wimp/find.c wimp/worker.c $(WIMP_HDR) build/al/libfolio.a
 	$(AL_CC) $(AL_CFLAGS) $(WARN) $(INC) -Iwimp -Itests/stub-wimp -no-pie tests/find_test.c wimp/find.c \
-		wimp/worker.c build/al/libfolio.a -L$(MU_AL) -Lfontconfig/out/al/lib $(MU_LIBS) -o $@
+		wimp/worker.c build/al/libfolio.a -L$(MU_AL) -Lfontconfig/out/al/lib -Lcrypto/out/al/lib $(MU_LIBS) -o $@
 
-test: build/al/core_test build/al/worker_test build/al/dict_test build/al/find_test build/al/annot_test build/al/password_test build/al/draw_test build/al/pagetext_test build/al/readtext_test build/al/printlay_test build/al/speaker_test build/al/shelf_test build/al/ocr_test build/al/form_test build/al/fonts_test build/al/pages_test build/al/escl_test build/al/info_test tests/data/stamp
+test: build/al/core_test build/al/worker_test build/al/dict_test build/al/find_test build/al/annot_test build/al/password_test build/al/draw_test build/al/pagetext_test build/al/readtext_test build/al/printlay_test build/al/speaker_test build/al/shelf_test build/al/ocr_test build/al/form_test build/al/fonts_test build/al/pages_test build/al/escl_test build/al/info_test build/al/sign_test tests/data/stamp
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/core_test tests/data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/worker_test tests/data/doc.pdf
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/dict_test tests/dict
@@ -273,6 +287,7 @@ test: build/al/core_test build/al/worker_test build/al/dict_test build/al/find_t
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/fonts_test tests/data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/pages_test tests/data
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/info_test tests/data
+	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH $(RCD_DIR)/qemu/aligntrap.sh build/al/sign_test tests/sig
 	PATH=$(RISCOS_TOOLCHAIN)/bin:$$PATH tests/escl-test.sh $(RCD_DIR)/qemu/aligntrap.sh build/al/escl_test
 
 check: build/ro/core_test.elf
@@ -287,6 +302,7 @@ ci:
 		python3 -m pip install --quiet --no-cache-dir --disable-pip-version-check --target build/pydeps pillow==12.3.0
 	mupdf/build.sh
 	fontconfig/build.sh
+	crypto/build.sh
 	tools/get-pvoice.sh
 	tools/get-tessdata.sh $(TESSDATA)
 	$(MAKE) all

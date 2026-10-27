@@ -486,7 +486,7 @@ int formui_click(docwin *w, int page, folio_point p, int x, int y)
 		alerts_pending(w);
 		break;
 	case FOLIO_FIELD_SIGNATURE:
-		tbx_report("Folio can't sign a PDF or change a signature.");
+		signui_click(w, page, f.name);
 		break;
 	default:
 		return 0;

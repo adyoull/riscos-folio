@@ -1085,6 +1085,7 @@ docwin *docwin_open_password(const char *path, const char *password)
 	app_log("opened %s: %s, %d chapter(s), page %gx%g pt", path, folio_format(w->doc),
 		folio_chapters(w->doc), w->page.x1, w->page.y1);
 	security_on_open(w);
+	signui_on_open(w);
 	return w;
 }
 

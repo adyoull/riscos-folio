@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test62)
+Folio (test build 0.0.1-test63)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -180,6 +180,24 @@ Restrictions (PDFs)
   so instead, and offer to lift it with the document's owner password. To
   have Folio ignore such restrictions, untick "Keep to a PDF's limits on
   printing and copying" in the Choices window.
+
+Signatures (PDFs)
+  A signed PDF carries a digital signature: proof that it hasn't been
+  changed since it was signed, and a certificate saying who signed it.
+  Folio checks it. Click on a signature on the page to see who signed it
+  and when, whether the document is as it was signed, and whether the
+  signer's certificate comes from a body Folio trusts. Document info lists
+  every signature too. If a signature has been broken (the document
+  changed after it was signed), Folio says so as the PDF opens.
+  "Changed since" means changes were saved after the signature, such as a
+  form filled in or notes added: what was signed is still as it was.
+  "Signer not confirmed" means the signature is good but the certificate
+  doesn't come from a body Folio trusts, so who signed it can't be
+  confirmed.
+  Folio trusts Adobe's root, and the certificates of CaCertificates if
+  it's installed (from PackMan; the same ones web browsers trust). To
+  trust others, such as your company's, put them (PEM, one after another)
+  in a file called Trusted in <Choices$Write>.Folio, and run Folio again.
 
 Security
   Folio asks before following a link out of a document (to a web page, an
