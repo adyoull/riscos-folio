@@ -1,4 +1,4 @@
 # Repositories this one is built with (NAME TAG), watched by
 # .github/workflows/riscos-deps-update.yml.
-riscos-crossdev v1.8.1
+riscos-crossdev v1.8.2
 riscos-pvoice v0.0.2-test1
