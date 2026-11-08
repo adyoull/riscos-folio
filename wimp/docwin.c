@@ -1310,18 +1310,22 @@ static void resolve_mark(docwin *w)
 {
 	folio_loc loc;
 	int ch, n;
+	unsigned t0, t1;
 	for (ch = 0; ch < w->mark.chapter; ch++)
 		if (folio_chapter_pages(w->doc, ch) < 0)
 			return;
 	w->pending_mark = 0;
 	if (current_page(w) != 0)
 		return;
+	_swix(OS_ReadMonotonicTime, _OUT(0), &t0);
 	if (folio_find_mark(w->doc, &w->mark, &loc) == 0 &&
 			(n = folio_page_number(w->doc, loc)) >= 0) {
-		app_log("%s: back at page %d", w->title, n + 1);
+		_swix(OS_ReadMonotonicTime, _OUT(0), &t1);
+		app_log("%s: back at page %d (%u cs)", w->title, n + 1, t1 - t0);
 		set_extent(w);
 		go_to_page(w, n);
 		w->last_page = n;
+		tb_update(w);     /* the page field: last_page is set, so the poll won't */
 	}
 }
 

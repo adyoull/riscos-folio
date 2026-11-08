@@ -127,7 +127,8 @@ typedef struct {
 } folio_mark;
 int folio_make_mark(folio_doc *doc, folio_loc loc, folio_mark *mark);
 /* Finds the page holding the mark's words, searching outwards from where
- * the fraction says it should be. Falls back to the fraction. */
+ * the fraction says it should be: up to 8 pages either way in a re-flowed
+ * book, 2 in a fixed layout (PDF). Falls back to the fraction. */
 int folio_find_mark(folio_doc *doc, const folio_mark *mark, folio_loc *loc);
 
 /* ---- Contents --------------------------------------------------------- */

@@ -138,4 +138,34 @@ rm -f f1.txt f2.txt
 "$AT" "$MUTOOL" clean -E aes-256 -O owner -U "" -P -2080 doc.pdf restricted.pdf
 rm -f m420.txt m595.txt m842.txt
 rm -f p1.txt p2.txt p3.txt s1.txt s2.txt fix.js
+# many.pdf: 40 A5 pages, each starting "Leaf N of forty" (reading places).
+python3 -I - <<'PY'
+names = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen " \
+        "seventeen eighteen nineteen twenty".split()
+def name(n):
+    return names[n - 1] if n <= 20 else ("twenty" if n < 30 else "thirty" if n < 40 else "forty") + \
+        ("" if n % 10 == 0 else "-" + names[n % 10 - 1])
+N = 40
+objs = {1: "<< /Type /Catalog /Pages 2 0 R >>",
+        3: "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"}
+kids = []
+for p in range(1, N + 1):
+    pg, cs = 2 + 2 * p, 3 + 2 * p
+    text = "BT /F1 14 Tf 40 540 Td (Leaf %s of forty, and some words after it.) Tj ET" % name(p)
+    objs[cs] = "<< /Length %d >>\nstream\n%s\nendstream" % (len(text), text)
+    objs[pg] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 420 595] /Resources << /Font << /F1 3 0 R >> >> /Contents %d 0 R >>" % cs
+    kids.append(pg)
+objs[2] = "<< /Type /Pages /Kids [%s] /Count %d >>" % (" ".join("%d 0 R" % k for k in kids), N)
+out = bytearray(b"%PDF-1.4\n")
+offs = {}
+for i in sorted(objs):
+    offs[i] = len(out)
+    out += ("%d 0 obj\n%s\nendobj\n" % (i, objs[i])).encode()
+x = len(out); n = max(objs) + 1
+out += ("xref\n0 %d\n0000000000 65535 f \n" % n).encode()
+for i in range(1, n):
+    out += ("%010d 00000 n \n" % offs[i]).encode()
+out += ("trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (n, x)).encode()
+open("many.pdf", "wb").write(out)
+PY
 ls -l

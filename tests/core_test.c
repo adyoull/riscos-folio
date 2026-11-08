@@ -492,6 +492,33 @@ int main(int argc, char **argv)
 	test_epub(fc, dir);
 	printf("PDF\n");
 	test_pdf(fc, dir);
+	printf("Reading places in a PDF\n");
+	{
+		/* many.pdf: 40 pages, page N starts "Leaf N of forty". The words are
+		 * looked for only near the page the fraction gives: never the whole
+		 * PDF (a big PDF whose text can't be found held the desktop). */
+		folio_doc *m = folio_open(fc, data(dir, "many.pdf"), NULL);
+		CHECK(m != NULL, "open many.pdf: %s", folio_error(fc));
+		if (m) {
+			folio_mark mk;
+			folio_loc l;
+			folio_count_step(m, 1);
+			CHECK(folio_make_mark(m, (folio_loc){ 0, 24 }, &mk) == 0 && !strncmp(mk.text, "Leaf twenty-five", 16),
+				"mark of page 25: '%s'", mk.text);
+			CHECK(folio_find_mark(m, &mk, &l) == 0 && l.page == 24, "page 25 found again (%d)", l.page + 1);
+			mk.fraction = 23 / 40.0f;
+			CHECK(folio_find_mark(m, &mk, &l) == 0 && l.page == 24, "words a page from the estimate: found (%d)",
+				l.page + 1);
+			mk.fraction = 4 / 40.0f;
+			CHECK(folio_find_mark(m, &mk, &l) == 0 && l.page == 4,
+				"words 20 pages away: the estimate, no search of the whole PDF (%d)", l.page + 1);
+			snprintf(mk.text, sizeof mk.text, "Words that are nowhere in it");
+			mk.fraction = 30 / 40.0f;
+			CHECK(folio_find_mark(m, &mk, &l) == 0 && l.page == 30, "words not there: the estimate (%d)",
+				l.page + 1);
+			folio_close(m);
+		}
+	}
 	printf("Abort\n");
 	test_abort(fc, dir);
 	printf("Text ends\n");

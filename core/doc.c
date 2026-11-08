@@ -708,12 +708,16 @@ static int page_has(folio_doc *doc, folio_loc loc, const char *needle)
 	return fz_search_stext_page(doc->ctx, folio_get_text(doc, cp), needle, &mark, &q, 1) > 0;
 }
 
+/* How far either side of the estimated page folio_find_mark looks. */
+#define FIND_MARK_SPAN_REFLOW 8
+#define FIND_MARK_SPAN_FIXED 2
+
 int folio_find_mark(folio_doc *doc, const folio_mark *mark, folio_loc *loc)
 {
 	fz_context *ctx = doc->ctx;
 	folio_begin(doc);
 	fz_try(ctx) {
-		int pages, est, d, len, found = -1;
+		int pages, est, d, len, span, found = -1;
 		char needle[64];
 		if (mark->chapter < 0 || mark->chapter >= doc->nchap)
 			fz_throw(ctx, FZ_ERROR_ARGUMENT, "position not in this book");
@@ -724,8 +728,15 @@ int folio_find_mark(folio_doc *doc, const folio_mark *mark, folio_loc *loc)
 		if (est < 0)
 			est = 0;
 		/* Try the words as saved, then a shorter start in case the new
-		 * layout splits them across a page break. */
-		for (len = 0; found < 0 && len < 2; len++) {
+		 * layout splits them across a page break. Only near the page the
+		 * fraction gives: a re-flowed book moves a few pages at most, and a
+		 * PDF's pages don't move at all. Searching the whole document (as
+		 * this once did when the words weren't found, e.g. in a PDF whose
+		 * fonts give no usable text) loaded and read every page twice,
+		 * holding the desktop meanwhile: too long on a big PDF. */
+		span = doc->reflow ? FIND_MARK_SPAN_REFLOW : FIND_MARK_SPAN_FIXED;
+		/* The shorter start only helps where page breaks move. */
+		for (len = 0; found < 0 && len < (doc->reflow ? 2 : 1); len++) {
 			size_t n = strlen(mark->text);
 			if (n == 0)
 				break;
@@ -740,7 +751,7 @@ int folio_find_mark(folio_doc *doc, const folio_mark *mark, folio_loc *loc)
 				if (sp && sp > needle + 4)
 					*sp = 0;
 			}
-			for (d = 0; found < 0 && d < pages; d++) {
+			for (d = 0; found < 0 && d < pages && d <= span; d++) {
 				if (est - d >= 0 && page_has(doc, (folio_loc){ mark->chapter, est - d }, needle))
 					found = est - d;
 				else if (d > 0 && est + d < pages && page_has(doc, (folio_loc){ mark->chapter, est + d }, needle))
