@@ -1103,8 +1103,12 @@ docwin *docwin_open_password(const char *path, const char *password)
 	bookshelf_note(w->path, 0, 0, folio_title(w->doc), folio_author(w->doc));
 	app_log("opened %s: %s, %d chapter(s), page %gx%g pt", path, folio_format(w->doc),
 		folio_chapters(w->doc), w->page.x1, w->page.y1);
+	app.trace = 8;
+	TRACE("checking the content");
 	security_on_open(w);
+	TRACE("checking signatures");
 	signui_on_open(w);
+	TRACE("open done");
 	/* An XFA form MuPDF can't draw: its fields as a list. */
 	if (w->xfa == FOLIO_XFA_DYNAMIC) {
 		app_log("%s: a dynamic XFA form; its fields are listed", leafname(w->path));
@@ -1417,10 +1421,21 @@ static int measure(docwin *w, int i)
 	}
 	if (w->pw[i] > 0)
 		return 0;
+	unsigned t0 = 0, t1;
+	if (app.trace > 0) {
+		TRACE("measuring page %d", i + 1);
+		_swix(OS_ReadMonotonicTime, _OUT(0), &t0);
+	}
 	if (folio_loc_from_number(w->doc, i, &loc) || folio_page_size(w->doc, loc, &pw, &ph) ||
 			pw < 1 || ph < 1) {
+		TRACE("page %d: no size (%s)", i + 1, folio_error(app.fc));
 		pw = w->page.x1;
 		ph = w->page.y1;
+	}
+	if (app.trace > 0) {
+		_swix(OS_ReadMonotonicTime, _OUT(0), &t1);
+		if (t1 - t0 > 1)
+			TRACE("page %d took %u cs", i + 1, t1 - t0);
 	}
 	w->pw[i] = pw;
 	w->ph[i] = ph;
@@ -1483,12 +1498,15 @@ int docwin_background(void)
 		}
 	}
 
+	TRACE("pass (%d more), worker %s, stage %d", app.trace - 1, worker_idle() ? "idle" : "busy", worker_stage());
 	if (worker_take(&r))
 		take_result(&r);
 
 	_swix(OS_ReadMonotonicTime, _OUT(0), &t0);
 	for (w = windows; w; w = w->next) {
 		int cur = current_page(w);
+		TRACE("%s: page %d of %d, counting %d, place %d", w->title, cur + 1, w->pages, w->counting,
+			w->pending_mark);
 		if (cur != w->last_page) {
 			w->dir = cur > w->last_page ? 1 : -1;
 			w->last_page = cur;
@@ -1528,8 +1546,10 @@ int docwin_background(void)
 			app_log("%s: opened at page %d", w->title, t + 1);
 		}
 		busy |= w->counting || w->pending_mark || w->goto_page >= 0;
+		TRACE("%s: measuring from page %d", w->title, w->sizes_next + 1);
 		if (!app.speech_urgent)
 			busy |= measure_step(w);
+		TRACE("%s: measured to page %d", w->title, w->sizes_next);
 	}
 
 	/* Recognising text takes seconds: a page that needs drawing now comes
@@ -1555,6 +1575,7 @@ int docwin_background(void)
 				w->want_render = 0;
 				continue;
 			}
+			TRACE("%s: asking for page %d", w->title, page + 1);
 			if (submit_page(w, page))
 				break;
 		}
@@ -1580,8 +1601,10 @@ int docwin_background(void)
 				break;
 	/* And some time to work on it. */
 	if (!worker_idle()) {
+		TRACE("worker's turn, stage %d", worker_stage());
 		if (worker_slice(5) && worker_take(&r))
 			take_result(&r);
+		TRACE("back from the worker, stage %d", worker_stage());
 		busy = 1;
 	}
 	for (w = windows; w; w = w->next) {
@@ -1601,6 +1624,9 @@ int docwin_background(void)
 			}
 		}
 	}
+	TRACE("pass done");
+	if (app.trace > 0)
+		app.trace--;
 	return busy;
 }
 

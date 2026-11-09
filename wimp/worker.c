@@ -105,6 +105,15 @@ static void run_cover(void)
 }
 
 /* Draws the current job (in the worker, or in the caller without one). */
+/* What the worker thread is doing, for the log's open trace (written by the
+ * thread, read by the main thread; a plain int is enough for that). */
+static volatile int stage;
+
+int worker_stage(void)
+{
+	return stage;
+}
+
 static void run_job(void)
 {
 	folio_irect tile;
@@ -131,7 +140,9 @@ static void run_job(void)
 	tile.y0 = 0;
 	tile.x1 = job.px_w;
 	tile.y1 = job.px_h;
+	stage = WORKER_LOCKING;
 	core_lock();
+	stage = WORKER_RENDERING;
 	rc = folio_render_tile(job.doc, job.loc, job.ppp, tile, job.mode,
 			FOLIO_RENDER_ANNOTS | (job.kind == JOB_PAGE && job.links ? FOLIO_RENDER_LINKS : 0),
 			(uint32_t *)(job.area + 4 + 11), job.px_w * 4);
@@ -151,10 +162,12 @@ static void *worker_main(void *arg)
 		while (state != QUEUED)
 			pthread_cond_wait(&job_cond, &job_mutex);
 		state = RUNNING;
+		stage = WORKER_STARTED;
 		pthread_mutex_unlock(&job_mutex);
 		run_job();
 		pthread_mutex_lock(&job_mutex);
 		state = DONE;
+		stage = WORKER_FINISHED;
 		pthread_mutex_unlock(&job_mutex);
 	}
 	return NULL;

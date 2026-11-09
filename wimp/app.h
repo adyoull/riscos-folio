@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test72 (08-Nov-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test73 (09-Nov-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -111,6 +111,7 @@ typedef struct {
 	void *sprites;              /* <Folio$Dir>.Sprites, loaded by the Toolbox (1 = none) */
 	choices ch;                 /* the Choices (choices.c) */
 	ObjectId ocr_menu;
+	int trace;                  /* background passes still to log in detail (after opening) */
 	int speech_urgent;          /* reading aloud is close to running out: background
 	                             * work (drawing pages ahead, thumbnails, measuring,
 	                             * text recognition) waits, as the worker thread
@@ -120,6 +121,9 @@ typedef struct {
 extern app_state app;
 
 void app_log(const char *fmt, ...);
+/* The open trace: each step of the first few background passes after a
+ * document opens, so a FolioLog shows where Folio stopped if it stops. */
+#define TRACE(...) do { if (app.trace > 0) app_log("trace: " __VA_ARGS__); } while (0)
 void app_read_mode(void);
 
 /* docwin.c */

@@ -47,6 +47,9 @@ int worker_submit(const render_job *j);
 const render_job *worker_current(void);
 /* Gives the worker up to cs centiseconds; returns 1 if a result is ready. */
 int worker_slice(int cs);
+/* What the worker thread is at, for the log. */
+enum { WORKER_WAITING, WORKER_STARTED, WORKER_LOCKING, WORKER_RENDERING, WORKER_FINISHED };
+int worker_stage(void);
 int worker_take(render_job *out);
 /* Stops and discards the job if it belongs to owner (any job if NULL). */
 void worker_stop_for(void *owner);

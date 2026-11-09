@@ -651,8 +651,10 @@ int main(int argc, char **argv)
 				wake = now + 1;
 			e = _swix(Wimp_PollIdle, _INR(0, 2) | _OUT(0), 0, block, wake, &event);
 		} else {
+			TRACE("poll");
 			e = _swix(Wimp_Poll, _INR(0, 1) | _OUT(0), busy ? 0 : 1, block, &event);
 		}
+		TRACE("event %d", event);
 		if (e) {
 			tbx_report_error(e);
 			continue;
