@@ -503,11 +503,13 @@ int main(int argc, char **argv)
 			folio_mark mk;
 			folio_loc l;
 			folio_count_step(m, 1);
-			CHECK(folio_make_mark(m, (folio_loc){ 0, 24 }, &mk) == 0 && !strncmp(mk.text, "Leaf twenty-five", 16),
-				"mark of page 25: '%s'", mk.text);
+			CHECK(folio_make_mark(m, (folio_loc){ 0, 24 }, &mk) == 0 && !mk.text[0],
+				"mark of page 25: no words saved in a PDF ('%s')", mk.text);
 			CHECK(folio_find_mark(m, &mk, &l) == 0 && l.page == 24, "page 25 found again (%d)", l.page + 1);
+			/* An older build saved the words: they're not searched for. */
+			snprintf(mk.text, sizeof mk.text, "Leaf twenty-five of forty");
 			mk.fraction = 23 / 40.0f;
-			CHECK(folio_find_mark(m, &mk, &l) == 0 && l.page == 24, "words a page from the estimate: found (%d)",
+			CHECK(folio_find_mark(m, &mk, &l) == 0 && l.page == 23, "words a page away: the page saved (%d)",
 				l.page + 1);
 			mk.fraction = 4 / 40.0f;
 			CHECK(folio_find_mark(m, &mk, &l) == 0 && l.page == 4,

@@ -685,12 +685,15 @@ int folio_make_mark(folio_doc *doc, folio_loc loc, folio_mark *mark)
 	fz_context *ctx = doc->ctx;
 	folio_begin(doc);
 	fz_try(ctx) {
-		folio_cpage *cp = folio_get_page(doc, loc);
 		int pages = count_chapter(doc, loc.chapter);
 		memset(mark, 0, sizeof *mark);
 		mark->chapter = loc.chapter;
 		mark->fraction = pages > 0 ? (float)loc.page / pages : 0;
-		page_start_text(ctx, folio_get_text(doc, cp), mark->text, 40);
+		/* The words are only needed where pages move (re-flowed books).
+		 * A PDF's place is its page number, and reading a page's text can
+		 * take seconds on a busy page. */
+		if (doc->reflow)
+			page_start_text(ctx, folio_get_text(doc, folio_get_page(doc, loc)), mark->text, 40);
 	}
 	fz_catch(ctx) {
 		folio_set_error(doc->fc);
@@ -710,7 +713,6 @@ static int page_has(folio_doc *doc, folio_loc loc, const char *needle)
 
 /* How far either side of the estimated page folio_find_mark looks. */
 #define FIND_MARK_SPAN_REFLOW 8
-#define FIND_MARK_SPAN_FIXED 2
 
 int folio_find_mark(folio_doc *doc, const folio_mark *mark, folio_loc *loc)
 {
@@ -727,16 +729,15 @@ int folio_find_mark(folio_doc *doc, const folio_mark *mark, folio_loc *loc)
 			est = pages - 1;
 		if (est < 0)
 			est = 0;
-		/* Try the words as saved, then a shorter start in case the new
-		 * layout splits them across a page break. Only near the page the
-		 * fraction gives: a re-flowed book moves a few pages at most, and a
-		 * PDF's pages don't move at all. Searching the whole document (as
-		 * this once did when the words weren't found, e.g. in a PDF whose
-		 * fonts give no usable text) loaded and read every page twice,
-		 * holding the desktop meanwhile: too long on a big PDF. */
-		span = doc->reflow ? FIND_MARK_SPAN_REFLOW : FIND_MARK_SPAN_FIXED;
-		/* The shorter start only helps where page breaks move. */
-		for (len = 0; found < 0 && len < (doc->reflow ? 2 : 1); len++) {
+		/* In a re-flowed book, try the words as saved, then a shorter
+		 * start in case the new layout splits them across a page break,
+		 * only near the page the fraction gives (a book moves a few pages
+		 * at most). A PDF's pages don't move, so the fraction gives the
+		 * page exactly and nothing is read: searching the whole document
+		 * when the words weren't found held the desktop on a big PDF, and
+		 * even reading the text of 3 pages took 9 s on a Pinebook Pro. */
+		span = FIND_MARK_SPAN_REFLOW;
+		for (len = 0; doc->reflow && found < 0 && len < 2; len++) {
 			size_t n = strlen(mark->text);
 			if (n == 0)
 				break;

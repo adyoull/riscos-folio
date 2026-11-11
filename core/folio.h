@@ -126,9 +126,10 @@ typedef struct {
 	char text[64];      /* UTF-8, first words of the page; may be "" */
 } folio_mark;
 int folio_make_mark(folio_doc *doc, folio_loc loc, folio_mark *mark);
-/* Finds the page holding the mark's words, searching outwards from where
- * the fraction says it should be: up to 8 pages either way in a re-flowed
- * book, 2 in a fixed layout (PDF). Falls back to the fraction. */
+/* Finds the page holding the mark's words in a re-flowed book, searching
+ * up to 8 pages either way from where the fraction says it should be, and
+ * falling back to the fraction. In a fixed layout (PDF) the fraction gives
+ * the page and no text is read; folio_make_mark saves no words there. */
 int folio_find_mark(folio_doc *doc, const folio_mark *mark, folio_loc *loc);
 
 /* ---- Contents --------------------------------------------------------- */
