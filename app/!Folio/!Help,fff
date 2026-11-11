@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test74)
+Folio (test build 0.0.1-test75)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -366,10 +366,13 @@ Pictures to a PDF
 
 Create PDF (joining files)
   Create PDF... on the icon bar menu opens a window to collect files in.
-  Drag PDFs, pictures (JPEG, PNG, GIF, BMP, TIFF, PBM/PGM/PPM) or other
-  documents Folio reads (CBZ, XPS, ebooks) into it, several at a time if
-  you like; a directory dragged in adds its PDFs and pictures in name
-  order. They're listed in the order they'll go. Click one to choose it;
+  Drag PDFs, pictures (JPEG, PNG, GIF, BMP, TIFF, PBM/PGM/PPM), text
+  files or other documents Folio reads (CBZ, XPS, ebooks) into it, several
+  at a time if you like; a directory dragged in adds its PDFs and pictures
+  in name order. A text file (a Text file, as Edit saves it, or one ending
+  /txt) is laid out on A4 pages in fixed-width type, 10 point, with long
+  lines wrapped; a form feed (Ctrl-L) in it starts a new page. So you can
+  put pages of text between pictures. They're listed in the order they'll go. Click one to choose it;
   the buttons at the top move it Up or Down, Remove it from the list (the
   file isn't touched), Sort the list by name (Page2 before Page10) or
   Clear it. Create PDF joins them into one new PDF, which opens in a
@@ -408,8 +411,8 @@ Scanning (network scanners)
   yet, nor are USB scanners.
 
 Turning, deleting, moving and inserting pages (PDFs)
-  Pages on the document menu has Rotate, Delete pages..., Move pages...
-  and Insert pages from file.... Rotate turns the page you pressed Menu
+  Pages on the document menu has Rotate, Delete pages..., Move pages...,
+  Insert pages from file... and Overlay from file.... Rotate turns the page you pressed Menu
   over (or all pages) a quarter turn either way or a half turn: for a page
   fed in the wrong way up, or a landscape page scanned upright. Ctrl-R and
   Ctrl-L turn the page under the pointer clockwise and anticlockwise.
@@ -417,8 +420,19 @@ Turning, deleting, moving and inserting pages (PDFs)
   Menu over; type others if you like (3, or 1-3, 20, 45-50). Move puts
   them, in their order, in front of the page you type, or at the end if
   you leave that empty. Insert pages from file asks which page the new
-  pages go in front of (empty: the end); then drag a PDF, a picture or
-  another document Folio reads into the box, and its pages go in.
+  pages go in front of (empty: the end); then drag a PDF, a picture, a
+  text file or another document Folio reads into the box, and its pages go
+  in.
+  Overlay from file lays the first page of another file over the pages
+  you choose (all of them to start with), or behind them: initials, a
+  reference, a "Copy" mark, headed paper. Draw it in Draw and print it to
+  a PDF the same size as the pages, and it lands exactly where you drew it:
+  its top left goes on each page's top left. To nudge it, type how far to
+  move it right and down in mm (a minus number moves it left or up). In
+  front puts it over the page; Behind puts it under the page's own
+  drawing (a scanned page hides it). Then drag the PDF (or a picture) into
+  the box. It's added once and shared by every page, so it stays sharp and
+  the file only grows by its size.
   Each change is one step: Undo (Ctrl-Z) puts it back, and Save (F3) keeps
   it. Text recognised on a page goes with the page when it moves; on a
   page that's turned it's read again. A PDF whose author doesn't allow its

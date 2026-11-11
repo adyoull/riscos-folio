@@ -504,6 +504,15 @@ int folio_images_to_pdf_res(folio_ctx *fc, const char *const *paths, int n, int 
  * reads (CBZ, XPS, an ebook) drawn into PDF pages, JPEGs kept as they are.
  * 0 or -1 (folio_error names the file that failed). */
 int folio_combine(folio_ctx *fc, const char *const *paths, int n, const char *path);
+/* What a file given to folio_combine_kinds or folio_insert_file_as is:
+ * found from its contents (a PDF, picture or document Folio reads), or
+ * plain text, in the desktop's Latin-1 (as Edit saves it, with RISC OS's
+ * extra characters such as curly quotes at &8C-&9F) or in UTF-8. Text is
+ * laid out on A4 pages: 10 pt fixed-width type, 2/3 inch margins, long
+ * lines wrapped, tabs every 8 columns, form feed for a new page. */
+enum { FOLIO_FILE_AUTO, FOLIO_FILE_TEXT, FOLIO_FILE_TEXT_UTF8 };
+/* folio_combine, with kinds[i] (FOLIO_FILE_*) for each file; NULL: all AUTO. */
+int folio_combine_kinds(folio_ctx *fc, const char *const *paths, const int *kinds, int n, const char *path);
 /* The resolution given to a w x h pixel picture that doesn't say (Netpbm):
  * the usual scanning resolution (96, 150, 200, 300, 400, 600, 1200) that
  * makes it no bigger than 8.5 x 14 inches. */
@@ -517,6 +526,17 @@ int folio_paper_dpi(int w, int h);
 int folio_delete_pages(folio_doc *doc, const unsigned char *sel, int count);
 int folio_move_pages(folio_doc *doc, const unsigned char *sel, int count, int to);
 int folio_insert_file(folio_doc *doc, const char *path, int at);
+/* folio_insert_file, saying what the file is (FOLIO_FILE_*). */
+int folio_insert_file_as(folio_doc *doc, const char *path, int at, int kind);
+/* Lays the first page of another file (a PDF, such as a Draw drawing
+ * printed to PDF, or a picture) over the chosen pages of this PDF, or
+ * under them (behind 1): 1:1, its top left on the page's top left, moved
+ * by dx right and dy up (points). It goes in as a form XObject, one
+ * copy shared by every page, so it stays sharp and the file grows only
+ * once. One change in the journal ("Overlay"). Refused in a signed PDF.
+ * 0 or -1 (folio_error). */
+int folio_overlay(folio_doc *doc, const char *path, const unsigned char *sel, int count, float dx, float dy,
+	int behind);
 /* The chosen pages' text (UTF-8, malloc'd; free()), in reading order: each
  * paragraph one line, a blank line between paragraphs and between pages; a
  * re-flowed book's sentence carried over a page break is joined. Scanned

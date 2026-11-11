@@ -573,7 +573,7 @@ static int allowed(docwin *w, int event)
 		if (!w->perm_form)
 			what = "its form to be filled in";
 		break;
-	case EV_PG_DELETE: case EV_PG_MOVE: case EV_PG_INSERT:
+	case EV_PG_DELETE: case EV_PG_MOVE: case EV_PG_INSERT: case EV_PG_OVERLAY:
 	case EV_ROT_CW: case EV_ROT_ACW: case EV_ROT_180: case EV_ROTALL_CW: case EV_ROTALL_ACW:
 		if (!w->perm_assemble)
 			what = "its pages to be turned, deleted, moved or added to";
@@ -596,7 +596,7 @@ int docwin_allows(docwin *w, int event)
 		return w->perm_copy;
 	case EV_READ_ALOUD: case EV_SPEAK_SEL: return w->perm_access;
 	case EV_FILL_FORM: return w->perm_form;
-	case EV_PG_DELETE: case EV_PG_MOVE: case EV_PG_INSERT:
+	case EV_PG_DELETE: case EV_PG_MOVE: case EV_PG_INSERT: case EV_PG_OVERLAY:
 	case EV_ROT_CW: case EV_ROT_ACW: case EV_ROT_180: case EV_ROTALL_CW: case EV_ROTALL_ACW:
 		return w->perm_assemble;
 	}
@@ -1131,6 +1131,7 @@ void docwin_close(docwin *w)
 	if (pend.w == w)
 		pend.w = NULL;
 	ask_forget(w);
+	overlay_forget(w);
 	find_forget(w);
 	gotopage_forget(w);
 	docinfo_forget(w);
@@ -2829,6 +2830,13 @@ void docwin_event(docwin *w, int code)
 			pageorg_open(w, code == EV_PG_DELETE ? PO_DELETE : code == EV_PG_MOVE ? PO_MOVE : PO_INSERT,
 				app.idb.self_id == app.pages_menu && w->menu_page >= 0 ? w->menu_page : current_page(w));
 		break;
+	case EV_PG_OVERLAY:
+		if (!w->can_annotate)
+			tbx_report("Only a PDF's pages can have another laid over them. Save pages as PDF, or Create PDF, "
+				"makes one.");
+		else if (allowed(w, code))
+			overlay_open(w, current_page(w));
+		break;
 	case EV_COL_USUAL: case EV_COL_YELLOW: case EV_COL_GREEN: case EV_COL_BLUE: case EV_COL_PINK:
 	case EV_COL_RED: case EV_COL_ORANGE: case EV_COL_PURPLE: case EV_COL_GREY:
 		colour_chosen(w, code);
@@ -4185,7 +4193,7 @@ int docwin_organise(docwin *w, int kind, const unsigned char *sel, int to, const
 	core_now();
 	rc = kind == PO_DELETE ? folio_delete_pages(w->doc, sel, w->pages) :
 		kind == PO_MOVE ? folio_move_pages(w->doc, sel, w->pages, to) :
-		folio_insert_file(w->doc, path, to);
+		folio_insert_file_as(w->doc, path, to, app_file_kind(-2, path));
 	if (!rc) {
 		remeasure(w);
 		ocr_win_resync(w->ocr);
@@ -4226,6 +4234,29 @@ int docwin_organise(docwin *w, int kind, const unsigned char *sel, int to, const
 	app_log("%s: pages %s; %d now", w->title, kind == PO_DELETE ? "deleted" : kind == PO_MOVE ? "moved" : "inserted",
 		w->pages);
 	go_to_page(w, first);
+	return 0;
+}
+
+/* Another file's first page laid over (or under) the chosen pages. */
+int docwin_overlay(docwin *w, const char *path, const unsigned char *sel, float dx, float dy, int behind)
+{
+	int rc;
+	if (!is_window(w))
+		return -1;
+	_swix(Hourglass_On, 0);
+	core_now();
+	rc = folio_overlay(w->doc, path, sel, w->pages, dx, dy, behind);
+	core_unlock();
+	_swix(Hourglass_Off, 0);
+	if (rc) {
+		char m[300];
+		snprintf(m, sizeof m, "Folio couldn't lay it over the pages: %s", folio_error(app.fc));
+		tbx_report(m);
+		return -1;
+	}
+	app_log("%s: overlay done", w->title);
+	/* Every page may look different now: draw them again. */
+	page_changed(w, -1);
 	return 0;
 }
 

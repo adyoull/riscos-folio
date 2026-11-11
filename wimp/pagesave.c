@@ -498,6 +498,26 @@ int pagesave_is_picture(int type, const char *leaf)
 	return picture_type(type, leaf);
 }
 
+/* Plain text: typed Text, or untyped/Data ending /txt. type -2: read it. */
+int app_file_kind(int type, const char *path)
+{
+	const char *dot = strrchr(path, '/'), *leaf = strrchr(path, '.');
+	int alphabet = 0;
+	if (type == -2) {
+		int load = 0, obj = 0;
+		type = -1;
+		if (!_swix(OS_File, _INR(0, 1) | _OUT(0) | _OUT(2), 17, path, &obj, &load) && obj == 1 &&
+				((unsigned)load & 0xfff00000u) == 0xfff00000u)
+			type = (load >> 8) & 0xfff;
+	}
+	if (leaf && dot && dot < leaf)
+		dot = NULL;           /* the / is in a directory's name */
+	if (type != 0xfff && !((type == -1 || type == 0xffd) && dot && !strcmp(dot, "/txt")))
+		return FOLIO_FILE_AUTO;
+	_swix(OS_Byte, _INR(0, 1) | _OUT(1), 71, 127, &alphabet);
+	return alphabet == 111 ? FOLIO_FILE_TEXT_UTF8 : FOLIO_FILE_TEXT;
+}
+
 /* Names in reading order: numbers by value (Page2 before Page10), letters
  * without regard to case. */
 static int natural_cmp(const void *pa, const void *pb)

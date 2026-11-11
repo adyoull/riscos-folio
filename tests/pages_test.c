@@ -640,6 +640,150 @@ int main(int argc, char **argv)
 	if (d)
 		folio_close(d);
 
+	printf("Text files in a new PDF\n");
+	{
+		/* Latin-1 as Edit saves it (RISC OS's curly quotes and ellipsis at
+		 * &94, &95, &8C), a tab, a line longer than the page, a form feed. */
+		static const char latin[] =
+			"Line one & <two>\n"
+			"\tTabbed\n"
+			"Long: alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho "
+			"sigma tau upsilon phi chi psi omega and then the very last word ENDWORD\n"
+			"\n"
+			"\x94Quoted\x95 \x8c\n"
+			"\x0c" "After the form feed\n";
+		static const char utf8[] = "Caf\xc3\xa9 \xe2\x80\x98single\xe2\x80\x99\n";
+		const char *files[3] = { OUT "/scan2.jpg", OUT "/note,fff", OUT "/scan2.jpg" };
+		const int kinds[3] = { FOLIO_FILE_AUTO, FOLIO_FILE_TEXT, FOLIO_FILE_AUTO };
+		FILE *f = fopen(OUT "/note,fff", "wb");
+		if (f) {
+			fwrite(latin, 1, sizeof latin - 1, f);
+			fclose(f);
+		}
+		f = fopen(OUT "/utf8,fff", "wb");
+		if (f) {
+			fwrite(utf8, 1, sizeof utf8 - 1, f);
+			fclose(f);
+		}
+		CHECK(folio_combine_kinds(fc, files, kinds, 3, OUT "/withtext.pdf") == 0, "pictures and text: %s",
+			folio_error(fc));
+		d = folio_open(fc, OUT "/withtext.pdf", NULL);
+		CHECK(d != NULL, "open withtext.pdf: %s", folio_error(fc));
+		if (d) {
+			folio_page_text t;
+			folio_quad q[4];
+			int mk[4];
+			CHECK(pages(d) == 4, "picture, 2 text pages (the form feed), picture: %d", pages(d));
+			CHECK(folio_page_size(d, L(1), &pw, &ph) == 0 && pw > 594 && pw < 597 && ph > 840 && ph < 843,
+				"a text page is A4 (%g x %g)", pw, ph);
+			if (folio_get_page_text(d, L(1), &t) == 0) {
+				CHECK(strstr(t.text, "Line one & <two>") != NULL, "escaped characters kept");
+				CHECK(strstr(t.text, "\xe2\x80\x9cQuoted\xe2\x80\x9d \xe2\x80\xa6") != NULL,
+					"RISC OS quotes and ellipsis: '%s'", t.text);
+				CHECK(strstr(t.text, "ENDWORD") != NULL, "the long line's end is there (wrapped)");
+				CHECK(strstr(t.text, "After the form feed") == NULL, "the form feed's text isn't on page 2");
+				folio_page_text_free(&t);
+			}
+			CHECK(folio_find_on_page(d, L(1), "Line one", q, mk, 4) >= 1 && q[0].ul.x > 46 && q[0].ul.x < 52 &&
+				q[0].ul.y > 44 && q[0].ul.y < 60, "the margins (text at %g, %g)", q[0].ul.x, q[0].ul.y);
+			CHECK(folio_find_on_page(d, L(1), "Tabbed", q, mk, 4) >= 1 && q[0].ul.x > 48 + 8 * 5.5f &&
+				q[0].ul.x < 48 + 8 * 6.5f, "a tab is 8 columns (%g)", q[0].ul.x);
+			CHECK(folio_find_on_page(d, L(1), "ENDWORD", q, mk, 4) >= 1 && q[0].ul.y > 80,
+				"the long line wraps (%g)", q[0].ul.y);
+			CHECK(folio_find_on_page(d, L(2), "After the form feed", q, mk, 4) >= 1 && q[0].ul.y < 60,
+				"page 3 starts after the form feed");
+			folio_close(d);
+		}
+		files[1] = OUT "/utf8,fff";
+		{
+			const int k2[1] = { FOLIO_FILE_TEXT_UTF8 };
+			CHECK(folio_combine_kinds(fc, files + 1, k2, 1, OUT "/utf8.pdf") == 0, "UTF-8 text: %s",
+				folio_error(fc));
+		}
+		d = folio_open(fc, OUT "/utf8.pdf", NULL);
+		if (d) {
+			folio_page_text t;
+			if (folio_get_page_text(d, L(0), &t) == 0) {
+				CHECK(strstr(t.text, "Caf\xc3\xa9 \xe2\x80\x98single\xe2\x80\x99") != NULL, "UTF-8 kept: '%s'",
+					t.text);
+				folio_page_text_free(&t);
+			}
+			folio_close(d);
+		}
+		write_five(OUT "/five-t.pdf");
+		d = folio_open(fc, OUT "/five-t.pdf", NULL);
+		if (d) {
+			CHECK(folio_insert_file_as(d, OUT "/note,fff", 1, FOLIO_FILE_TEXT) == 0 && pages(d) == 7,
+				"text inserted after page 1: %s (%d pages)", folio_error(fc), pages(d));
+			CHECK(!strcmp(order(d), "A??BCDE"), "in its place: %s", order(d));
+			folio_close(d);
+		}
+	}
+
+	printf("Overlay\n");
+	{
+		/* over.pdf: one 400 x 200 page with "AY" at 300, 180 (from the
+		 * bottom), like initials printed from Draw. */
+		static const char over[] =
+			"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+			"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n"
+			"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 200] /Contents 4 0 R "
+			"/Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n"
+			"4 0 obj\n<< /Length 37 >>\nstream\nBT /F1 12 Tf 300 180 Td (AY) Tj ET\nendstream\nendobj\n"
+			"5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n"
+			"trailer\n<< /Root 1 0 R >>\n%%EOF\n";
+		unsigned char p13[5] = { 1, 0, 1, 0, 0 }, p2[5] = { 0, 1, 0, 0, 0 }, p4[5] = { 0, 0, 0, 1, 0 },
+			p5[5] = { 0, 0, 0, 0, 1 }, none[5] = { 0 };
+		folio_quad q[4];
+		int mk[4];
+		FILE *f = fopen(OUT "/over.pdf", "wb");
+		if (f) {
+			fwrite(over, 1, sizeof over - 1, f);
+			fclose(f);
+		}
+		write_five(OUT "/five-o.pdf");
+		d = folio_open(fc, OUT "/five-o.pdf", NULL);
+		CHECK(d != NULL, "open five-o.pdf");
+		if (d) {
+			CHECK(folio_overlay(d, OUT "/over.pdf", p13, 5, 0, 0, 0) == 0, "over pages 1 and 3: %s",
+				folio_error(fc));
+			CHECK(folio_find_on_page(d, L(0), "AY", q, mk, 4) == 1 && q[0].ul.x > 299 && q[0].ul.x < 301 &&
+				q[0].ll.y > 19 && q[0].ll.y < 25, "page 1: at the same place (%g, %g)", q[0].ul.x, q[0].ll.y);
+			CHECK(folio_find_on_page(d, L(2), "AY", q, mk, 4) == 1, "page 3 too");
+			CHECK(folio_find_on_page(d, L(1), "AY", q, mk, 4) == 0, "not page 2");
+			CHECK(!strcmp(order(d), "ABCDE"), "the pages' own text kept: %s", order(d));
+			CHECK(folio_undo(d) == 0 && folio_find_on_page(d, L(0), "AY", q, mk, 4) == 0, "undone");
+			CHECK(folio_redo(d) == 0 && folio_find_on_page(d, L(0), "AY", q, mk, 4) == 1, "redone");
+			/* Page 4 is 300 x 300: top left to top left, then 100 left and
+			 * 20 down. */
+			CHECK(folio_overlay(d, OUT "/over.pdf", p4, 5, -100, -20, 0) == 0 &&
+				folio_find_on_page(d, L(3), "AY", q, mk, 4) == 1 && q[0].ul.x > 199 && q[0].ul.x < 201 &&
+				q[0].ll.y > 39 && q[0].ll.y < 45, "page 4, moved (%g, %g)", q[0].ul.x, q[0].ll.y);
+			CHECK(folio_overlay(d, OUT "/over.pdf", p2, 5, 0, 0, 1) == 0 &&
+				folio_find_on_page(d, L(1), "AY", q, mk, 4) == 1, "behind page 2");
+			CHECK(folio_overlay(d, OUT "/scan2.jpg", p5, 5, 0, 0, 0) == 0, "a picture over page 5: %s",
+				folio_error(fc));
+			CHECK(folio_overlay(d, OUT "/over.pdf", none, 5, 0, 0, 0) == -1, "no pages chosen");
+			CHECK(folio_overlay(d, OUT "/nosuch.pdf", p2, 5, 0, 0, 0) == -1 &&
+				strstr(folio_error(fc), "nosuch") != NULL, "a missing file is named: %s", folio_error(fc));
+			CHECK(folio_save_pdf(d, OUT "/five-o.pdf", OUT "/five-o-saved.pdf") == 0, "saved: %s",
+				folio_error(fc));
+			folio_close(d);
+		}
+		d = folio_open(fc, OUT "/five-o-saved.pdf", NULL);
+		CHECK(d && folio_find_on_page(d, L(0), "AY", q, mk, 4) == 1 && folio_find_on_page(d, L(3), "AY", q, mk,
+			4) == 1 && !strcmp(order(d), "ABCDE"), "kept when saved");
+		if (d)
+			folio_close(d);
+		d = folio_open(fc, "tests/sig/certified.pdf", NULL);
+		if (d) {
+			unsigned char one[1] = { 1 };
+			CHECK(folio_overlay(d, OUT "/over.pdf", one, 1, 0, 0, 0) == -1, "a signed PDF is refused: %s",
+				folio_error(fc));
+			folio_close(d);
+		}
+	}
+
 	folio_drop(fc);
 	(void)P;
 	printf("%d checks, %d failed\n", checks, fails);

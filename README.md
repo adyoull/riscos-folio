@@ -5,7 +5,7 @@ It's built on [MuPDF](https://mupdf.com) with a native front end that follows
 the RISC OS Style Guide, and takes its ideas for markup and reading from
 Flexcil. "Folio" is a working name.
 
-Status: **test builds** (0.0.1-test74). It's used day to day on a Raspberry Pi
+Status: **test builds** (0.0.1-test75). It's used day to day on a Raspberry Pi
 running RISC OS 5, but expect rough edges. The design is in
 [`docs/DESIGN.md`](docs/DESIGN.md).
 
@@ -64,9 +64,12 @@ running RISC OS 5, but expect rough edges. The design is in
   A signed PDF's signatures are never changed: its pages, page content and
   password stay as signed, locked fields and certification rules (DocMDP)
   are obeyed, and it's only saved incrementally.
-- **Create PDF** (icon bar menu): drag PDFs, pictures and other documents
-  into a list, put them in order, and join them into one new PDF (PDF pages
-  copied as they are, JPEGs unchanged).
+- **Create PDF** (icon bar menu): drag PDFs, pictures, text files and other
+  documents into a list, put them in order, and join them into one new PDF
+  (PDF pages copied as they are, JPEGs unchanged, text laid out on A4).
+- **Overlay:** lay a page from another file (a drawing printed from Draw to
+  PDF, a picture) over or under a PDF's pages, exactly where it was drawn
+  or moved by so many mm.
 - **Printing** through the printer drivers (pages, copies, scale, sideways,
   draft), in the background, with the window's title showing the page.
 - **Text:** select by dragging, double-click a word, Copy to the global

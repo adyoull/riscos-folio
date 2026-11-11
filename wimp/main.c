@@ -240,8 +240,9 @@ static void create_objects(void)
 	entry(&pm, 0, PG_ROTATE, "Rotate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right to turn the page, or every page, a quarter or half turn.");
 	entry(&pm, 1, PG_DELETE, "Delete pages...", 0, EV_PG_DELETE, "Click to delete pages (this one, or others you type). Undo (^Z) puts them back.");
 	entry(&pm, 2, PG_MOVE, "Move pages...", 0, EV_PG_MOVE, "Click to move pages to another place in the document.");
-	entry(&pm, 3, PG_INSERT, "Insert pages from file...", 0, EV_PG_INSERT, "Click to add the pages of another PDF, a picture or a document, here or at the end.");
-	app.pages_menu = make_menu(&pm, "Pages", 4, 0);
+	entry(&pm, 3, PG_INSERT, "Insert pages from file...", 0, EV_PG_INSERT, "Click to add the pages of another PDF, a picture, a text file or a document, here or at the end.");
+	entry(&pm, 4, PG_OVERLAY, "Overlay from file...", 0, EV_PG_OVERLAY, "Click to lay a page from another file (such as a Draw drawing printed to PDF) over these pages, or under them.");
+	app.pages_menu = make_menu(&pm, "Pages", 5, 0);
 	app.doc_menu = make_menu(&dm, "Folio", ndm, EV_DOCMENU_SHOWN);
 	if (app.speed_menu)
 		check(menu_set_submenu(app.doc_menu, DOC_SPEED, app.speed_menu));
@@ -323,6 +324,11 @@ static int message(int *b)
 	case Message_DataLoad:
 		/* Dropped on the Bookshelf: put it there. */
 		if (bookshelf_data_load(b)) {
+			ack_load(b);
+			break;
+		}
+		/* Dropped in the Overlay box: laid over the PDF's pages. */
+		if (overlay_data_load(b)) {
 			ack_load(b);
 			break;
 		}
@@ -482,6 +488,9 @@ static int toolbox_event(int *b)
 		break;
 	case EV_XF_OK: case EV_XF_CANCEL:
 		xfaui_event(code);
+		break;
+	case EV_OV_CANCEL:
+		overlay_event(code);
 		break;
 	case EV_PO_DELETE: case EV_PO_MOVE: case EV_PO_CANCEL:
 		pageorg_event(code);

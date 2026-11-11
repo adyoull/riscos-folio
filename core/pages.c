@@ -519,70 +519,179 @@ void folio_recount(folio_doc *doc)
 
 /* ---- Files joined into one PDF ------------------------------------------ */
 
-/* Appends every page of the document at path to dst. */
-static void combine_one(fz_context *ctx, pdf_document *dst, const char *path)
+/* RISC OS Latin-1's extra characters at &80-&9F (as Edit and the outline
+ * fonts have them); 0: none there. */
+static const unsigned short riscos_80[32] = {
+	0x20ac, 0x0174, 0x0175, 0, 0, 0x0176, 0x0177, 0, 0, 0, 0, 0, 0x2026, 0x2122, 0x2030, 0x2022,
+	0x2018, 0x2019, 0x2039, 0x203a, 0x201c, 0x201d, 0x201e, 0x2013, 0x2014, 0x2212, 0x0152, 0x0153,
+	0x2020, 0x2021, 0xfb01, 0xfb02
+};
+
+static void put_utf8(fz_context *ctx, fz_buffer *b, int c)
 {
+	char u[8];
+	int n = fz_runetochar(u, c);
+	fz_append_data(ctx, b, u, (size_t)n);
+}
+
+/* Text (n bytes at s, up to a form feed) as an HTML document for MuPDF to
+ * lay out: escaped, tabs to 8 columns, each line its own paragraph with
+ * its spaces kept, so a long one wraps. */
+static fz_buffer *text_to_html(fz_context *ctx, const unsigned char *s, size_t n, int utf8)
+{
+	fz_buffer *out = NULL;
+	fz_var(out);
+	fz_try(ctx) {
+		size_t i;
+		int col = 0, open = 0;
+		out = fz_new_buffer(ctx, n * 2 + 600);
+		fz_append_string(ctx, out, "<html><head><style>"
+			"@page{margin:48pt}"
+			"body{margin:0}"
+			"p{font-family:monospace;font-size:10pt;line-height:12pt;white-space:pre-wrap;margin:0}"
+			"</style></head><body>");
+		for (i = 0; i <= n; i++) {
+			int c = i < n ? s[i] : '\n';
+			if (i == n && !open && col == 0)
+				break;
+			if (!open) {
+				fz_append_string(ctx, out, "<p>");
+				open = 1;
+			}
+			if (c == '\r' && i + 1 < n && s[i + 1] == '\n')
+				continue;
+			if (c == '\n' || c == '\r') {
+				if (col == 0)
+					fz_append_string(ctx, out, "&#160;");   /* keeps an empty line's height */
+				fz_append_string(ctx, out, "</p>");
+				open = 0;
+				col = 0;
+				continue;
+			}
+			if (c == '\t') {
+				do
+					fz_append_byte(ctx, out, ' ');
+				while (++col % 8);
+				continue;
+			}
+			if (c == '&')
+				fz_append_string(ctx, out, "&amp;");
+			else if (c == '<')
+				fz_append_string(ctx, out, "&lt;");
+			else if (c == '>')
+				fz_append_string(ctx, out, "&gt;");
+			else if (c < 32 || c == 127)
+				fz_append_byte(ctx, out, ' ');
+			else if (c < 128)
+				fz_append_byte(ctx, out, c);
+			else if (utf8) {
+				int r;
+				size_t k = (size_t)fz_chartorune(&r, (const char *)s + i);
+				if (k < 1 || i + k > n)
+					k = 1;
+				put_utf8(ctx, out, r);
+				i += k - 1;
+			} else if (c < 0xa0) {
+				put_utf8(ctx, out, riscos_80[c - 0x80] ? riscos_80[c - 0x80] : '?');
+			} else {
+				put_utf8(ctx, out, c);
+			}
+			col++;
+		}
+		fz_append_string(ctx, out, "</body></html>");
+	}
+	fz_catch(ctx) {
+		fz_drop_buffer(ctx, out);
+		fz_rethrow(ctx);
+	}
+	return out;
+}
+
+static void draw_doc_pages(fz_context *ctx, pdf_document *dst, fz_document *doc);
+
+/* A text file as A4 pages: each part between form feeds (^L) starts a new
+ * page. */
+static void text_pages(fz_context *ctx, pdf_document *dst, const char *path, int utf8)
+{
+	fz_buffer *in = NULL, *html = NULL;
+	fz_stream *stm = NULL;
 	fz_document *doc = NULL;
-	pdf_graft_map *map = NULL;
+	fz_var(in);
+	fz_var(html);
+	fz_var(stm);
+	fz_var(doc);
+	fz_try(ctx) {
+		const unsigned char *s, *part, *end, *ff;
+		size_t n;
+		in = fz_read_file(ctx, path);
+		n = fz_buffer_storage(ctx, in, (unsigned char **)&s);
+		end = s + n;
+		for (part = s; part <= end; part = ff + 1) {
+			ff = memchr(part, 12, (size_t)(end - part));
+			if (!ff)
+				ff = end;
+			/* A form feed at the very end makes no empty page. */
+			if (ff == end && part == end && part != s)
+				break;
+			html = text_to_html(ctx, part, (size_t)(ff - part), utf8);
+			stm = fz_open_buffer(ctx, html);
+			doc = fz_open_document_with_stream(ctx, "text/html", stm);
+			fz_layout_document(ctx, doc, 595.28f, 841.89f, 10);
+			draw_doc_pages(ctx, dst, doc);
+			fz_drop_document(ctx, doc);
+			doc = NULL;
+			fz_drop_stream(ctx, stm);
+			stm = NULL;
+			fz_drop_buffer(ctx, html);
+			html = NULL;
+		}
+	}
+	fz_always(ctx) {
+		fz_drop_document(ctx, doc);
+		fz_drop_stream(ctx, stm);
+		fz_drop_buffer(ctx, html);
+		fz_drop_buffer(ctx, in);
+	}
+	fz_catch(ctx)
+		fz_rethrow(ctx);
+}
+
+/* Every page of doc drawn into new PDF pages at the end of dst. */
+static void draw_doc_pages(fz_context *ctx, pdf_document *dst, fz_document *doc)
+{
 	fz_page *page = NULL;
 	fz_buffer *contents = NULL;
 	pdf_obj *res = NULL, *obj = NULL;
 	fz_device *dev = NULL;
 	int i, n;
-	fz_var(doc);
-	fz_var(map);
 	fz_var(page);
 	fz_var(contents);
 	fz_var(res);
 	fz_var(obj);
 	fz_var(dev);
-	if (is_netpbm(ctx, path)) {
-		/* Sized as Pictures to a PDF sizes it. */
-		add_picture_pages(ctx, dst, &path, 1, 0);
-		return;
-	}
+	fz_var(i);
 	fz_try(ctx) {
-		pdf_document *src;
-		doc = fz_open_document(ctx, path);
-		if (fz_needs_password(ctx, doc))
-			fz_throw(ctx, FZ_ERROR_ARGUMENT, "it needs a password: open it and save it without one first");
-		src = pdf_specifics(ctx, doc);
-		if (src) {
-			/* A PDF's pages, as they are. A graft map is for one source. */
-			map = pdf_new_graft_map(ctx, dst);
-			n = pdf_count_pages(ctx, src);
-			for (i = 0; i < n; i++)
-				pdf_graft_mapped_page(ctx, map, -1, src, i);
-		} else {
-			/* Anything else (a picture, CBZ, XPS, an ebook laid out as
-			 * Folio lays it out), drawn into PDF pages: pictures go in
-			 * as they are. */
-			if (fz_is_document_reflowable(ctx, doc))
-				fz_layout_document(ctx, doc, 400, 600, 11);
-			n = fz_count_pages(ctx, doc);
-			for (i = 0; i < n; i++) {
-				fz_rect r;
-				page = fz_load_page(ctx, doc, i);
-				r = fz_bound_page(ctx, page);
-				dev = pdf_page_write(ctx, dst, fz_make_rect(0, 0, r.x1 - r.x0, r.y1 - r.y0), &res, &contents);
-				fz_run_page(ctx, page, dev, fz_translate(-r.x0, -r.y0), NULL);
-				fz_close_device(ctx, dev);
-				fz_drop_device(ctx, dev);
-				dev = NULL;
-				obj = pdf_add_page(ctx, dst, fz_make_rect(0, 0, r.x1 - r.x0, r.y1 - r.y0), 0, res, contents);
-				pdf_insert_page(ctx, dst, -1, obj);
-				pdf_drop_obj(ctx, obj);
-				obj = NULL;
-				pdf_drop_obj(ctx, res);
-				res = NULL;
-				fz_drop_buffer(ctx, contents);
-				contents = NULL;
-				fz_drop_page(ctx, page);
-				page = NULL;
-			}
+		n = fz_count_pages(ctx, doc);
+		for (i = 0; i < n; i++) {
+			fz_rect r;
+			page = fz_load_page(ctx, doc, i);
+			r = fz_bound_page(ctx, page);
+			dev = pdf_page_write(ctx, dst, fz_make_rect(0, 0, r.x1 - r.x0, r.y1 - r.y0), &res, &contents);
+			fz_run_page(ctx, page, dev, fz_translate(-r.x0, -r.y0), NULL);
+			fz_close_device(ctx, dev);
+			fz_drop_device(ctx, dev);
+			dev = NULL;
+			obj = pdf_add_page(ctx, dst, fz_make_rect(0, 0, r.x1 - r.x0, r.y1 - r.y0), 0, res, contents);
+			pdf_insert_page(ctx, dst, -1, obj);
+			pdf_drop_obj(ctx, obj);
+			obj = NULL;
+			pdf_drop_obj(ctx, res);
+			res = NULL;
+			fz_drop_buffer(ctx, contents);
+			contents = NULL;
+			fz_drop_page(ctx, page);
+			page = NULL;
 		}
-		if (n <= 0)
-			fz_throw(ctx, FZ_ERROR_FORMAT, "it has no pages");
 	}
 	fz_always(ctx) {
 		fz_drop_device(ctx, dev);
@@ -590,6 +699,55 @@ static void combine_one(fz_context *ctx, pdf_document *dst, const char *path)
 		pdf_drop_obj(ctx, res);
 		fz_drop_buffer(ctx, contents);
 		fz_drop_page(ctx, page);
+	}
+	fz_catch(ctx)
+		fz_rethrow(ctx);
+}
+
+/* Appends every page of the document at path to dst (kind: FOLIO_FILE_*). */
+static void combine_one(fz_context *ctx, pdf_document *dst, const char *path, int kind)
+{
+	fz_document *doc = NULL;
+	pdf_graft_map *map = NULL;
+	int i, n = 0;
+	fz_var(doc);
+	fz_var(map);
+	fz_var(n);
+	if (kind == FOLIO_FILE_AUTO && is_netpbm(ctx, path)) {
+		/* Sized as Pictures to a PDF sizes it. */
+		add_picture_pages(ctx, dst, &path, 1, 0);
+		return;
+	}
+	fz_try(ctx) {
+		pdf_document *src = NULL;
+		int before = pdf_count_pages(ctx, dst);
+		if (kind == FOLIO_FILE_TEXT || kind == FOLIO_FILE_TEXT_UTF8) {
+			text_pages(ctx, dst, path, kind == FOLIO_FILE_TEXT_UTF8);
+		} else {
+			doc = fz_open_document(ctx, path);
+			if (fz_needs_password(ctx, doc))
+				fz_throw(ctx, FZ_ERROR_ARGUMENT, "it needs a password: open it and save it without one first");
+			src = pdf_specifics(ctx, doc);
+		}
+		if (src) {
+			/* A PDF's pages, as they are. A graft map is for one source. */
+			map = pdf_new_graft_map(ctx, dst);
+			n = pdf_count_pages(ctx, src);
+			for (i = 0; i < n; i++)
+				pdf_graft_mapped_page(ctx, map, -1, src, i);
+		} else if (doc) {
+			/* Anything else (a picture, CBZ, XPS, an ebook laid out as
+			 * Folio lays it out), drawn into PDF pages: pictures go in
+			 * as they are. */
+			if (fz_is_document_reflowable(ctx, doc))
+				fz_layout_document(ctx, doc, 400, 600, 11);
+			draw_doc_pages(ctx, dst, doc);
+		}
+		n = pdf_count_pages(ctx, dst) - before;
+		if (n <= 0)
+			fz_throw(ctx, FZ_ERROR_FORMAT, "it has no pages");
+	}
+	fz_always(ctx) {
 		pdf_drop_graft_map(ctx, map);
 		fz_drop_document(ctx, doc);
 	}
@@ -599,6 +757,11 @@ static void combine_one(fz_context *ctx, pdf_document *dst, const char *path)
 }
 
 int folio_combine(folio_ctx *fc, const char *const *paths, int n, const char *path)
+{
+	return folio_combine_kinds(fc, paths, NULL, n, path);
+}
+
+int folio_combine_kinds(folio_ctx *fc, const char *const *paths, const int *kinds, int n, const char *path)
 {
 	fz_context *ctx = fc->ctx;
 	pdf_document *dst = NULL;
@@ -614,7 +777,7 @@ int folio_combine(folio_ctx *fc, const char *const *paths, int n, const char *pa
 		pdf_write_options opts = pdf_default_write_options;
 		dst = pdf_create_document(ctx);
 		for (i = 0; i < n; i++)
-			combine_one(ctx, dst, paths[i]);
+			combine_one(ctx, dst, paths[i], kinds ? kinds[i] : FOLIO_FILE_AUTO);
 		opts.do_garbage = 1;
 		opts.do_compress = 1;
 		pdf_save_document(ctx, dst, path, &opts);
@@ -862,7 +1025,7 @@ static void move_pages(fz_context *ctx, pdf_document *pdf, const int *idx, int k
 typedef enum { ORG_DELETE, ORG_MOVE, ORG_INSERT } org_kind;
 
 static int organise(folio_doc *doc, org_kind kind, const unsigned char *sel, int count, int to_page,
-		const char *path)
+		const char *path, int file_kind)
 {
 	int to = to_page;
 	fz_context *ctx = doc->ctx;
@@ -912,7 +1075,7 @@ static int organise(folio_doc *doc, org_kind kind, const unsigned char *sel, int
 		} else {
 			/* The file's pages go on the end, then move to where they belong. */
 			int n1, *added;
-			combine_one(ctx, pdf, path);
+			combine_one(ctx, pdf, path, file_kind);
 			n1 = pdf_count_pages(ctx, pdf);
 			if (n1 > n && to < n) {
 				added = fz_malloc_array(ctx, n1 - n, int);
@@ -947,15 +1110,218 @@ static int organise(folio_doc *doc, org_kind kind, const unsigned char *sel, int
 
 int folio_delete_pages(folio_doc *doc, const unsigned char *sel, int count)
 {
-	return organise(doc, ORG_DELETE, sel, count, 0, NULL);
+	return organise(doc, ORG_DELETE, sel, count, 0, NULL, 0);
 }
 
 int folio_move_pages(folio_doc *doc, const unsigned char *sel, int count, int to)
 {
-	return organise(doc, ORG_MOVE, sel, count, to, NULL);
+	return organise(doc, ORG_MOVE, sel, count, to, NULL, 0);
 }
 
 int folio_insert_file(folio_doc *doc, const char *path, int at)
 {
-	return organise(doc, ORG_INSERT, NULL, 0, at, path);
+	return organise(doc, ORG_INSERT, NULL, 0, at, path, FOLIO_FILE_AUTO);
+}
+
+int folio_insert_file_as(folio_doc *doc, const char *path, int at, int kind)
+{
+	return organise(doc, ORG_INSERT, NULL, 0, at, path, kind);
+}
+
+/* ---- One page laid over others (PDFs) ------------------------------------ */
+
+/* A page's visible box in its own user space: CropBox, else MediaBox. */
+static fz_rect page_box(fz_context *ctx, pdf_obj *page)
+{
+	pdf_obj *b = pdf_dict_get_inheritable(ctx, page, PDF_NAME(CropBox));
+	if (!pdf_is_array(ctx, b))
+		b = pdf_dict_get_inheritable(ctx, page, PDF_NAME(MediaBox));
+	fz_rect r = pdf_to_rect(ctx, b), n;
+	n.x0 = fz_min(r.x0, r.x1);
+	n.x1 = fz_max(r.x0, r.x1);
+	n.y0 = fz_min(r.y0, r.y1);
+	n.y1 = fz_max(r.y0, r.y1);
+	return n;
+}
+
+/* The first page of the file at path as a form XObject in dst, its BBox
+ * in *box. A PDF page's own drawing and resources are copied as they are
+ * (unless it's turned: then it's drawn through MuPDF like anything else);
+ * a picture or other document is drawn into PDF. */
+static pdf_obj *overlay_xobject(fz_context *ctx, pdf_document *dst, const char *path, fz_rect *box)
+{
+	fz_document *doc = NULL;
+	fz_page *page = NULL;
+	fz_device *dev = NULL;
+	fz_buffer *contents = NULL;
+	pdf_obj *res = NULL, *xobj = NULL;
+	fz_var(doc);
+	fz_var(page);
+	fz_var(dev);
+	fz_var(xobj);
+	fz_var(contents);
+	fz_var(res);
+	fz_try(ctx) {
+		pdf_document *src;
+		pdf_obj *pobj = NULL;
+		doc = fz_open_document(ctx, path);
+		if (fz_needs_password(ctx, doc))
+			fz_throw(ctx, FZ_ERROR_ARGUMENT, "it needs a password: open it and save it without one first");
+		if (fz_count_pages(ctx, doc) < 1)
+			fz_throw(ctx, FZ_ERROR_FORMAT, "it has no pages");
+		src = pdf_specifics(ctx, doc);
+		if (src) {
+			pobj = pdf_lookup_page_obj(ctx, src, 0);
+			if (pdf_to_int(ctx, pdf_dict_get_inheritable(ctx, pobj, PDF_NAME(Rotate))) % 360)
+				pobj = NULL;
+		}
+		if (pobj) {
+			pdf_obj *c = pdf_dict_get(ctx, pobj, PDF_NAME(Contents));
+			*box = page_box(ctx, pobj);
+			contents = fz_new_buffer(ctx, 1024);
+			if (pdf_is_array(ctx, c)) {
+				int k;
+				for (k = 0; k < pdf_array_len(ctx, c); k++) {
+					fz_buffer *part = pdf_load_stream(ctx, pdf_array_get(ctx, c, k));
+					fz_append_buffer(ctx, contents, part);
+					fz_drop_buffer(ctx, part);
+					fz_append_byte(ctx, contents, '\n');
+				}
+			} else if (pdf_is_stream(ctx, c)) {
+				fz_buffer *part = pdf_load_stream(ctx, c);
+				fz_append_buffer(ctx, contents, part);
+				fz_drop_buffer(ctx, part);
+			}
+			res = pdf_graft_object(ctx, dst, pdf_dict_get_inheritable(ctx, pobj, PDF_NAME(Resources)));
+		} else {
+			fz_rect r;
+			page = fz_load_page(ctx, doc, 0);
+			r = fz_bound_page(ctx, page);
+			*box = fz_make_rect(0, 0, r.x1 - r.x0, r.y1 - r.y0);
+			dev = pdf_page_write(ctx, dst, *box, &res, &contents);
+			fz_run_page(ctx, page, dev, fz_translate(-r.x0, -r.y0), NULL);
+			fz_close_device(ctx, dev);
+		}
+		xobj = pdf_new_xobject(ctx, dst, *box, fz_identity, res, contents);
+	}
+	fz_always(ctx) {
+		fz_drop_device(ctx, dev);
+		fz_drop_buffer(ctx, contents);
+		pdf_drop_obj(ctx, res);
+		fz_drop_page(ctx, page);
+		fz_drop_document(ctx, doc);
+	}
+	fz_catch(ctx) {
+		fz_throw(ctx, FZ_ERROR_FORMAT, "%s: %s", path, fz_caught_message(ctx));
+	}
+	return xobj;
+}
+
+/* A stream object holding the text s. */
+static pdf_obj *add_text_stream(fz_context *ctx, pdf_document *pdf, const char *s)
+{
+	fz_buffer *b = fz_new_buffer_from_copied_data(ctx, (const unsigned char *)s, strlen(s));
+	pdf_obj *o = NULL;
+	fz_try(ctx)
+		o = pdf_add_stream(ctx, pdf, b, NULL, 0);
+	fz_always(ctx)
+		fz_drop_buffer(ctx, b);
+	fz_catch(ctx)
+		fz_rethrow(ctx);
+	return o;
+}
+
+int folio_overlay(folio_doc *doc, const char *path, const unsigned char *sel, int count, float dx, float dy,
+	int behind)
+{
+	fz_context *ctx = doc->ctx;
+	pdf_document *pdf = pdf_specifics(ctx, doc->doc);
+	pdf_obj *xobj = NULL;
+	int op = 0, i, n, done = 0;
+	if (!pdf) {
+		snprintf(doc->fc->err, sizeof doc->fc->err, "only a PDF's pages can have another laid over them");
+		return -1;
+	}
+	folio_forget_pages(doc);
+	fz_var(op);
+	fz_var(xobj);
+	fz_var(done);
+	fz_var(i);
+	fz_try(ctx) {
+		fz_rect box;
+		folio_allow(doc, FOLIO_CHANGE_CONTENT, NULL);
+		pdf_begin_operation(ctx, pdf, "Overlay");
+		op = 1;
+		xobj = overlay_xobject(ctx, pdf, path, &box);
+		n = pdf_count_pages(ctx, pdf);
+		for (i = 0; i < count && i < n; i++) {
+			pdf_obj *page, *res, *xdict, *contents, *arr, *mine;
+			fz_rect to;
+			char name[32], ops[160];
+			int k;
+			if (!sel[i])
+				continue;
+			page = pdf_lookup_page_obj(ctx, pdf, i);
+			own_inherited(ctx, page);
+			res = pdf_dict_get(ctx, page, PDF_NAME(Resources));
+			if (!pdf_is_dict(ctx, res))
+				res = pdf_dict_put_dict(ctx, page, PDF_NAME(Resources), 2);
+			xdict = pdf_dict_get(ctx, res, PDF_NAME(XObject));
+			if (!pdf_is_dict(ctx, xdict))
+				xdict = pdf_dict_put_dict(ctx, res, PDF_NAME(XObject), 1);
+			/* A name of our own, unless the same overlay is already there
+			 * (shared resources: one name serves every page). */
+			for (k = 1;; k++) {
+				pdf_obj *had;
+				snprintf(name, sizeof name, "FolioOverlay%d", k);
+				had = pdf_dict_gets(ctx, xdict, name);
+				if (!had || pdf_objcmp(ctx, had, xobj) == 0)
+					break;
+			}
+			pdf_dict_puts(ctx, xdict, name, xobj);
+			/* Top left on the page's top left, then moved. */
+			to = page_box(ctx, page);
+			fz_snprintf(ops, sizeof ops, "q 1 0 0 1 %g %g cm /%s Do Q\n",
+				to.x0 - box.x0 + dx, to.y1 - box.y1 + dy, name);
+			contents = pdf_dict_get(ctx, page, PDF_NAME(Contents));
+			arr = pdf_new_array(ctx, pdf, 4);
+			fz_try(ctx) {
+				mine = add_text_stream(ctx, pdf, behind ? ops : "q\n");
+				pdf_array_push_drop(ctx, arr, mine);
+				if (pdf_is_array(ctx, contents)) {
+					for (k = 0; k < pdf_array_len(ctx, contents); k++)
+						pdf_array_push(ctx, arr, pdf_array_get(ctx, contents, k));
+				} else if (contents) {
+					pdf_array_push(ctx, arr, contents);
+				}
+				if (!behind) {
+					/* The page's own drawing in q ... Q, so the state it
+					 * leaves doesn't move the overlay. */
+					char after[200];
+					fz_snprintf(after, sizeof after, "Q\n%s", ops);
+					mine = add_text_stream(ctx, pdf, after);
+					pdf_array_push_drop(ctx, arr, mine);
+				}
+				pdf_dict_put(ctx, page, PDF_NAME(Contents), arr);
+			}
+			fz_always(ctx)
+				pdf_drop_obj(ctx, arr);
+			fz_catch(ctx)
+				fz_rethrow(ctx);
+			done++;
+		}
+		if (done == 0)
+			fz_throw(ctx, FZ_ERROR_ARGUMENT, "no pages were chosen");
+		pdf_end_operation(ctx, pdf);
+		op = 0;
+	}
+	fz_always(ctx)
+		pdf_drop_obj(ctx, xobj);
+	fz_catch(ctx) {
+		if (op)
+			pdf_abandon_operation(ctx, pdf);
+		folio_set_error(doc->fc);
+		return -1;
+	}
+	return 0;
 }

@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later
  * Copyright (C) 2026 Andrew Youll */
 /* Create PDF (icon bar menu): a window to collect files in, in order, and
- * join into one new PDF (core folio_combine). Drag PDFs, pictures or other
- * documents into it (several at once arrive one after another, in the
+ * join into one new PDF (core folio_combine). Drag PDFs, pictures, text
+ * files (laid out on A4 pages) or other documents into it (several at once
+ * arrive one after another, in the
  * Filer's order); a directory adds its PDFs and pictures in name order.
  * Click a file to choose it; the toolbar moves it up or down, removes it,
  * sorts the list by name or clears it, and Create makes the PDF: a PDF's
@@ -73,6 +74,8 @@ static const char *kind_of(int type, const char *leaf)
 		return "PDF";
 	if (pagesave_is_picture(type, leaf))
 		return "picture";
+	if (app_file_kind(type, leaf) != FOLIO_FILE_AUTO)
+		return "text";
 	return "document";
 }
 
@@ -151,7 +154,7 @@ static ObjectId create_window(void)
 	/* The Toolbox closes it; Folio opens it (open requests), so the toolbar
 	 * stays a child of it (place_toolbar). */
 	t.flags = 1 << 2;
-	t.help_message = "Drag PDFs, pictures or other documents here, or a directory of them, in the order "
+	t.help_message = "Drag PDFs, pictures, text files or other documents here, or a directory of them, in the order "
 		"they should go. Click one to choose it.";
 	t.max_help = (int)strlen(t.help_message) + 1;
 	t.default_focus = -1;
@@ -329,7 +332,7 @@ void combine_redraw(int *b)
 		if (last > cp.n)
 			last = cp.n;
 		if (cp.n == 0)
-			text_at("Drag PDFs, pictures or other documents here, or a directory of them,", ox + PAD * 2,
+			text_at("Drag PDFs, pictures, text or other files here, or a directory of them,", ox + PAD * 2,
 				top - ROW_H / 2, 0x77777700u, 0xffffff00u, 0),
 			text_at("in the order they should go. Then click Create PDF.", ox + PAD * 2,
 				top - ROW_H - ROW_H / 2, 0x77777700u, 0xffffff00u, 0);
@@ -432,7 +435,12 @@ static void create(void)
 	pagesave_new_path("Combined", out, sizeof out);
 	_swix(Hourglass_On, 0);
 	core_now();
-	ok = folio_combine(app.fc, (const char *const *)cp.path, cp.n, out) == 0;
+	{
+		int kinds[MAX_FILES], i;
+		for (i = 0; i < cp.n; i++)
+			kinds[i] = app_file_kind(cp.type[i], cp.path[i]);
+		ok = folio_combine_kinds(app.fc, (const char *const *)cp.path, kinds, cp.n, out) == 0;
+	}
 	core_unlock();
 	_swix(Hourglass_Off, 0);
 	app_log("create PDF: %d files to %s%s%s", cp.n, out, ok ? "" : ": ", ok ? "" : folio_error(app.fc));

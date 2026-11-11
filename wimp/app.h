@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test74 (11-Nov-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test75 (11-Nov-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -24,7 +24,7 @@ enum {
 	EV_ADD_SHELF, EV_PASSWORD, EV_READ_ALOUD, EV_SPEAK_SEL, EV_PRINT, EV_EXPORT_DRAW, EV_MEASURE,
 	EV_OCR_PAGE = 0x170, EV_OCR_ALL, EV_GOTO, EV_DOCINFO, EV_ANNOTS, EV_OCR_EMBED, EV_SIGN, EV_XFA, EV_DRAW, EV_STAMP_PICTURE, EV_MYSIG_PLACE, EV_MYSIG_SETUP,
 	EV_ROT_CW = 0x180, EV_ROT_ACW, EV_ROT_180, EV_ROTALL_CW, EV_ROTALL_ACW,
-	EV_PG_DELETE = 0x188, EV_PG_MOVE, EV_PG_INSERT,
+	EV_PG_DELETE = 0x188, EV_PG_MOVE, EV_PG_INSERT, EV_PG_OVERLAY,
 	EV_COL_USUAL = 0x190, EV_COL_YELLOW, EV_COL_GREEN, EV_COL_BLUE, EV_COL_PINK, EV_COL_RED,
 	EV_COL_ORANGE, EV_COL_PURPLE, EV_COL_GREY,
 	EV_STAMP_0 = 0x1a0,     /* to 0x1ad: the standard stamps (folio_stamp_name) */
@@ -52,7 +52,8 @@ enum {
 	EV_SC_PICK = 0x2f0,     /* to 0x2ff: the scanner chosen from Find's menu */
 	EV_DR_UNDO = 0x300, EV_DR_CLEAR, EV_DR_KEEP, EV_DR_CLOSE, EV_DR_HIDDEN, EV_DR_STYLE,   /* the Draw window */
 	EV_PIC_CANCEL = 0x308,  /* the Picture box */
-	EV_MS_CLEAR = 0x309, EV_MS_CANCEL, EV_MS_SAVE   /* My signature */
+	EV_MS_CLEAR = 0x309, EV_MS_CANCEL, EV_MS_SAVE,  /* My signature */
+	EV_OV_CANCEL = 0x30c                            /* the Overlay box */
 };
 
 /* View menu entries (component ids). */
@@ -64,7 +65,7 @@ enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6, DOC_SHELF = 7, DOC_PASSWORD =
 	DOC_OCR = 14, DOC_INFO = 15, DOC_SAVE_PAGES = 16, DOC_SAVE_PICTURES = 17,
 	DOC_ROTATE = 18, DOC_SAVE_TEXT = 19, DOC_SIGN = 20 };
 /* Pages submenu entries. */
-enum { PG_ROTATE = 1, PG_DELETE, PG_MOVE, PG_INSERT };
+enum { PG_ROTATE = 1, PG_DELETE, PG_MOVE, PG_INSERT, PG_OVERLAY };
 /* Colour submenu entries: COL_USUAL, then the colours in COL order. */
 enum { COL_USUAL = 1, COL_YELLOW, COL_GREEN, COL_BLUE, COL_PINK, COL_RED, COL_ORANGE,
 	COL_PURPLE, COL_GREY, COL_COUNT };
@@ -297,6 +298,16 @@ void pageorg_open(docwin *w, int kind, int page);   /* page: 0-based, the one to
 void pageorg_event(int code);
 int pageorg_data_load(int *block);
 void pageorg_forget(docwin *w);
+/* The Overlay box (overlay.c): another file's first page over (or under)
+ * the chosen pages. */
+void overlay_open(docwin *w, int page);
+void overlay_event(int code);
+int overlay_data_load(int *block);
+void overlay_forget(docwin *w);
+/* What a file is for the core (FOLIO_FILE_*): plain text by its type
+ * (Text, or untyped/Data ending /txt) in the desktop's alphabet. */
+int app_file_kind(int type, const char *path);
+int docwin_overlay(docwin *w, const char *path, const unsigned char *sel, float dx, float dy, int behind);
 int docwin_organise(docwin *w, int kind, const unsigned char *sel, int to, const char *path);
 /* The Annotations window (annotlist.c). */
 void annotlist_open(docwin *w);
