@@ -128,6 +128,48 @@ build/ro/folio.elf: $(WIMP_SRC:wimp/%.c=build/ro/wimp/%.o) build/ro/libfolio.a b
 	$(RO_CC) $(RO_CFLAGS) -static $(WIMP_SRC:wimp/%.c=build/ro/wimp/%.o) build/ro/libfolio.a build/ro/rostubs.o \
 		$(PVOICE_DIR)/build/ro/libpvoice.a -L$(MU_RO) -Lfontconfig/out/ro/lib -Lcrypto/out/ro/lib $(MU_LIBS) -o $@
 
+# ---- The RiscPC build ------------------------------------------------------
+# For a StrongARM RiscPC (RISC OS 4 or 5): GCCSDK GCC 4.7.4
+# (arm-unknown-riscos: APCS-32, soft float, UnixLib), from RPC_TOOLCHAIN.
+# No plugins: wimp/noplugins.c stands in for speech, speaker, readtext and
+# ocrui. MuPDF from mupdf/build.sh riscpc; mbedTLS and fontconfig from their
+# build.sh riscpc.
+RPC_TOOLCHAIN ?= $(HOME)/rpc/cross
+RPC_CC := $(RPC_TOOLCHAIN)/bin/arm-unknown-riscos-gcc
+RPC_AR := $(RPC_TOOLCHAIN)/bin/arm-unknown-riscos-ar
+RPC_CFLAGS := -O2 -march=armv4 -mtune=strongarm -D_FILE_OFFSET_BITS=64 -DFOLIO_RISCPC
+MU_RPC := $(MUPDF)/build/rpc-release-tofu-tofu_cjk
+RPC_MU_LIBS := -Wl,--start-group -lfontconfig -lexpat -lftextra -lmupdf -lmupdf-third -lfzhb -lmbedfolio -lstdc++ -lm -Wl,--end-group
+RPC_WIMP_SRC := $(filter-out wimp/speech.c wimp/speaker.c wimp/readtext.c wimp/ocrui.c,$(WIMP_SRC)) wimp/noplugins.c
+
+build/rpc/fonts.o: core/fonts.c $(CORE_HDR)
+	@mkdir -p $(dir $@)
+	$(RPC_CC) $(RPC_CFLAGS) $(WARN) $(INC) -DFOLIO_FONTCONFIG -Ifontconfig/out/rpc/include -c $< -o $@
+build/rpc/sign.o: core/sign.c core/adobe_ca.h $(CORE_HDR)
+	@mkdir -p $(dir $@)
+	$(RPC_CC) $(RPC_CFLAGS) $(WARN) $(INC) $(MBED_INC) -c $< -o $@
+build/rpc/escl.o: core/escl.c core/escl.h
+	@mkdir -p $(dir $@)
+	$(RPC_CC) $(RPC_CFLAGS) $(WARN) -Ifontconfig/out/rpc/include -c $< -o $@
+build/rpc/%.o: core/%.c $(CORE_HDR)
+	@mkdir -p $(@D)
+	$(RPC_CC) $(RPC_CFLAGS) $(WARN) $(INC) -c $< -o $@
+build/rpc/cJSON.o: third/cjson/cJSON.c third/cjson/cJSON.h
+	@mkdir -p $(@D)
+	$(RPC_CC) $(RPC_CFLAGS) -c $< -o $@
+build/rpc/libfolio.a: $(call CORE_OBJ,rpc)
+	rm -f $@; $(RPC_AR) rcs $@ $^
+build/rpc/core_test.elf: tests/core_test.c build/rpc/libfolio.a
+	$(RPC_CC) $(RPC_CFLAGS) $(WARN) $(INC) -static $< build/rpc/libfolio.a \
+		-L$(MU_RPC) -Lfontconfig/out/rpc/lib -Lcrypto/out/rpc/lib $(RPC_MU_LIBS) -o $@
+build/rpc/wimp/%.o: wimp/%.c $(WIMP_HDR)
+	@mkdir -p $(@D)
+	$(RPC_CC) $(RPC_CFLAGS) $(WARN) $(INC) -Iwimp -c $< -o $@
+build/rpc/folio.elf: $(RPC_WIMP_SRC:wimp/%.c=build/rpc/wimp/%.o) build/rpc/libfolio.a
+	$(RPC_CC) $(RPC_CFLAGS) -static $(RPC_WIMP_SRC:wimp/%.c=build/rpc/wimp/%.o) build/rpc/libfolio.a \
+		-L$(MU_RPC) -Lfontconfig/out/rpc/lib -Lcrypto/out/rpc/lib $(RPC_MU_LIBS) -o $@
+riscpc: build/rpc/folio.elf
+
 # !Folio in build/app, and a zip with RISC OS filetypes.
 app: build/ro/folio.elf
 	RISCOS_TOOLCHAIN=$(RISCOS_TOOLCHAIN) $(RCD_DIR)/checks/check-all.sh build/ro/folio.elf
@@ -334,4 +376,4 @@ ci:
 clean:
 	rm -rf build tests/data/*.epub tests/data/*.pdf tests/data/stamp tests/out
 
-.PHONY: all app plugin ocrplugin cjkpack guide-zip test check ci clean
+.PHONY: riscpc all app plugin ocrplugin cjkpack guide-zip test check ci clean

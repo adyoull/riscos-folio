@@ -59,7 +59,7 @@ build() {   # name cc ar host cflags mupdf-build-dir
 	local name=$1 cc=$2 ar=$3 host=$4 cflags=$5 mubuild=$6
 	local out=$HERE/out/$name b=$SRC/$name
 	# No build paths in the program (assert() messages name their file).
-	cflags="$cflags -ffile-prefix-map=$HERE/=fontconfig/ -DNDEBUG"
+	cflags="$cflags ${PREFIX_MAP--ffile-prefix-map=$HERE/=fontconfig/} -DNDEBUG"
 	rm -rf "$b"
 	mkdir -p "$b" "$out/include" "$out/lib"
 
@@ -127,6 +127,14 @@ if [ "$WHAT" = all ] || [ "$WHAT" = riscos ]; then
 	build ro arm-riscos-gnueabihf-gcc arm-riscos-gnueabihf-ar arm-riscos-gnueabihf \
 		"-O2 -mfpu=vfpv3 -mfloat-abi=hard -fstack-clash-protection -D_FILE_OFFSET_BITS=64" \
 		ro-release-tesseract-tofu_cjk
+fi
+# fontconfig/build.sh riscpc (not part of "all"): GCCSDK GCC 4.7.4, from
+# RPC_TOOLCHAIN, against mupdf/build.sh riscpc.
+if [ "$WHAT" = riscpc ]; then
+	R=${RPC_TOOLCHAIN:-$HOME/rpc/cross}/bin
+	PREFIX_MAP= PATH=$R:$PATH build rpc $R/arm-unknown-riscos-gcc $R/arm-unknown-riscos-ar arm-unknown-riscos \
+		"-O2 -march=armv4 -mtune=strongarm -std=gnu99 -D_FILE_OFFSET_BITS=64" \
+		rpc-release-tofu-tofu_cjk
 fi
 if [ "$WHAT" = all ] || [ "$WHAT" = linuxarm ]; then
 	build al arm-linux-gnueabihf-gcc arm-linux-gnueabihf-ar arm-linux-gnueabihf \

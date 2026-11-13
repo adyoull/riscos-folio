@@ -35,7 +35,7 @@ build() {   # target, cc, ar, cflags
 	O=$HERE/out/$T
 	rm -rf "$O/obj" && mkdir -p "$O/obj" "$O/lib"
 	for f in $LIBSRC; do
-		$CC $FLAGS -ffile-prefix-map="$SRC"=mbedtls -I"$SRC/include" $CFG -c "$f" -o "$O/obj/$(basename "$f" .c).o"
+		$CC $FLAGS ${PREFIX_MAP--ffile-prefix-map="$SRC"=mbedtls} -I"$SRC/include" $CFG -c "$f" -o "$O/obj/$(basename "$f" .c).o"
 	done
 	rm -f "$O/lib/libmbedfolio.a"
 	$AR rcs "$O/lib/libmbedfolio.a" "$O"/obj/*.o
@@ -43,6 +43,13 @@ build() {   # target, cc, ar, cflags
 	echo "crypto/build.sh: $O/lib/libmbedfolio.a"
 }
 
+# crypto/build.sh riscpc: only the RiscPC build (GCCSDK GCC 4.7.4, from
+# RPC_TOOLCHAIN), for make riscpc.
+if [ "${1:-}" = riscpc ]; then
+	R=${RPC_TOOLCHAIN:-$HOME/rpc/cross}/bin/arm-unknown-riscos-
+	PREFIX_MAP= build rpc ${R}gcc ${R}ar "-O2 -march=armv4 -mtune=strongarm -std=gnu99"
+	exit 0
+fi
 build ro arm-riscos-gnueabihf-gcc arm-riscos-gnueabihf-ar \
 	"-O2 -mfpu=vfpv3 -mfloat-abi=hard -fstack-clash-protection"
 build al arm-linux-gnueabihf-gcc arm-linux-gnueabihf-ar \
