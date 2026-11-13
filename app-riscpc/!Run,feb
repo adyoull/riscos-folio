@@ -1,0 +1,39 @@
+| !Run for Folio (RiscPC build), a reader for PDF and ebook files.
+| Built for a StrongARM RiscPC with GCCSDK GCC 4.7.4 (UnixLib, soft float),
+| statically linked with MuPDF 1.28.5, and converted to an Absolute file.
+| It has no plugins: no reading aloud and no text recognition.
+Set Folio$Dir <Obey$Dir>
+IconSprites <Folio$Dir>.!Sprites
+
+| --- Processor -------------------------------------------------------
+| The program uses StrongARM (ARMv4) instructions, which an ARM610 or ARM710
+| doesn't have.
+RMEnsure UtilityModule 3.50 Error Folio needs RISC OS 3.5 or later.
+
+| --- Runtime support -------------------------------------------------
+| GCCSDK's SharedUnixLibrary, in !Folio; a newer copy in !System wins.
+RMEnsure SharedUnixLibrary 1.16 IfThere System:Modules.SharedULib Then RMLoad System:Modules.SharedULib
+RMEnsure SharedUnixLibrary 1.16 RMLoad <Folio$Dir>.SharedULib
+RMEnsure SharedUnixLibrary 1.16 Error Folio needs SharedUnixLibrary 1.16 or later.
+
+| --- Toolbox ---------------------------------------------------------
+RMEnsure Toolbox 0 RMLoad System:Modules.Toolbox.Toolbox
+RMEnsure Toolbox 0 Error Folio needs the Toolbox module Toolbox (in !System, or the RISC OS 5 ROM).
+RMEnsure Window 0 RMLoad System:Modules.Toolbox.Window
+RMEnsure Window 0 Error Folio needs the Toolbox module Window (in !System, or the RISC OS 5 ROM).
+RMEnsure Menu 0 RMLoad System:Modules.Toolbox.Menu
+RMEnsure Menu 0 Error Folio needs the Toolbox module Menu (in !System, or the RISC OS 5 ROM).
+RMEnsure Iconbar 0 RMLoad System:Modules.Toolbox.Iconbar
+RMEnsure Iconbar 0 Error Folio needs the Toolbox module Iconbar (in !System, or the RISC OS 5 ROM).
+RMEnsure ProgInfo 0 RMLoad System:Modules.Toolbox.ProgInfo
+RMEnsure ProgInfo 0 Error Folio needs the Toolbox module ProgInfo (in !System, or the RISC OS 5 ROM).
+| Only for Print... (Folio says so then if it's missing).
+RMEnsure PrintDbox 0 IfThere System:Modules.Toolbox.PrintDbox Then RMLoad System:Modules.Toolbox.PrintDbox
+
+| --- Memory ---------------------------------------------------------
+| MuPDF's cache and the page pictures go in a dynamic area, "Folio Heap"
+| (up to 64 MB), removed when Folio quits. The WimpSlot only holds the
+| program itself (about 11 MB). Choices go in <Choices$Write>.Folio.
+WimpSlot -min 11264K -max 11264K
+| A log of what Folio did goes in <Wimp$ScrapDir>.FolioLog.
+Run <Folio$Dir>.!RunImage %*0

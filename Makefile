@@ -137,6 +137,9 @@ build/ro/folio.elf: $(WIMP_SRC:wimp/%.c=build/ro/wimp/%.o) build/ro/libfolio.a b
 RPC_TOOLCHAIN ?= $(HOME)/rpc/cross
 RPC_CC := $(RPC_TOOLCHAIN)/bin/arm-unknown-riscos-gcc
 RPC_AR := $(RPC_TOOLCHAIN)/bin/arm-unknown-riscos-ar
+# GCCSDK's SharedUnixLibrary module (libunixlib/sul from its build), kept
+# with the toolchain as riscos/SharedULib,ffa.
+RPC_SUL ?= $(RPC_TOOLCHAIN)/riscos/SharedULib,ffa
 RPC_CFLAGS := -O2 -march=armv4 -mtune=strongarm -D_FILE_OFFSET_BITS=64 -DFOLIO_RISCPC
 MU_RPC := $(MUPDF)/build/rpc-release-tofu-tofu_cjk
 RPC_MU_LIBS := -Wl,--start-group -lfontconfig -lexpat -lftextra -lmupdf -lmupdf-third -lfzhb -lmbedfolio -lstdc++ -lm -Wl,--end-group
@@ -169,6 +172,28 @@ build/rpc/folio.elf: $(RPC_WIMP_SRC:wimp/%.c=build/rpc/wimp/%.o) build/rpc/libfo
 	$(RPC_CC) $(RPC_CFLAGS) -static $(RPC_WIMP_SRC:wimp/%.c=build/rpc/wimp/%.o) build/rpc/libfolio.a \
 		-L$(MU_RPC) -Lfontconfig/out/rpc/lib -Lcrypto/out/rpc/lib $(RPC_MU_LIBS) -o $@
 riscpc: build/rpc/folio.elf
+# !Folio for a RiscPC, and Folio-RiscPC-<version>.zip: the normal !Folio's
+# files (help, guide, fonts, templates) with the RiscPC !Run and !RunImage,
+# GCCSDK's SharedULib, and no Plugins or PThreadTicker.
+riscpc-app: build/rpc/folio.elf
+	rm -rf build/rpcapp && mkdir -p build/rpcapp
+	cp -r app/!Folio build/rpcapp/
+	cp 'app-riscpc/!Run,feb' 'build/rpcapp/!Folio/!Run,feb'
+	$(RPC_TOOLCHAIN)/bin/arm-unknown-riscos-strip -o build/rpc/folio.stripped build/rpc/folio.elf
+	$(RPC_TOOLCHAIN)/bin/elf2aif build/rpc/folio.stripped 'build/rpcapp/!Folio/!RunImage,ff8'
+	cp $(RPC_SUL) 'build/rpcapp/!Folio/SharedULib,ffa'
+	$(PY_PILLOW) tools/mksprites.py 'build/rpcapp/!Folio/!Sprites,ff9'
+	$(PY_PILLOW) tools/mktoolsprites.py 'build/rpcapp/!Folio/Sprites,ff9'
+	cp COPYING 'build/rpcapp/!Folio/COPYING,fff'
+	cp third/cjson/LICENSE 'build/rpcapp/!Folio/cJSONLicence,fff'
+	cp fontconfig/src/rpc/fontconfig-2.14.1/COPYING 'build/rpcapp/!Folio/FontconfigLicence,fff'
+	cp fontconfig/src/rpc/libexpat-R_2_2_9/expat/COPYING 'build/rpcapp/!Folio/ExpatLicence,fff'
+	cp crypto/out/LICENSE 'build/rpcapp/!Folio/MbedTLSLicence,fff'
+	mkdir -p 'build/rpcapp/!Folio/Guide/images'
+	cp docs/guide/index.html 'build/rpcapp/!Folio/Guide/index.html,faf'
+	for f in docs/guide/images/*.png; do [ -e "$$f" ] && cp "$$f" "build/rpcapp/!Folio/Guide/images/$$(basename $$f),b60"; done; true
+	python3 $(RCD_DIR)/package/rozip.py build/Folio-RiscPC-$(VERSION).zip -C build/rpcapp '!Folio'
+	@ls -l build/Folio-RiscPC-$(VERSION).zip
 
 # !Folio in build/app, and a zip with RISC OS filetypes.
 app: build/ro/folio.elf
@@ -376,4 +401,4 @@ ci:
 clean:
 	rm -rf build tests/data/*.epub tests/data/*.pdf tests/data/stamp tests/out
 
-.PHONY: riscpc all app plugin ocrplugin cjkpack guide-zip test check ci clean
+.PHONY: riscpc riscpc-app all app plugin ocrplugin cjkpack guide-zip test check ci clean

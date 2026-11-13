@@ -28,7 +28,11 @@ const char *const __dynamic_da_name = "Folio Heap";
  * the heap and mmaps: MuPDF's store (64 MB), page pictures (48 MB, more only
  * for pages on screen), thumbnails (16 MB), the voice while reading aloud
  * (about 65 MB), text recognition while it runs (up to about 50 MB). */
+#ifdef FOLIO_RISCPC
+int __dynamic_da_max_size = 64 * 1024 * 1024;   /* a RiscPC has 256 MB at most */
+#else
 int __dynamic_da_max_size = 128 * 1024 * 1024;
+#endif
 
 app_state app;
 
