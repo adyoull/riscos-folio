@@ -50,6 +50,9 @@ fi
 # allocator, built with byte structure rounding (APCS rounds structures to
 # 4 bytes; HarfBuzz checks its font table layouts). MuPDF uses only
 # HarfBuzz's long-standing API (buffers, hb_shape, hb_ft_font_create).
+# GCC 4.7's soft float stores a double's high word first (FPA order), so
+# lcms2's fast floor, which reads the low word through a union, is turned off
+# (CMS_DONT_USE_FAST_FLOOR): with it, DeviceGray black came out light grey.
 if [ "$WHAT" = riscpc ]; then
 	RPC_TOOLCHAIN=${RPC_TOOLCHAIN:-$HOME/rpc/cross}
 	P=$RPC_TOOLCHAIN/bin/arm-unknown-riscos-
@@ -68,7 +71,7 @@ if [ "$WHAT" = riscpc ]; then
 		USE_SYSTEM_HARFBUZZ=yes SYS_HARFBUZZ_LIBS= \
 		SYS_HARFBUZZ_CFLAGS="-I$HB/src -include $SRC/thirdparty/harfbuzz/src/hb-rename.h" \
 		CC=${P}gcc CXX=${P}g++ AR=${P}ar LD=${P}ld RANLIB=${P}ranlib \
-		XCFLAGS="$RPC_FLAGS -std=gnu99 -D_FILE_OFFSET_BITS=64" LDFLAGS="-static" libs
+		XCFLAGS="$RPC_FLAGS -std=gnu99 -D_FILE_OFFSET_BITS=64 -DCMS_DONT_USE_FAST_FLOOR" LDFLAGS="-static" libs
 	cp "$OUT/hb19/libfzhb.a" "$OUT/libfzhb.a"
 fi
 if [ "$WHAT" = all ] || [ "$WHAT" = linuxarm ]; then

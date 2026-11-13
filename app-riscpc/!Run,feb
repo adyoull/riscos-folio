@@ -27,6 +27,10 @@ RMEnsure Iconbar 0 RMLoad System:Modules.Toolbox.Iconbar
 RMEnsure Iconbar 0 Error Folio needs the Toolbox module Iconbar (in !System, or the RISC OS 5 ROM).
 RMEnsure ProgInfo 0 RMLoad System:Modules.Toolbox.ProgInfo
 RMEnsure ProgInfo 0 Error Folio needs the Toolbox module ProgInfo (in !System, or the RISC OS 5 ROM).
+RMEnsure SaveAs 0 RMLoad System:Modules.Toolbox.SaveAs
+RMEnsure SaveAs 0 Error Folio needs the Toolbox module SaveAs (in !System, or the RISC OS 5 ROM).
+RMEnsure DCS 0 RMLoad System:Modules.Toolbox.DCS_Quit
+RMEnsure DCS 0 Error Folio needs the Toolbox module DCS (in !System, or the RISC OS 5 ROM).
 | Only for Print... (Folio says so then if it's missing).
 RMEnsure PrintDbox 0 IfThere System:Modules.Toolbox.PrintDbox Then RMLoad System:Modules.Toolbox.PrintDbox
 
