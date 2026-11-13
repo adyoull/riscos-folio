@@ -61,4 +61,7 @@ int core_trylock(void);
 /* Stops the worker's page, then takes the lock (main thread). */
 void core_now(void);
 
+/* Frees a JOB_PAGE sprite area (docwin.c's; free() where there's none). */
+void page_area_free(int *area);
+
 #endif

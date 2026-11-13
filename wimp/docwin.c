@@ -21,7 +21,9 @@
 #include <swis.h>
 
 #define GAP 32                    /* OS units around and between pages */
-#define CACHE_BYTES (48 << 20)    /* page sprites (more for pages on screen) */
+/* Page sprites (more for pages on screen): 48 MB, or on the RiscPC build an
+ * eighth of the RAM (app.cache_bytes, set in main.c). */
+#define CACHE_BYTES (app.cache_bytes ? app.cache_bytes : (size_t)48 << 20)
 #define CACHE_SLOTS 32
 #define MIN_ZOOM 0.25f
 #define MAX_ZOOM 4.0f
@@ -54,7 +56,13 @@ struct docwin {
 	int want_render;          /* a visible page was drawn as a placeholder */
 	int dir;                  /* +1 reading forwards, -1 backwards */
 	int last_page;
-	int fail_page, fail_gen;  /* a page that failed, not to be retried */
+	int fail[4], fail_gen;    /* pages that failed, not to be retried; -1 none */
+	char fail_mem[4];         /* ... for want of memory: tried again later */
+	int fail_next;
+	int mem_retry;            /* page drawn again after running out of memory; -1 none */
+	int vis0, vis1;           /* the pages wanted_page last found showing */
+	int want_shown;           /* the page wanted_page returned is showing */
+	int hold0, hold1;         /* no reading ahead while these are showing */
 	int pending_mark;         /* mark to go to once its chapter is counted */
 	int goto_page;            /* page asked for on opening, once counted; -1 none */
 	folio_mark mark;
@@ -281,7 +289,7 @@ static void cache_drop(cache_entry *c)
 {
 	if (c->area) {
 		cache_bytes -= c->bytes;
-		free(c->area);
+		page_area_free(c->area);
 	}
 	memset(c, 0, sizeof *c);
 }
@@ -335,14 +343,56 @@ static cache_entry *cache_slot(size_t bytes)
 	}
 }
 
+#ifdef FOLIO_RISCPC
+/* On a Risc PC each page's sprite is a dynamic area of its own (named
+ * "Folio page"), given back to RISC OS when it's dropped. In the C heap,
+ * freed pages stayed in the heap, in pieces between MuPDF's things: with
+ * 64 MB, RISC OS ran out of free memory with megabytes free in the heap,
+ * and pages came out blank. The area's number is kept in front. */
+static int *page_alloc(size_t bytes)
+{
+	int num, base;
+	if (_swix(OS_DynamicArea, _INR(0, 8) | _OUT(1) | _OUT(3), 0, -1, (int)bytes + 16, -1,
+			0x80 /* not draggable */, (int)bytes + 16, 0, 0, "Folio page", &num, &base))
+		return NULL;
+	*(int *)base = num;
+	return (int *)base + 4;
+}
+
+void page_area_free(int *area)
+{
+	if (area)
+		_swix(OS_DynamicArea, _INR(0, 1), 1, area[-4]);
+}
+
+/* Empties MuPDF's cache and gives the top of the C heap back to RISC OS. */
+extern int malloc_trim(size_t pad);
+static void trim_memory(void)
+{
+	core_lock();
+	folio_trim(app.fc);
+	core_unlock();
+	malloc_trim(0);
+}
+#else
+#define page_alloc malloc
+void page_area_free(int *area) { free(area); }
+static void trim_memory(void)
+{
+	core_lock();
+	folio_trim(app.fc);
+	core_unlock();
+}
+#endif
+
 /* A sprite area for one page at w's size (PRM p1177-1178): the worker
- * draws into its pixels. */
-static int *new_area(int px_w, int px_h, size_t *bytes_out)
+ * draws into its pixels. A page's own (is_page) goes through page_alloc. */
+static int *new_area_for(int px_w, int px_h, size_t *bytes_out, int is_page)
 {
 	size_t img = (size_t)px_w * 4 * px_h;
 	size_t bytes = 16 + 44 + img;
 	int dpi = 180 >> app.xeig;
-	int *area = malloc(bytes), *spr;
+	int *area = is_page ? page_alloc(bytes) : malloc(bytes), *spr;
 	if (!area)
 		return NULL;
 	area[0] = (int)bytes;
@@ -365,9 +415,52 @@ static int *new_area(int px_w, int px_h, size_t *bytes_out)
 	return area;
 }
 
+static int *new_area(int px_w, int px_h, size_t *bytes_out)
+{
+	return new_area_for(px_w, px_h, bytes_out, 0);
+}
+
 static int *new_page_area(docwin *w, int page, size_t *bytes_out)
 {
-	return new_area(px_w(w, page), px_h(w, page), bytes_out);
+	return new_area_for(px_w(w, page), px_h(w, page), bytes_out, 1);
+}
+
+/* The computer's free memory in K, for the log (dynamic area 6 is the
+ * free pool). */
+static int free_k(void)
+{
+	int bytes = 0;
+	_swix(OS_ReadDynamicArea, _IN(0) | _OUT(1), 6, &bytes);
+	return bytes >> 10;
+}
+
+static void redraw_page(docwin *w, int i);
+
+/* Notes that page 'page' of w couldn't be drawn at layout 'gen', so it
+ * isn't tried again until the layout changes (or, for want of memory,
+ * until other pages show). Several are kept: with only one, two pages
+ * that fail take turns for ever. */
+static void mark_failed(docwin *w, int page, int gen, int mem)
+{
+	if (w->fail_gen != gen) {
+		w->fail[0] = w->fail[1] = w->fail[2] = w->fail[3] = -1;
+		w->fail_gen = gen;
+	}
+	w->fail[w->fail_next] = page;
+	w->fail_mem[w->fail_next] = (char)mem;
+	w->fail_next = (w->fail_next + 1) & 3;
+}
+
+/* 1 if page i failed at this layout, 2 if for want of memory; else 0. */
+static int page_failed(docwin *w, int i)
+{
+	int k;
+	if (w->fail_gen != w->gen)
+		return 0;
+	for (k = 0; k < 4; k++)
+		if (w->fail[k] == i)
+			return w->fail_mem[k] ? 2 : 1;
+	return 0;
 }
 
 /* Hands thumbnail 'page' of w to the worker. */
@@ -405,11 +498,32 @@ static int submit_page(docwin *w, int page)
 	if (folio_loc_from_number(w->doc, page, &j.loc))
 		return 0;      /* not counted yet */
 	j.area = new_page_area(w, page, &j.bytes);
+	if (!j.area && !w->want_shown) {
+		/* No memory to read ahead: stop reading ahead until the pages
+		 * showing change, rather than pushing out the pages that are. */
+		app_log("page %d: no memory to read ahead", page + 1);
+		w->hold0 = w->vis0;
+		w->hold1 = w->vis1;
+		return 0;
+	}
+	if (!j.area) {
+		/* Out of memory for a page that's showing: let go of pages that
+		 * aren't showing and of MuPDF's cache, and try once more (the worker
+		 * is idle here). */
+		int i;
+		for (i = 0; i < CACHE_SLOTS; i++)
+			if (cache[i].area && !on_screen(&cache[i]))
+				cache_drop(&cache[i]);
+		trim_memory();
+		j.area = new_page_area(w, page, &j.bytes);
+		if (j.area)
+			app_log("page %d: made room for a %dx%d sprite", page + 1, px_w(w, page), px_h(w, page));
+	}
 	if (!j.area) {
 		/* Too big to draw whole: don't keep trying. */
-		app_log("page %d: no memory for a %dx%d sprite", page + 1, px_w(w, page), px_h(w, page));
-		w->fail_page = page;
-		w->fail_gen = w->gen;
+		app_log("page %d: no memory for a %dx%d sprite (%d K free)", page + 1, px_w(w, page), px_h(w, page), free_k());
+		mark_failed(w, page, w->gen, 1);
+		redraw_page(w, page);
 		return 0;
 	}
 	j.owner = w;
@@ -423,7 +537,7 @@ static int submit_page(docwin *w, int page)
 	j.px_w = px_w(w, page);
 	j.px_h = px_h(w, page);
 	if (worker_submit(&j)) {
-		free(j.area);
+		page_area_free(j.area);
 		return 0;
 	}
 	return 1;
@@ -497,18 +611,28 @@ static void take_result(render_job *r)
 	}
 	if (!is_window(w) || r->gen != w->gen || r->mode != w->mode || !r->ok) {
 		if (is_window(w) && !r->ok && !r->aborted) {
-			app_log("page %d: %s", r->page, r->err);
-			w->fail_page = r->page;
-			w->fail_gen = r->gen;
+			app_log("page %d: %s (%d K free)", r->page, r->err, free_k());
+			if (r->kind == JOB_PAGE && w->mem_retry != r->page &&
+					(strstr(r->err, "malloc") || strstr(r->err, "memory"))) {
+				/* Out of memory part way: empty MuPDF's cache, which can
+				 * leave the free memory in pieces, and draw it once more. */
+				trim_memory();
+				w->mem_retry = r->page;
+			} else
+				mark_failed(w, r->page, r->gen, w->mem_retry == r->page);
+			if (r->gen == w->gen)
+				redraw_page(w, r->page);   /* to say why it's blank */
 		}
-		free(r->area);
+		page_area_free(r->area);
 		return;
 	}
 	app_log("page %d (%d/%d) mode %d zoom %.2f: %dx%d px in %d cs", r->page, r->loc.chapter,
 		r->loc.page, r->mode, w->zoom, r->px_w, r->px_h, r->cs);
+	if (w->mem_retry == r->page)
+		w->mem_retry = -1;
 	c = cache_slot(r->bytes);
 	if (!c) {
-		free(r->area);
+		page_area_free(r->area);
 		return;
 	}
 	c->w = w;
@@ -1019,7 +1143,9 @@ docwin *docwin_open_password(const char *path, const char *password)
 	}
 	core_unlock();
 	_swix(Hourglass_Off, 0);
-	w->fail_page = -1;
+	w->fail[0] = w->fail[1] = w->fail[2] = w->fail[3] = -1;
+	w->mem_retry = -1;
+	w->hold0 = w->hold1 = -1;
 	load_place(w);
 
 	w->obj = create_window(w);
@@ -1280,8 +1406,15 @@ void docwin_redraw(docwin *w, int *b)
 				meas_draw(w, i, x0, y1);
 				pen_draw(w, i, x0, y1);
 			} else {
+				int why = page_failed(w, i);
 				fill_rect(page_colour(w), x0, y0, x1, y1);
-				w->want_render = 1;
+				if (why) {
+					_swix(Wimp_TextOp, _INR(0, 2), 0, 0x77777700, page_colour(w));
+					_swix(Wimp_TextOp, _INR(0, 5), 2 | (1u << 28), why == 2 ?
+						"Not enough memory to draw this page" : "This page couldn't be drawn",
+						-1, -1, x0 + 32, y1 - 64);
+				} else
+					w->want_render = 1;
 			}
 		}
 		_swix(Wimp_GetRectangle, _IN(1) | _OUT(0), b, &more);
@@ -1334,11 +1467,31 @@ static void resolve_mark(docwin *w)
 	}
 }
 
+/* Whether the cache has room for 'bytes' more, counting as free the
+ * sprites of pages that aren't showing and aren't among w's wanted ones. */
+static int room_ahead(docwin *w, const int *order, int n, size_t bytes)
+{
+	size_t kept = 0;
+	int i, k;
+	for (i = 0; i < CACHE_SLOTS; i++) {
+		cache_entry *c = &cache[i];
+		int wanted = 0;
+		if (!c->area)
+			continue;
+		if (c->w == w && c->gen == w->gen && c->mode == w->mode)
+			for (k = 0; k < n && !wanted; k++)
+				wanted = order[k] == c->page;
+		if (wanted || on_screen(c))
+			kept += c->bytes;
+	}
+	return kept + bytes <= CACHE_BYTES;
+}
+
 /* The next page this window wants drawn: visible ones first (from the
  * top), then two ahead in the direction of reading. -1 if none. */
 static int wanted_page(docwin *w, int visible_only)
 {
-	int st[9], vis_h, top, bottom, i0, i1, i, k;
+	int st[9], vis_h, top, bottom, i0, i1, i, k, nvis;
 	int order[64], n = 0;
 	const render_job *cur = worker_current();
 	get_state(w, st);
@@ -1352,6 +1505,21 @@ static int wanted_page(docwin *w, int visible_only)
 	i1 = last_in_row(w, i1);
 	for (i = i0; i <= i1 && n < 58; i++)
 		order[n++] = i;
+	nvis = n;
+	/* Pages that ran out of memory are tried again once others show. */
+	if (i0 != w->vis0 || i1 != w->vis1)
+		for (k = 0; k < 4; k++)
+			if (w->fail_mem[k]) {
+				w->fail[k] = -1;
+				w->fail_mem[k] = 0;
+				w->mem_retry = -1;
+			}
+	w->vis0 = i0;
+	w->vis1 = i1;
+	if (w->hold0 != i0 || w->hold1 != i1)
+		w->hold0 = w->hold1 = -1;
+	else
+		visible_only = 1;
 	for (k = 1; k <= 2 * w->cols && !visible_only; k++)
 		order[n++] = w->dir >= 0 ? i1 + k : i0 - k;
 	for (k = 0; k < n; k++) {
@@ -1361,12 +1529,18 @@ static int wanted_page(docwin *w, int visible_only)
 			continue;
 		if (cache_find(w, i))
 			continue;
-		if (w->fail_page == i && w->fail_gen == w->gen)
+		if (page_failed(w, i))
 			continue;
 		if (cur && cur->owner == w && cur->kind == JOB_PAGE && cur->page == i && cur->gen == w->gen)
 			continue;
 		if (folio_loc_from_number(w->doc, i, &loc))
 			continue;
+		/* Read ahead only into room the cache has, or would have without
+		 * pages nobody wants: otherwise each page read ahead pushes out the
+		 * one before it, to be drawn again, for ever. */
+		if (k >= nvis && !room_ahead(w, order, n, (size_t)px_w(w, i) * 4 * px_h(w, i) + 60))
+			continue;
+		w->want_shown = k < nvis;
 		return i;
 	}
 	return -1;

@@ -656,7 +656,28 @@ int main(int argc, char **argv)
 		app.epub_type = -1;
 
 	fontsetup();
+#ifdef FOLIO_RISCPC
+	{
+		/* A Risc PC has 16 to 256 MB: MuPDF's cache gets half of it
+		 * and the page sprites an eighth (OS_ReadMemMapInfo: page size,
+		 * pages). Less for MuPDF and a big magazine is drawn again from
+		 * scratch for every page (40 s instead of 3 under RPCEmu). */
+		int page_size = 4096, pages = 0;
+		size_t ram, store;
+		_swix(OS_ReadMemMapInfo, _OUT(0) | _OUT(1), &page_size, &pages);
+		ram = (size_t)page_size * (size_t)pages;
+		store = ram / 8 * 3;
+		store = store < (16u << 20) ? 16u << 20 : store > (64u << 20) ? 64u << 20 : store;
+		app.cache_bytes = ram / 8;
+		app.cache_bytes = app.cache_bytes < (8u << 20) ? 8u << 20 :
+			app.cache_bytes > (48u << 20) ? 48u << 20 : app.cache_bytes;
+		app_log("memory: %u MB; MuPDF cache %u MB, page sprites %u MB", (unsigned)(ram >> 20),
+			(unsigned)(store >> 20), (unsigned)(app.cache_bytes >> 20));
+		app.fc = folio_new(store);
+	}
+#else
 	app.fc = folio_new(64 << 20);
+#endif
 	if (!app.fc) {
 		tbx_report("Folio couldn't start MuPDF (not enough memory?).");
 		return 1;

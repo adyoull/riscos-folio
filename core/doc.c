@@ -14,6 +14,14 @@ void folio_set_error(folio_ctx *fc)
 	snprintf(fc->err, sizeof fc->err, "%s", m && *m ? m : "unknown error");
 }
 
+/* Empties MuPDF's cache of fonts, pictures and parsed objects, for when the
+ * desktop side runs out of memory. */
+void folio_trim(folio_ctx *fc)
+{
+	if (fc && fc->ctx)
+		fz_empty_store(fc->ctx);
+}
+
 folio_ctx *folio_new(size_t store_limit)
 {
 	folio_ctx *fc = calloc(1, sizeof *fc);

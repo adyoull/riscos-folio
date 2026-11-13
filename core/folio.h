@@ -38,6 +38,8 @@ typedef struct { int x0, y0, x1, y1; } folio_irect;
 
 /* store_limit: bytes MuPDF may keep in its cache (0 = MuPDF's default). */
 folio_ctx *folio_new(size_t store_limit);
+/* Empties MuPDF's cache (when memory runs out). */
+void folio_trim(folio_ctx *fc);
 void folio_drop(folio_ctx *fc);
 const char *folio_error(folio_ctx *fc);
 

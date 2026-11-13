@@ -243,6 +243,12 @@ int worker_take(render_job *out)
 	return 1;
 }
 
+/* For the tests, which have no docwin.c. */
+__attribute__((weak)) void page_area_free(int *area)
+{
+	free(area);
+}
+
 /* Asks the running job to stop, without waiting for it: its result comes
  * back as usual, marked aborted. */
 void worker_abort_current(void)
@@ -265,7 +271,10 @@ void worker_stop_for(void *owner)
 	if (state == QUEUED) {
 		state = IDLE;
 		pthread_mutex_unlock(&job_mutex);
-		free(job.area);
+		if (job.kind == JOB_PAGE)
+			page_area_free(job.area);
+		else
+			free(job.area);
 		return;
 	}
 	if (state == RUNNING && job.doc)
@@ -273,6 +282,10 @@ void worker_stop_for(void *owner)
 	pthread_mutex_unlock(&job_mutex);
 	while (worker_busy())
 		yield();
-	if (worker_take(&r))
-		free(r.area);
+	if (worker_take(&r)) {
+		if (r.kind == JOB_PAGE)
+			page_area_free(r.area);
+		else
+			free(r.area);
+	}
 }

@@ -112,7 +112,8 @@ typedef struct {
 	void *sprites;              /* <Folio$Dir>.Sprites, loaded by the Toolbox (1 = none) */
 	choices ch;                 /* the Choices (choices.c) */
 	ObjectId ocr_menu;
-	int trace;                  /* background passes still to log in detail (after opening) */
+	int trace;
+	size_t cache_bytes;        /* page sprite budget (0: the usual 48 MB) */                  /* background passes still to log in detail (after opening) */
 	int speech_urgent;          /* reading aloud is close to running out: background
 	                             * work (drawing pages ahead, thumbnails, measuring,
 	                             * text recognition) waits, as the worker thread
