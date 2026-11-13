@@ -666,7 +666,7 @@ int main(int argc, char **argv)
 		size_t ram, store;
 		_swix(OS_ReadMemMapInfo, _OUT(0) | _OUT(1), &page_size, &pages);
 		ram = (size_t)page_size * (size_t)pages;
-		store = ram / 8 * 3;
+		store = ram / 2;
 		store = store < (16u << 20) ? 16u << 20 : store > (64u << 20) ? 64u << 20 : store;
 		app.cache_bytes = ram / 8;
 		app.cache_bytes = app.cache_bytes < (8u << 20) ? 8u << 20 :
