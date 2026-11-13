@@ -83,7 +83,7 @@ static void row(label_gadget *l, int lid, const char *label, display_gadget *d, 
 
 static void radio(radio_gadget *r, int id, int x0, const char *label)
 {
-	hdr(&r->h, 384, sizeof *r, id, x0, -296, x0 + 168, -248, "Click to measure in these units.");
+	hdr(&r->h, 384, sizeof *r, id, x0, -324, x0 + 168, -276, "Click to measure in these units.");
 	r->h.flags = 1;                  /* say when it's chosen */
 	r->group = 1;
 	r->label = label;
@@ -111,7 +111,7 @@ static ObjectId create_window(void)
 	row(&g.l1, M_L1, "Last line", &g.last, M_LAST, ms.last, sizeof ms.last, -24);
 	row(&g.l2, M_L2, "All lines", &g.total, M_TOTAL, ms.total, sizeof ms.total, -84);
 	row(&g.l3, M_L3, "Area", &g.area, M_AREA, ms.area, sizeof ms.area, -144);
-	hdr(&g.scale.h, 448, sizeof g.scale, M_SCALE, 16, -232, BOX_W - 16, -184, NULL);
+	hdr(&g.scale.h, 448, sizeof g.scale, M_SCALE, 16, -260, BOX_W - 16, -212, NULL);
 	g.scale.text = ms.scale;
 	g.scale.max_text = sizeof ms.scale;
 	radio(&g.mm, M_MM, 16, "mm");

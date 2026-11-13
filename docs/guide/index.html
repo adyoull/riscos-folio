@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Folio User Guide</title>
+<style>
+:root { --ink:#1d1d1f; --paper:#fffdf7; --accent:#b5523b; --soft:#eef3f2; --line:#cfd8d6;
+        --tip:#2f7d4f; --rem:#2a5d9f; --warn:#b3261e; --tech:#6b4fa0; --try:#9a6a00; }
+body { margin:0; background:var(--paper); color:var(--ink); font-family: "Homerton", "Helvetica Neue", Arial, sans-serif;
+       line-height:1.55; font-size:17px; }
+main { max-width:860px; margin:0 auto; padding:16px 18px 80px; }
+header.cover { background:#183c46; color:#fff; padding:40px 18px 34px; }
+header.cover div { max-width:860px; margin:0 auto; }
+header.cover h1 { font-size:2.4em; margin:0 0 6px; letter-spacing:-0.5px; }
+header.cover p { margin:4px 0; font-size:1.1em; color:#dcebe8; }
+header.cover .badge { display:inline-block; background:#f2b134; color:#183c46; font-weight:bold; padding:3px 10px;
+                      border-radius:3px; margin-top:12px; }
+h2.part { margin-top:56px; padding:12px 14px; background:#183c46; color:#fff; font-size:1.5em; border-radius:4px; }
+h2.part small { display:block; font-size:0.6em; font-weight:normal; color:#c9dedb; }
+h3.chapter { margin-top:40px; font-size:1.35em; border-bottom:3px solid var(--accent); padding-bottom:4px; }
+h3.chapter span { color:var(--accent); }
+h4 { margin:26px 0 6px; font-size:1.08em; }
+figure { margin:18px 0; text-align:center; }
+figure img { max-width:100%; height:auto; border:1px solid var(--line); box-shadow:0 2px 6px rgba(0,0,0,0.12); }
+figcaption { font-size:0.88em; color:#555; margin-top:6px; }
+.box { border-left:6px solid; background:var(--soft); padding:10px 14px 10px 14px; margin:18px 0; border-radius:0 4px 4px 0; }
+.box b.label { display:block; font-size:0.85em; letter-spacing:1px; margin-bottom:2px; }
+.tip { border-color:var(--tip); } .tip b.label { color:var(--tip); }
+.rem { border-color:var(--rem); } .rem b.label { color:var(--rem); }
+.warn { border-color:var(--warn); } .warn b.label { color:var(--warn); }
+.tech { border-color:var(--tech); } .tech b.label { color:var(--tech); }
+.try { border-color:var(--try); background:#fbf4e2; } .try b.label { color:var(--try); }
+kbd { font-family:inherit; font-size:0.9em; background:#fff; border:1px solid #aaa; border-bottom-width:2px;
+      border-radius:3px; padding:0 5px; white-space:nowrap; }
+code { font-family: "Corpus", "Courier New", monospace; font-size:0.92em; background:#e9efee; padding:0 3px; }
+pre { font-family: "Corpus", "Courier New", monospace; font-size:0.92em; background:#e9efee; padding:8px 12px; overflow-x:auto; }
+table { border-collapse:collapse; width:100%; margin:14px 0; font-size:0.95em; }
+th, td { border:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:top; }
+th { background:var(--soft); }
+ol.steps li { margin-bottom:6px; }
+nav.toc { background:var(--soft); border:1px solid var(--line); padding:6px 18px 12px; border-radius:4px; }
+nav.toc ul { padding-left:20px; margin:4px 0; }
+nav.toc li { margin:2px 0; }
+.small { font-size:0.88em; color:#555; }
+.pair { display:flex; flex-wrap:wrap; gap:14px; justify-content:center; align-items:flex-start; }
+.pair figure { margin:8px 0; }
+a { color:#1f5fa8; }
+</style>
+</head>
+<body>
+<header class="cover">
+<div>
+<h1>Folio User Guide</h1>
+<p>Reading, marking up and making PDFs and ebooks on RISC OS</p>
+<p>Start here if you've only ever opened a PDF to read it. If you know PDFs inside out, the Technical Stuff boxes and Chapter 21 are for you.</p>
+<span class="badge">Folio 0.0.1-test76</span>
+</div>
+</header>
+<main>
+
+<nav class="toc">
+<h3>Contents</h3>
+<ul>
+<li><a href="#intro">Introduction</a></li>
+<li><a href="#part1">Part I: Getting Started</a>
+<ul><li><a href="#ch1">1. What Folio does</a></li><li><a href="#ch2">2. Installing and starting</a></li><li><a href="#ch3">3. The document window</a></li></ul></li>
+<li><a href="#part2">Part II: Reading</a>
+<ul><li><a href="#ch4">4. Finding your way round a document</a></li><li><a href="#ch5">5. Changing how pages look</a></li><li><a href="#ch6">6. The bookshelf and ebooks</a></li><li><a href="#ch7">7. Selecting, copying and looking words up</a></li><li><a href="#ch8">8. Reading aloud and scanned pages</a></li></ul></li>
+<li><a href="#part3">Part III: Marking Up and Filling In</a>
+<ul><li><a href="#ch9">9. Highlights, notes and saving</a></li><li><a href="#ch10">10. Drawing, stamps and your signature</a></li><li><a href="#ch11">11. Measuring</a></li><li><a href="#ch12">12. Filling in forms</a></li></ul></li>
+<li><a href="#part4">Part IV: Pages and Files</a>
+<ul><li><a href="#ch13">13. Turning, deleting, moving and adding pages</a></li><li><a href="#ch14">14. Laying one page over others</a></li><li><a href="#ch15">15. Making new PDFs</a></li><li><a href="#ch16">16. Getting things out: saving, exporting and printing</a></li></ul></li>
+<li><a href="#part5">Part V: Security and Signatures</a>
+<ul><li><a href="#ch17">17. What's in a PDF, and keeping safe</a></li><li><a href="#ch18">18. Passwords</a></li><li><a href="#ch19">19. Digital signatures: checking and signing</a></li></ul></li>
+<li><a href="#part6">Part VI: The Part of Tens</a>
+<ul><li><a href="#ch20">20. Ten keys to learn first</a></li><li><a href="#ch21">21. Ten things for experienced users</a></li><li><a href="#ch22">22. Ten problems and what to do about them</a></li></ul></li>
+<li><a href="#appA">Appendix: keys, mouse and menus</a></li>
+</ul>
+</nav>
+
+<!-- ======================================================================= -->
+<h2 class="part" id="intro">Introduction</h2>
+
+<p>Folio is a reader for RISC OS. It opens PDFs and ebooks (EPUB, FB2, MOBI, CBZ comics and XPS), keeps your place in each, and lets you highlight, add notes, fill in forms, sign, and make new PDFs from pictures, text files and other PDFs.</p>
+<p>It is built on MuPDF, the same library many PDF readers on other computers use, so documents look as their authors meant them to. Everything else (the windows, menus, the bookshelf) is written for the RISC OS desktop.</p>
+
+<h4>About this guide</h4>
+<p>The guide comes with Folio: choose <b>User guide</b> from the menu on Folio's icon bar icon, and it opens in your web browser (NetSurf, for example). If no web browser is set up, Folio tells you so. The file itself is <code>!Folio.Guide.index/html</code>, if you'd rather open it yourself. It's also on its own in <code>Folio-User-Guide.zip</code>, with each release.</p>
+<p>You don't need to read it in order. If all you want is to read a book, Part II is for you. If you've been sent a form to fill in and sign, go to <a href="#ch12">Chapter 12</a> and <a href="#ch19">Chapter 19</a>. If you want to join some scans into one PDF, it's <a href="#ch15">Chapter 15</a>.</p>
+<p>The pictures are screenshots of Folio on RISC OS 5. The documents in them were made for this guide.</p>
+
+<h4>This is a test version</h4>
+<p>Folio is still in test builds, and you may come across bugs. Folio never changes a file until you save it, and each change can be undone (<kbd>Ctrl</kbd>+<kbd>Z</kbd>) until then, but keep a copy of anything that matters before you save changes to it.</p>
+
+<h4>What we assume you know</h4>
+<p>Not much. You should know the three mouse buttons (<b>Select</b> on the left, <b>Menu</b> in the middle, <b>Adjust</b> on the right), how to drag a file from a Filer window into a program, and how to save by dragging a file icon from a save box to a Filer window.</p>
+
+<h4>The boxes in this guide</h4>
+<div class="box tip"><b class="label">TIP</b>A quicker or easier way to do something.</div>
+<div class="box rem"><b class="label">REMEMBER</b>Worth keeping in mind as you work.</div>
+<div class="box warn"><b class="label">WARNING</b>Get this wrong and you could lose work, or time.</div>
+<div class="box tech"><b class="label">TECHNICAL STUFF</b>How it works underneath. You can skip these.</div>
+<div class="box try"><b class="label">TRY IT</b>A short exercise to do as you read.</div>
+
+<h4>Where to start</h4>
+<p>If Folio isn't installed yet, start at <a href="#ch2">Chapter 2</a>. If it is, go to <a href="#ch3">Chapter 3</a>. The <a href="#appA">Appendix</a> lists every key, mouse action and menu on one page; it's worth printing.</p>
+
+<!-- ======================================================================= -->
+<h2 class="part" id="part1">Part I: Getting Started<small>Installing Folio and finding your way round</small></h2>
+
+<h3 class="chapter" id="ch1"><span>1</span> What Folio does</h3>
+<p>Folio does three kinds of job.</p>
+<h4>Reading</h4>
+<p>Folio shows PDFs page after page in one scrolling window, at the size you like, one page or two side by side, on white, dark or sepia paper. It reopens each document at the page where you left it. Ebooks are laid out into pages for you. A <b>bookshelf</b> shows the covers of your books and how far you've read each one. You can follow links, use a document's contents list, search for words, and look a word up in a dictionary.</p>
+<h4>Working with PDFs</h4>
+<p>You can highlight, underline and strike out text, add notes, draw, put on a stamp or your handwritten signature, measure distances on a plan, fill in forms (including Adobe's XFA forms), and sign a PDF digitally with your own certificate. Folio checks the signatures in PDFs you're sent, too.</p>
+<h4>Making and changing PDFs</h4>
+<p>You can turn, delete, move and add pages, lay a page from one file over the pages of another (your initials on every page, say), join PDFs, pictures and text files into one new PDF, and scan straight into a PDF from a network scanner. You can also take things out: some pages as a new PDF, pages as pictures, the text as a text file, or a page as a Draw file.</p>
+
+<div class="box tech"><b class="label">TECHNICAL STUFF</b>Folio draws pages in a background thread, so the desktop doesn't stop while a heavy page (a big scan, a detailed map) is drawn. It counts an ebook's pages in the background the first time it opens, and remembers them, so the book opens at once next time.</div>
+
+<h3 class="chapter" id="ch2"><span>2</span> Installing and starting</h3>
+<h4>What you need</h4>
+<ul>
+<li>RISC OS 5 on an ARMv7 computer or later: a Raspberry Pi 2 or newer, for example.</li>
+<li>A screen mode with 32 thousand colours or more.</li>
+<li>The SharedUnixLibrary, ARMEABISupport and PThreadTicker modules. PThreadTicker comes in Folio's zip; the others come with RISC OS or from PackMan.</li>
+<li>To look words up: a network connection. Folio loads the URL_Fetcher, AcornHTTP and AcornSSL modules from <code>!System</code> the first time.</li>
+</ul>
+<h4>Installing</h4>
+<ol class="steps">
+<li>Unzip <code>Folio-&lt;version&gt;.zip</code> with SparkFS or another unzipper that keeps filetypes.</li>
+<li>Copy <code>!Folio</code> to where you keep your programs (<code>Apps</code>, for example).</li>
+<li>Double-click <code>!Folio</code>. Its icon appears on the icon bar.</li>
+</ol>
+<p>Folio is also in PackMan. Add the source <code>https://adyoull.github.io/riscos-packages/pkg/index</code> and install <b>Folio</b> from there; PackMan then keeps it up to date.</p>
+<p>Once the Filer has seen <code>!Folio</code>, double-clicking a PDF starts Folio and opens it.</p>
+
+<h4>The plugins</h4>
+<p>Three extras are separate downloads, so the main zip stays small. Each comes as a zip with its own <code>!Folio</code> inside: drag that <code>!Folio</code> over yours in the Filer, and the Filer adds the plugin's files to it. Then quit Folio and run it again.</p>
+<table>
+<tr><th>Plugin</th><th>What it adds</th></tr>
+<tr><td>FolioSpeech</td><td>Reading aloud, with natural-sounding voices (<a href="#ch8">Chapter 8</a>). It needs a Raspberry Pi 2 or later and John Duffell's SharedSoundBuffer and StreamManager modules.</td></tr>
+<tr><td>FolioOCR</td><td>Text recognition: reading the words in scanned pages, so you can search, select and copy them (<a href="#ch8">Chapter 8</a>).</td></tr>
+<tr><td>FolioCJK</td><td>A font for Chinese, Japanese and Korean text, for documents that don't carry their own.</td></tr>
+</table>
+
+<h4>The icon bar</h4>
+<p>Click <b>Select</b> on Folio's icon bar icon to open your bookshelf (<a href="#ch6">Chapter 6</a>). Drag a document to the icon to open it. Click <b>Menu</b> on it for the icon bar menu.</p>
+<div class="pair">
+<figure><img src="images/iconbar-menu.png" alt="The icon bar menu"><figcaption>The icon bar menu.</figcaption></figure>
+<figure><img src="images/info.png" alt="The Info box"><figcaption>Info, with the version.</figcaption></figure>
+</div>
+<table>
+<tr><th>Item</th><th>Does</th></tr>
+<tr><td>Info</td><td>Shows the version. Quote it when you report a problem.</td></tr>
+<tr><td>Bookshelf...</td><td>Opens the bookshelf, as a click on the icon does.</td></tr>
+<tr><td>Create PDF...</td><td>Opens a window to join files into one PDF (<a href="#ch15">Chapter 15</a>).</td></tr>
+<tr><td>Scan...</td><td>Scans from a network scanner (<a href="#ch15">Chapter 15</a>).</td></tr>
+<tr><td>Choices...</td><td>Folio's settings (<a href="#ch5">Chapter 5</a> and <a href="#ch17">Chapter 17</a>).</td></tr>
+<tr><td>Help...</td><td>Opens <code>!Help</code>, a short text description of everything.</td></tr>
+<tr><td>User guide</td><td>Opens this guide in your web browser.</td></tr>
+<tr><td>Quit</td><td>Leaves Folio. If a document has changes you haven't saved, Folio asks first.</td></tr>
+</table>
+
+<h3 class="chapter" id="ch3"><span>3</span> The document window</h3>
+<p>Each document opens in a window of its own. If you open one that's already open, its window comes to the front instead.</p>
+<figure><img src="images/window.png" alt="A document window"><figcaption>A document window: the toolbar along the top, and the pages below.</figcaption></figure>
+<h4>The toolbar</h4>
+<figure><img src="images/toolbar.png" alt="The toolbar"><figcaption>The toolbar.</figcaption></figure>
+<p>From the left, the buttons are:</p>
+<table>
+<tr><th>Button</th><th>Does</th></tr>
+<tr><td>Thumbnails</td><td>Shows small pages down the left of the window (<a href="#ch4">Chapter 4</a>).</td></tr>
+<tr><td>Contents</td><td>Lists the document's chapters and sections.</td></tr>
+<tr><td>Up arrow, page number, Down arrow</td><td>The previous page, the page you're on (type a number and press <kbd>Return</kbd> to go there), and the next page. Next to the number is how many pages there are.</td></tr>
+<tr><td>Zoom out, scale, Zoom in</td><td>Make the pages smaller or larger. The scale shows how large.</td></tr>
+<tr><td>Fit width</td><td>Scales the page to fill the window's width.</td></tr>
+<tr><td>Two pages</td><td>Shows the pages side by side, as in an open book.</td></tr>
+<tr><td>Dark page</td><td>Shows light text on black.</td></tr>
+<tr><td>Find</td><td>Searches the document for words.</td></tr>
+<tr><td>Define</td><td>Looks up the selected word.</td></tr>
+<tr><td>Highlight, Underline, Strike out, Note</td><td>Mark the selected text, or add a note (<a href="#ch9">Chapter 9</a>). They're grey until you select some text in a PDF.</td></tr>
+<tr><td>Read aloud</td><td>With the Speech plugin only: reads the document to you.</td></tr>
+</table>
+<p>Rest the pointer on a button for a moment to see its name. If the window is too narrow for every button, arrows appear at the toolbar's right-hand end: click them, or turn the mouse wheel over the toolbar, to see the rest. <b>View &rarr; Toolbar</b> hides the toolbar or shows it again.</p>
+
+<h4>Moving through the pages</h4>
+<p>The pages run on from one to the next, so you can simply scroll. These keys work too:</p>
+<table>
+<tr><th>Key</th><th>Does</th></tr>
+<tr><td><kbd>Page Down</kbd> / <kbd>Page Up</kbd></td><td>Next / previous page</td></tr>
+<tr><td><kbd>Home</kbd> / <kbd>End</kbd></td><td>First / last page</td></tr>
+<tr><td><kbd>&darr;</kbd> / <kbd>&uarr;</kbd></td><td>Scroll a little</td></tr>
+<tr><td><kbd>F5</kbd></td><td>Go to a page by its number</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>F2</kbd></td><td>Close the window</td></tr>
+</table>
+
+<h4>The menu</h4>
+<p>Click <b>Menu</b> anywhere over the pages for the document's menu. Most of this guide is about what's on it.</p>
+<figure><img src="images/menu-document.png" alt="The document menu"><figcaption>The document menu.</figcaption></figure>
+
+<div class="box tip"><b class="label">TIP</b>Close a document's window with <b>Adjust</b> on its close icon, and Folio opens the directory the document is in, as the Filer does.</div>
+
+<div class="box rem"><b class="label">REMEMBER</b>When you close a document, Folio keeps the page you were on, the scale, whether you had two pages side by side, and the window's size and place. Next time you open it, it's just as you left it.</div>
+
+<!-- ======================================================================= -->
+<h2 class="part" id="part2">Part II: Reading<small>Getting round, getting comfortable, and keeping your books</small></h2>
+
+<h3 class="chapter" id="ch4"><span>4</span> Finding your way round a document</h3>
+<h4>Thumbnails</h4>
+<p>Click the first toolbar button (or choose <b>View &rarr; Thumbnails</b>) to open a drawer of small pages down the left of the window. The window widens to make room, and narrows again when you close it. The page you're reading is framed in blue; click any thumbnail to go to that page.</p>
+<figure><img src="images/thumbnails.png" alt="The thumbnails drawer"><figcaption>Thumbnails down the left. A click on the fourth one went to page 4.</figcaption></figure>
+
+<h4>Contents</h4>
+<p>Many PDFs and most ebooks have a list of their chapters and sections. Click the second toolbar button (or <b>Navigate &rarr; Contents...</b>) to see it, with each part's page number. The part you're reading is highlighted. Click on one to go there.</p>
+<figure><img src="images/contents.png" alt="The Contents window"><figcaption>The Contents window for a walking guide.</figcaption></figure>
+<p>If the document has no contents list, the window says so.</p>
+
+<h4>Links</h4>
+<p>Links have a blue line under them. Click one to follow it. A link to another part of the document goes there; a web or email link opens in your web browser or mail program, after Folio has asked you (<a href="#ch17">Chapter 17</a>). To come back after following a link, choose <b>Navigate &rarr; Back</b> or press <kbd>Ctrl</kbd>+<kbd>&larr;</kbd>. Back goes back link after link, and also returns from Go to page and from Contents.</p>
+<div class="box tip"><b class="label">TIP</b>If you'd rather see links as the document draws them, untick <b>Underline links</b> in Choices.</div>
+
+<h4>Find</h4>
+<p>Press <kbd>F4</kbd> (or click the Find button, or choose <b>Find...</b>) and type what you're looking for. Press <kbd>Return</kbd> or click <b>Next</b> to find it, and <b>Previous</b> to go back. Capitals don't matter. The search starts at the page you're reading and goes round the end of the document once. What it finds is selected, so you can copy it or look it up straight away.</p>
+<figure><img src="images/find.png" alt="The Find box"><figcaption>"waterfalls" found on page 4, selected.</figcaption></figure>
+<div class="box rem"><b class="label">REMEMBER</b>A scanned document is pictures of pages, with no text in it to find. With the OCR plugin, Folio can read the words in the pictures, and then Find works (<a href="#ch8">Chapter 8</a>).</div>
+
+<div class="box try"><b class="label">TRY IT</b>Open any long PDF. Press <kbd>F5</kbd>, type a page number near the end and press <kbd>Return</kbd>. Now press <kbd>Ctrl</kbd>+<kbd>&larr;</kbd>: you're back where you started.</div>
+
+<h3 class="chapter" id="ch5"><span>5</span> Changing how pages look</h3>
+<figure><img src="images/menu-view.png" alt="The View menu"><figcaption>The View menu.</figcaption></figure>
+<h4>Size</h4>
+<p>Click the zoom buttons, or choose <b>View &rarr; Zoom in</b>, <b>Zoom out</b> or <b>Actual size</b>. <b>Fit width</b> makes the page fill the window's width, which is usually the most comfortable for reading.</p>
+<p>If you always want documents larger (or smaller), zoom one to the size you like, then choose <b>View &rarr; Use this scale for new documents</b>. Every document you haven't opened before opens at that scale from then on. It's in Choices, too.</p>
+<h4>Two pages side by side</h4>
+<p>Click the two-pages button (or <b>View &rarr; Two pages</b>) to see the pages in pairs. The window widens to make room. <kbd>Page Down</kbd> and <kbd>Page Up</kbd> then move a pair at a time.</p>
+<p>With <b>First page alone</b> ticked (as it is to start with), the first page sits on its own on the right, and the rest pair up as in a printed book: left-hand pages on the left. Untick it for pages 1 and 2 side by side.</p>
+<figure><img src="images/ebook-two-pages.png" alt="Two pages side by side"><figcaption>An ebook, two pages side by side.</figcaption></figure>
+<h4>Dark and sepia pages</h4>
+<p><b>Dark page</b> (<kbd>Ctrl</kbd>+<kbd>N</kbd>, or the toolbar button) shows light text on black, which many people find easier late at night. Pictures keep their colours. <b>Sepia page</b> gives a warm, paper-like tint.</p>
+<figure><img src="images/dark.png" alt="Dark page"><figcaption>The same pages, dark.</figcaption></figure>
+<h4>Full screen</h4>
+<p><kbd>F11</kbd> (or <b>View &rarr; Full screen</b>) fills the screen with the document, with no title bar, scroll bars or toolbar. <kbd>F11</kbd> or <kbd>Escape</kbd> returns to the desktop.</p>
+<h4>Choices</h4>
+<p>Choose <b>Choices...</b> from the icon bar menu to set how new documents open: the scale, the page colour, two pages, and the toolbar. The other sections are covered in later chapters. <b>Save</b> uses and keeps them; <b>Default</b> fills in Folio's own settings.</p>
+<figure><img src="images/choices.png" alt="The Choices window"><figcaption>The Choices window.</figcaption></figure>
+<div class="box tip"><b class="label">TIP</b>Pages of different sizes are each shown at their own size: a book whose cover is smaller than its pages, or a landscape page among upright ones.</div>
+
+<h3 class="chapter" id="ch6"><span>6</span> The bookshelf and ebooks</h3>
+<p>Click <b>Select</b> on Folio's icon bar icon to see your bookshelf: the covers of your books, with how far you've read each. Double-click a cover to open the book at your place in it.</p>
+<figure><img src="images/bookshelf.png" alt="The bookshelf"><figcaption>The bookshelf, with an ebook, two forms, a page of initials and a walking guide.</figcaption></figure>
+<h4>Putting books on it</h4>
+<ul>
+<li>Drag books to the bookshelf window.</li>
+<li>Or tick <b>On bookshelf</b> on a document's menu.</li>
+<li>Or drag a <b>directory</b> to the bookshelf: Folio watches it, and looks in it (and the directories inside it) for new documents each time it starts, and when you choose <b>Refresh</b> from the bookshelf's menu.</li>
+</ul>
+<p><b>Watched folders...</b> on the bookshelf's menu lists the directories Folio watches; click <b>Stop watching</b> to drop one. <b>Sort by recent</b>, <b>Sort by title</b> and <b>Sort by author</b> put the books in order. <b>Show in Filer</b> opens the directory a book is in.</p>
+<div class="box rem"><b class="label">REMEMBER</b><b>Remove from bookshelf</b> (or <kbd>Delete</kbd>) only takes a book off the shelf. The file isn't touched. A book whose file can't be found any more is shown grey; <b>Remove missing books</b> takes them all off.</div>
+<h4>Ebooks</h4>
+<p>An EPUB, FB2 or MOBI book has no pages of its own: the text flows to fit whatever reads it. Folio lays it out on pages 400 by 600 points (about the size of a paperback) with 11-point text. The first time you open a book, Folio counts its pages in the background, so the page count may grow for a moment; after that it remembers.</p>
+<div class="box warn"><b class="label">WARNING</b>RISC OS may not know the EPUB filetype, and show an ebook as a Data file. Then double-clicking it won't start Folio. Drag it to Folio's icon bar icon or to the bookshelf instead, or give it a name ending <code>/epub</code>.</div>
+<div class="box tech"><b class="label">TECHNICAL STUFF</b>The bookshelf is kept in <code>&lt;Choices$Write&gt;.Folio.Shelf</code>, its covers in <code>&lt;Choices$Write&gt;.Folio.Covers</code>, and ebook page counts in <code>&lt;Choices$Write&gt;.Folio.Layouts</code>.</div>
+
+<h3 class="chapter" id="ch7"><span>7</span> Selecting, copying and looking words up</h3>
+<p>Drag with <b>Select</b> over text to select it. Double-click a word to select just that word. Click with <b>Adjust</b> to extend the selection. A selection can run on over the next pages: drag past the window's top or bottom and it scrolls, faster the further out you go.</p>
+<table>
+<tr><th>Key</th><th>Does</th></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd></td><td>Copy the selection to the clipboard, to paste into Edit, a word processor, or anything else</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>A</kbd></td><td>Select the whole page</td></tr>
+<tr><td><kbd>Escape</kbd></td><td>Clear the selection</td></tr>
+</table>
+<h4>Define</h4>
+<p>Select one word, then click the Define button, or choose <b>Define "word"</b> from the menu. Its meanings from Wiktionary appear in a small box near the word. <b>Copy</b> copies them; clicking <b>Wiktionary</b> opens the whole entry in your browser.</p>
+<div class="box tip"><b class="label">TIP</b>Words you've looked up once are kept, so they work again without the network.</div>
+
+<h3 class="chapter" id="ch8"><span>8</span> Reading aloud and scanned pages</h3>
+<h4>Reading aloud (Speech plugin)</h4>
+<p>With the Speech plugin installed (<a href="#ch2">Chapter 2</a>), a speaker button appears at the right of the toolbar, and <b>Read aloud</b>, <b>Speak selection</b> and <b>Reading speed</b> on the document's menu.</p>
+<p><b>Read aloud</b> starts at the top of what you can see of the page (or at the sentence the selection is in) and carries on through the document. The sentence being read has a tinted band, and the pages turn as it goes. Click the button again to stop. <b>Speak selection</b> reads just the selected text.</p>
+<h4>Scanned pages (OCR plugin)</h4>
+<p>A scanned PDF is pictures of pages. There's no text in it to find, select or read aloud. With the OCR plugin installed, the document's menu gets <b>Text recognition</b>, and Folio reads the words in each scanned page as you come to it. The window's title tells you when it's working. After that, Find, selecting, Copy, Define and Read aloud all work on the scan.</p>
+<ul>
+<li><b>Recognise all pages</b> does the whole document in the background, so Find can search all of it.</li>
+<li><b>Recognise this page</b> does just the page you're on.</li>
+<li><b>Accurate</b> makes fewer mistakes; <b>Fast</b> takes about half as long. Choose on the same menu, or in Choices.</li>
+<li><b>Add recognised text to the PDF</b> makes a searchable copy (below).</li>
+</ul>
+<p>What's recognised is kept, so it isn't done again next time.</p>
+<h4>Making a searchable PDF</h4>
+<p>Once every page has been recognised, choose <b>Text recognition &rarr; Add recognised text to the PDF</b>. The words go into the PDF itself, as invisible text over their pictures, the way scanning programs do it. The pages look just the same, but now other programs, and other readers, can find, select and copy the text too. Save (<kbd>F3</kbd>) to keep it; <kbd>Ctrl</kbd>+<kbd>Z</kbd> takes it out again.</p>
+
+<!-- ======================================================================= -->
+<h2 class="part" id="part3">Part III: Marking Up and Filling In<small>Notes, drawings, measurements and forms</small></h2>
+
+<h3 class="chapter" id="ch9"><span>9</span> Highlights, notes and saving</h3>
+<p>These work in PDFs. Ebooks can't be marked yet.</p>
+<h4>Highlighting, underlining and striking out</h4>
+<ol class="steps">
+<li>Select some text.</li>
+<li>Click <b>Highlight</b>, <b>Underline</b> or <b>Strike out</b> on the toolbar (or choose them from the <b>Edit</b> menu).</li>
+</ol>
+<p>A selection over several pages is marked on each of them. Click on a highlight to select it; <kbd>Delete</kbd> removes it.</p>
+<h4>Notes</h4>
+<p>Click <b>Note</b> to add a note at the selection, or at the top of the page if nothing is selected. Type the note and click <b>OK</b>. The note shows on the page as a small icon; click it to read, change or delete the note.</p>
+<figure><img src="images/note.png" alt="Writing a note"><figcaption>A note being written for the word "Swinside". Above it, a highlight.</figcaption></figure>
+<h4>Colours</h4>
+<p><b>Edit &rarr; Colour</b> chooses the colour of new markings: yellow, green, blue, pink, red, orange, purple or grey, or the usual colours (yellow highlights and notes, blue underlines, red strike-outs). Folio remembers your choice. If you've clicked on a marking first, it changes to the new colour too.</p>
+<figure><img src="images/menu-edit.png" alt="The Edit menu"><figcaption>The Edit menu.</figcaption></figure>
+<h4>The list of annotations</h4>
+<p>Every highlight, note, drawing and the like is an <i>annotation</i>. <b>Navigate &rarr; Annotations...</b> lists all of them in the document, including those made in other programs: the page, the colour, what kind it is, the note's text or the text it marks, and who made it. Click on one to go to it and select it. The list keeps up as you make changes.</p>
+<figure><img src="images/annotations.png" alt="The Annotations window"><figcaption>The Annotations window: a highlight and a note on page 4.</figcaption></figure>
+<h4>Undo and saving</h4>
+<p><kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes the last change and <kbd>Ctrl</kbd>+<kbd>Y</kbd> redoes it. While there are changes to save, the window's title has a <b>*</b> after the name.</p>
+<p>Press <kbd>F3</kbd> (or choose <b>Save...</b>) to save the PDF with your notes and markings. As everywhere on RISC OS, drag the file icon to a directory, or click <b>Save</b> to save it over the original.</p>
+<figure><img src="images/savebox.png" alt="The Save box"><figcaption>The Save box.</figcaption></figure>
+<div class="box warn"><b class="label">WARNING</b>Closing the window, or quitting Folio, with changes not saved asks you first: <b>Discard</b> really does throw them away.</div>
+<div class="box tech"><b class="label">TECHNICAL STUFF</b>Annotations are standard PDF annotations, so Acrobat and other readers show them. When it can, Folio saves a PDF by adding the changes to the end of the file, as Acrobat does, which leaves digital signatures intact.</div>
+
+<h3 class="chapter" id="ch10"><span>10</span> Drawing, stamps and your signature</h3>
+<h4>Drawing</h4>
+<p><b>Edit &rarr; Draw...</b> opens the Draw window. Drag with <b>Select</b> on the page to draw, in black, blue or red, with a thin, medium or thick pen. <b>Adjust</b> (or <b>Undo</b>) takes the last stroke off. <b>Keep</b> puts the drawing on the page; so does closing the window, or starting to draw on another page.</p>
+<figure><img src="images/draw.png" alt="Drawing on a page"><figcaption>The Draw window, and a squiggle and an underline drawn on the page.</figcaption></figure>
+<h4>Stamps</h4>
+<p><b>Edit &rarr; Stamp</b> lists the standard stamps: Approved, Not approved, Draft, Final, Confidential, For comment and others. Choose one, then click on the page where it goes. <kbd>Escape</kbd> (or <b>Adjust</b>) gives up.</p>
+<figure><img src="images/menu-stamp.png" alt="The Stamp menu"><figcaption>Edit &rarr; Stamp.</figcaption></figure>
+<figure><img src="images/stamp.png" alt="An Approved stamp"><figcaption>An Approved stamp on the page.</figcaption></figure>
+<h4>Pictures</h4>
+<p><b>Stamp &rarr; Picture...</b> puts a picture on the page: a logo, or a signature written on paper and scanned. Drag the picture file (JPEG, PNG and so on) into the box, then click on the page. Tick <b>Make white see-through</b> to let the page show through the paper.</p>
+<h4>My signature</h4>
+<p><b>Edit &rarr; Stamp &rarr; Set up my signature...</b> keeps your handwritten signature for putting on documents. Write it on the pad with <b>Select</b> (<b>Adjust</b> takes the last stroke off), or drag a scanned picture of it into the window, and choose how big it goes on the page. <b>Save</b> keeps it. From then on, <b>Edit &rarr; Stamp &rarr; My signature</b> and a click on the page puts it there.</p>
+<div class="box warn"><b class="label">WARNING</b>A drawn or scanned signature only <i>looks</i> like a signature. Anyone could copy it, and it doesn't prove who signed or that the document hasn't been changed since. For that you need a digital signature (<a href="#ch19">Chapter 19</a>).</div>
+<p>Each drawing, stamp or picture is an annotation: <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes it, and <kbd>Delete</kbd> removes it once you've clicked on it.</p>
+
+<h3 class="chapter" id="ch11"><span>11</span> Measuring</h3>
+<p><b>Edit &rarr; Measure...</b> opens the Measure window. While it's open, click with <b>Select</b> on the page to add points. Red lines join them; <b>Adjust</b> takes the last point off. The window shows the last line's length, all the lines together, and, with three points or more, the area they enclose.</p>
+<figure><img src="images/measure.png" alt="Measuring"><figcaption>Three points: the last line, all the lines, and the area inside them.</figcaption></figure>
+<p>Lengths are in mm, cm, inches or points, at the page's paper size. A plan or drawing whose PDF gives it a scale of its own (1 inch = 10 feet, say) is measured in its own units, and the window says so. <b>Add to page</b> keeps the measurement on the page, with the figures as its note. <b>Clear</b> starts again. Close the window to stop measuring.</p>
+
+<h3 class="chapter" id="ch12"><span>12</span> Filling in forms</h3>
+<p>Many PDFs are forms with boxes to fill in. Click on a box to fill it in.</p>
+<ul>
+<li><b>Text boxes</b> open for typing over the page. <kbd>Return</kbd> or <kbd>Tab</kbd> keeps what you've typed (<kbd>Tab</kbd> then goes to the next box, <kbd>Shift</kbd>+<kbd>Tab</kbd> back); <kbd>Escape</kbd> leaves the box as it was. In a box of several lines, <kbd>Return</kbd> and the arrow keys move between the lines.</li>
+<li><b>Tick boxes</b> and <b>radio buttons</b> are ticked by a click.</li>
+<li><b>Lists</b> and <b>drop-downs</b> show their choices as a menu.</li>
+</ul>
+<figure><img src="images/form.png" alt="Filling in a form"><figcaption>A name and address typed in, and the choices for Colour.</figcaption></figure>
+<p><kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes each change. <kbd>F3</kbd> saves the PDF with what you've filled in.</p>
+<div class="box rem"><b class="label">REMEMBER</b>Some forms work things out for you (adding up totals, checking a date as you type). That needs the form's JavaScript, which Folio doesn't run unless you tick <b>Run JavaScript in PDF forms</b> in Choices. Folio never sends a form anywhere: you save it and send it yourself.</div>
+<h4>XFA forms</h4>
+<p>Some forms are <i>XFA forms</i>, made with Adobe's LiveCycle Designer: the form's design and its values are kept inside the PDF in Adobe's own way. Folio can't draw an XFA design, but it can fill one in as a list. <b>Edit &rarr; Form fields...</b> lists every field with what's in it; click on one to type in it, choose from its choices, or tick it.</p>
+<figure><img src="images/xfa-fields.png" alt="The Form fields window"><figcaption>The Form fields window for an XFA form.</figcaption></figure>
+<p>A "dynamic" XFA form's page only says "Please wait..." (it needs Adobe Reader to draw it); Folio opens its Form fields window for you. Save (<kbd>F3</kbd>) keeps what you've filled in, and Adobe Reader shows it when the form is opened there.</p>
+<div class="box tech"><b class="label">TECHNICAL STUFF</b>If an XFA form also has ordinary fields on its pages (a "static" XFA form), filling in either keeps the other in step. Folio doesn't run an XFA form's scripts, so totals it would work out aren't updated until the form is opened in Adobe Reader.</div>
+
+<!-- ======================================================================= -->
+<h2 class="part" id="part4">Part IV: Pages and Files<small>Rearranging PDFs, making new ones, and getting things out</small></h2>
+
+<h3 class="chapter" id="ch13"><span>13</span> Turning, deleting, moving and adding pages</h3>
+<p><b>Pages</b> on the document menu works on a PDF's pages.</p>
+<figure><img src="images/menu-pages.png" alt="The Pages menu"><figcaption>The Pages menu.</figcaption></figure>
+<table>
+<tr><th>Item</th><th>Does</th></tr>
+<tr><td>Rotate</td><td>Turns the page you pressed <b>Menu</b> over, or every page, a quarter turn either way or a half turn: for a page fed in the wrong way up, or a landscape page scanned upright. <kbd>Ctrl</kbd>+<kbd>R</kbd> and <kbd>Ctrl</kbd>+<kbd>L</kbd> turn the page under the pointer clockwise and anticlockwise.</td></tr>
+<tr><td>Delete pages...</td><td>Opens a small box with the page you pressed Menu over. Type others if you like, then click <b>Delete</b>.</td></tr>
+<tr><td>Move pages...</td><td>Moves the pages you type, in their order, in front of another page, or to the end if you leave that empty.</td></tr>
+<tr><td>Insert pages from file...</td><td>Asks which page the new pages go in front of (leave it empty for the end); then drag a PDF, a picture, a text file or another document into the box, and its pages go in.</td></tr>
+<tr><td>Overlay from file...</td><td>Lays a page from another file over the pages (<a href="#ch14">Chapter 14</a>).</td></tr>
+</table>
+<h4>Typing pages</h4>
+<p>Wherever Folio asks which pages, you can type one page (<code>3</code>), a range (<code>1-10</code>), several (<code>1-3, 20, 45-50</code>), from a page to the end (<code>20-</code>), or <code>all</code>.</p>
+<p>Each change is one step: <kbd>Ctrl</kbd>+<kbd>Z</kbd> puts it back, and <kbd>F3</kbd> keeps it. Recognised text (<a href="#ch8">Chapter 8</a>) goes with its page when it moves.</p>
+<div class="box rem"><b class="label">REMEMBER</b>A PDF whose author doesn't allow its pages to be changed says so, and offers to lift that with the owner password. A signed PDF's pages can't be changed at all, since that would break the signature.</div>
+
+<h3 class="chapter" id="ch14"><span>14</span> Laying one page over others</h3>
+<p><b>Pages &rarr; Overlay from file...</b> lays the first page of another file over the pages you choose, or behind them. Use it for your initials or a reference on every page, a "Copy" mark, or headed paper behind a letter.</p>
+<figure><img src="images/overlay-box.png" alt="The Overlay box"><figcaption>The Overlay box.</figcaption></figure>
+<ol class="steps">
+<li>Type which pages to cover (all of them to start with).</li>
+<li>Choose <b>In front</b> (over the page) or <b>Behind</b> (under the page's own drawing, like headed paper).</li>
+<li>If you need to nudge it, type how far to move it right and down, in mm. A minus number moves it left or up.</li>
+<li>Drag the PDF (or a picture) into the box.</li>
+</ol>
+<figure><img src="images/overlay-result.png" alt="Initials overlaid"><figcaption>Initials drawn in Draw, printed to PDF and laid over the page.</figcaption></figure>
+<div class="box tip"><b class="label">TIP</b>To put something exactly where you want it, draw it in Draw on a page the same size as the PDF's (A4, say) and print it to a PDF. Laid over the pages with no nudge, it lands exactly where you drew it: its top left goes on each page's top left.</div>
+<div class="box warn"><b class="label">WARNING</b>On a scanned page, the page is one big picture, so an overlay put <b>Behind</b> is hidden under it. Use <b>In front</b>.</div>
+<div class="box tech"><b class="label">TECHNICAL STUFF</b>The overlay goes into the PDF once, as a form XObject, and every page refers to it. It stays sharp at any size, and the file only grows by the overlay's own size, however many pages it's on.</div>
+
+<h3 class="chapter" id="ch15"><span>15</span> Making new PDFs</h3>
+<h4>Create PDF: joining files</h4>
+<p><b>Create PDF...</b> on the icon bar menu opens a window to collect files in. Drag PDFs, pictures (JPEG, PNG, GIF, BMP, TIFF, PBM/PGM/PPM), text files, or other documents Folio reads into it, several at a time if you like. A directory dragged in adds its PDFs and pictures, in name order.</p>
+<figure><img src="images/create-pdf-list.png" alt="The Create PDF window"><figcaption>Create PDF with a picture, a text file and another picture.</figcaption></figure>
+<p>They're listed in the order they'll go. Click one to choose it, then use the buttons along the top: <b>Up</b> and <b>Down</b> move it, <b>Remove</b> takes it off the list (the file isn't touched), <b>Sort</b> sorts the list by name (with Page2 before Page10), and <b>Clear</b> empties it. <b>Create PDF</b> joins them into one new PDF, which opens in a window called <b>Combined</b>, not yet saved. Press <kbd>F3</kbd> to save it where you want it.</p>
+<figure><img src="images/create-pdf-result.png" alt="The new PDF"><figcaption>The new PDF: the picture, then the text on an A4 page.</figcaption></figure>
+<ul>
+<li>A PDF's pages are copied just as they are: pictures, fonts, notes and form fields.</li>
+<li>A picture becomes a page its own size. JPEGs go in as they are, not compressed again.</li>
+<li>A text file (a Text file, as Edit saves it, or a name ending <code>/txt</code>) is laid out on A4 pages in fixed-width type, 10 point, with long lines wrapped. A form feed (<kbd>Ctrl</kbd>+<kbd>L</kbd> in Edit) starts a new page.</li>
+<li>An ebook is laid out as Folio shows it.</li>
+</ul>
+<p>The window stays open, with its list, so you can change it and make another.</p>
+<div class="box rem"><b class="label">REMEMBER</b>A PDF that needs a password can't be joined. Open it, remove the password (<a href="#ch18">Chapter 18</a>), save it, and use that copy.</div>
+<h4>A directory of pictures</h4>
+<p>Drag a directory of pictures to Folio's icon bar icon, or to a document window, and Folio makes a PDF of them, a page for each, in name order, and opens it. The new PDF is named after the directory and isn't saved anywhere yet: press <kbd>F3</kbd> to save it.</p>
+<h4>Scanning</h4>
+<p><b>Scan...</b> on the icon bar menu scans from a scanner on your network that understands eSCL (also called AirScan), as most network scanners and printer-scanners of the last ten years do. No driver is needed.</p>
+<figure><img src="images/scan.png" alt="The Scan window"><figcaption>The Scan window.</figcaption></figure>
+<ol class="steps">
+<li>Type the scanner's IP address (such as <code>192.168.0.40</code>), or click <b>Find</b> to look for scanners on your network. If it finds several, choose one from the menu.</li>
+<li>Choose the glass (one page) or the feeder (every page in it, and both sides if the scanner can), colour or grey, 150, 300 or 600 dpi, and A4, Letter or the largest size.</li>
+<li>Click <b>Scan</b>. Folio carries on while the scanner works; <b>Stop</b> ends the scan, keeping the pages so far.</li>
+</ol>
+<p>The pages open as a new PDF called <b>Scan</b>, with the scanner's own JPEGs in it. For several pages from the glass, scan the first, then put each next page on the glass and click <b>Add page</b>. With the OCR plugin, <b>Recognise the text</b> reads the words in every page as soon as the scan opens.</p>
+<div class="box tech"><b class="label">TECHNICAL STUFF</b>Brightness and contrast (-100 to 100; 0 is the scanner's own) are done by the scanner, so the pages are still its own JPEGs. Not every scanner can; one that can't scans as it would anyway. Scanners that only take secure (https) connections, and USB scanners, aren't supported yet.</div>
+
+<h3 class="chapter" id="ch16"><span>16</span> Getting things out: saving, exporting and printing</h3>
+<p>The document menu has several ways of taking things out of a document.</p>
+<figure><img src="images/save-pages.png" alt="Save pages as PDF"><figcaption>Save pages as PDF, for pages 1 to 3.</figcaption></figure>
+<table>
+<tr><th>Item</th><th>Makes</th></tr>
+<tr><td>Save pages as PDF...</td><td>A new PDF of some of the pages. Type which, click <b>Save</b>, and drag the icon to a directory. A PDF's pages are copied just as they are. Other documents' pages (CBZ, XPS, ebooks) are drawn into PDF pages; a CBZ of JPEGs becomes a PDF of the same JPEGs.</td></tr>
+<tr><td>Save page pictures...</td><td>A directory of pictures, Page001, Page002 and so on. A page that is one picture (a scanned page) gives that picture just as the PDF stores it: a JPEG comes out as the same JPEG, byte for byte. Any other page is drawn as a PNG, at 150 dpi unless you change it.</td></tr>
+<tr><td>Save pages as text...</td><td>A text file of the pages' text, a paragraph to a line (Edit and StrongED wrap it to the window), with a blank line between paragraphs. Words split at a line's end are joined again.</td></tr>
+<tr><td>Export page as Draw...</td><td>The page you're reading as a Draw file: drag its icon to a directory, or straight into Draw. Lines and shapes become Draw paths, text becomes outlines (so it looks the same without the document's fonts), and each picture becomes a sprite of its own.</td></tr>
+</table>
+<div class="box tip"><b class="label">TIP</b>Save page pictures, change the pictures in another program, then drag the directory back to Folio to make a new PDF of them.</div>
+<div class="box rem"><b class="label">REMEMBER</b>Text saved as a text file is in the desktop's alphabet (Latin-1, unless your desktop uses UTF-8), so characters it hasn't got, such as Chinese or Japanese, become <code>?</code>. Draw can't clip or blend, so in a Draw file see-through effects are lost, and highlighter marks go under the text.</div>
+<h4>Printing</h4>
+<p><b>Print...</b> on the document's menu (or the <kbd>Print</kbd> key) opens the Print box: all pages or some, copies, scale, upright or sideways, and draft. It needs <code>!Printers</code> loaded with a printer chosen.</p>
+<p>Each page is printed as big as it really is (smaller if it wouldn't fit the paper), in the middle of the paper, always on white, with your notes and markings. Printing goes on in the background while you carry on; the window's title shows which page it's on. Choose <b>Print...</b> again (or close the window) to stop it.</p>
+
+<!-- ======================================================================= -->
+<h2 class="part" id="part5">Part V: Security and Signatures<small>What's in a PDF, passwords, and signing</small></h2>
+
+<h3 class="chapter" id="ch17"><span>17</span> What's in a PDF, and keeping safe</h3>
+<h4>Document info</h4>
+<p><b>Document info...</b> shows the file's name, where it is and its size, then what the document says about itself: title, author, subject, the program that made it, when it was made and changed, its PDF version, pages and page size, its security and what its author allows, whether it has a form, attached files or JavaScript, its bookmarks, layers and pictures, its digital signatures, and every font it uses, with whether each is embedded in the PDF.</p>
+<figure><img src="images/docinfo.png" alt="Document info"><figcaption>Document info for a walking guide.</figcaption></figure>
+<div class="box tech"><b class="label">TECHNICAL STUFF</b>A font that isn't embedded is drawn with the nearest font the computer has, so the document may look a little different from how its author saw it. For scripts Folio has no font of its own for, it uses the computer's fonts through fontconfig: PackMan's FontConfig setup if it's installed, else the fonts in <code>!Folio.Fonts</code>.</div>
+<h4>Warnings about what a PDF can do</h4>
+<p>A PDF can contain JavaScript, attached files, links that would start a program, and ways to send a form somewhere. When you open one that does, Folio says so, and doesn't do any of those things.</p>
+<figure><img src="images/security.png" alt="The Security warning"><figcaption>Folio's warning on opening a form with JavaScript, an attachment, a program link and a way to send it.</figcaption></figure>
+<p>Folio also asks before following a link out of a document (to a web page, an email address or another file), showing where it goes. Links to other programs are never followed.</p>
+<h4>A PDF's restrictions</h4>
+<p>A PDF's author can say it mustn't be printed, copied from or filled in. Folio keeps to that: Print, Copy and the ways of saving pages say so instead, and offer to lift it with the document's owner password.</p>
+<p>The <b>Security</b> part of Choices turns each of these on or off.</p>
+
+<h3 class="chapter" id="ch18"><span>18</span> Passwords</h3>
+<p>If a PDF needs a password to open, Folio asks for it.</p>
+<p><b>Password...</b> on a PDF's menu shows whether it has a password, and puts one on or takes it off.</p>
+<figure><img src="images/password.png" alt="The Password box"><figcaption>The Password box for a PDF with no password.</figcaption></figure>
+<ol class="steps">
+<li>Type the new password twice.</li>
+<li>Click <b>Set password</b>. The Save box opens.</li>
+<li>Save. The password is on the file once it's saved.</li>
+</ol>
+<p><b>Remove password</b> saves it without one. A PDF that anyone can open but that has an owner password needs that password first.</p>
+<div class="box warn"><b class="label">WARNING</b>Don't forget the password: without it, nobody can open the file, you included. And saving with a new password, or without one, undoes any digital signatures in the file.</div>
+<div class="box tech"><b class="label">TECHNICAL STUFF</b>Folio writes the whole file again, encrypted with AES-256. It needs the CryptRandom module, which it loads from <code>!System</code>.</div>
+
+<h3 class="chapter" id="ch19"><span>19</span> Digital signatures: checking and signing</h3>
+<p>A digital signature is proof that a PDF hasn't been changed since it was signed, together with a certificate saying who signed it. Unlike a scanned signature, it can't be copied onto another document.</p>
+<h4>Checking a signature</h4>
+<p>Click on a signature on the page to see who signed it and when, whether the document is as it was signed, and whether the signer's certificate comes from a body Folio trusts. Document info lists every signature too. If a signature has been broken, Folio says so as the PDF opens.</p>
+<figure><img src="images/signature.png" alt="Checking a signature"><figcaption>A signature checked: good, but the signer vouches for themselves.</figcaption></figure>
+<table>
+<tr><th>Folio says</th><th>It means</th></tr>
+<tr><td>Good</td><td>The document is exactly as it was signed, and the certificate comes from a body Folio trusts.</td></tr>
+<tr><td>Signer not confirmed</td><td>The signature is good, but the certificate doesn't come from a body Folio trusts, so who signed can't be confirmed.</td></tr>
+<tr><td>Changed since</td><td>Changes were saved after the signature, such as a form filled in or notes added. What was signed is still as it was; clicking the signature lists what changed.</td></tr>
+<tr><td>Broken</td><td>The document was changed in a way the signature doesn't allow. Don't trust it.</td></tr>
+</table>
+<div class="box tech"><b class="label">TECHNICAL STUFF</b>Folio trusts Adobe's root, and the certificates of CaCertificates if it's installed (from PackMan; the same ones web browsers trust). To trust others, such as your company's, put them (PEM, one after another) in a file called <code>Trusted</code> in <code>&lt;Choices$Write&gt;.Folio</code>, and run Folio again. Changes saved after a signature are judged as Acrobat judges them, by the certification and the fields each signature locks.</div>
+<h4>Signing a PDF</h4>
+<p>To sign, you need a certificate with its private key, in a <code>.p12</code> or <code>.pfx</code> file (the kind a certificate authority issues, or that other programs export), and its password.</p>
+<ol class="steps">
+<li>Choose <b>Sign...</b> from the document menu, or click on an empty signature field.</li>
+<li>Drag your certificate file into the Sign box.</li>
+<li>Type its password and, if you like, a reason (such as "I approve this document") and where you are.</li>
+<li>Choose the kind of signature (below).</li>
+<li>Click <b>Sign</b>. The Save box opens: the signature is made as the PDF is saved.</li>
+</ol>
+<figure><img src="images/sign.png" alt="The Sign box"><figcaption>The Sign box, with a certificate dragged in.</figcaption></figure>
+<table>
+<tr><th>Kind</th><th>Means</th></tr>
+<tr><td>Ordinary</td><td>Changes can still be saved after it; they're shown when it's checked.</td></tr>
+<tr><td>Lock the PDF</td><td>No changes after it; its fields can't be filled in.</td></tr>
+<tr><td>Certify</td><td>The first signature only. Allows no changes, or filling in and signing, or those and notes too.</td></tr>
+</table>
+<p>A new signature goes at the foot of the page, on the right; an empty field is signed where it is. Tick <b>Show my handwritten signature</b> to put your handwritten signature (<a href="#ch10">Chapter 10</a>) beside your name.</p>
+<div class="box warn"><b class="label">WARNING</b>A signature can't be undone before the PDF is saved. If you change your mind, close the document without saving.</div>
+<div class="box rem"><b class="label">REMEMBER</b>Once a PDF is signed, Folio keeps it as it was signed. Signatures can't be changed or cleared, the pages can't be turned, deleted, moved or added to, the password can't be changed, and fields a signature locks can't be filled in. Notes and filling in other fields are still allowed where the PDF allows them. Other signatures in the PDF stay good when you add yours. Folio remembers the certificate file's name until it quits, but never the password.</div>
+
+<!-- ======================================================================= -->
+<h2 class="part" id="part6">Part VI: The Part of Tens<small>Quick wins, deeper features, and fixes</small></h2>
+
+<h3 class="chapter" id="ch20"><span>20</span> Ten keys to learn first</h3>
+<table>
+<tr><th>Key</th><th>Does</th></tr>
+<tr><td><kbd>Page Down</kbd> / <kbd>Page Up</kbd></td><td>Next / previous page</td></tr>
+<tr><td><kbd>Home</kbd> / <kbd>End</kbd></td><td>First / last page</td></tr>
+<tr><td><kbd>F4</kbd></td><td>Find</td></tr>
+<tr><td><kbd>F5</kbd></td><td>Go to a page</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>&larr;</kbd></td><td>Back, after a link, Contents or Go to page</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>N</kbd></td><td>Dark page on and off</td></tr>
+<tr><td><kbd>F11</kbd></td><td>Full screen</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd></td><td>Copy the selected text</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Undo / redo</td></tr>
+<tr><td><kbd>F3</kbd></td><td>Save</td></tr>
+</table>
+
+<h3 class="chapter" id="ch21"><span>21</span> Ten things for experienced users</h3>
+<ol>
+<li><b>Open at a page from a script.</b> Set <code>Folio$OpenPage</code> first; it works whether or not Folio is running, and is unset once used:
+<pre>Set Folio$OpenPage 12
+Filer_Run SDFS::Disc.$.Docs.Manual/pdf</pre>
+<code>Run &lt;Folio$Dir&gt;.!Run -page 12 &lt;file&gt;</code> does the same.</li>
+<li><b>The log.</b> <code>&lt;Wimp$ScrapDir&gt;.FolioLog</code> records what Folio did. It starts afresh each time Folio runs, so copy it before running Folio again if you want to report a problem.</li>
+<li><b>Your settings</b> are in <code>&lt;Choices$Write&gt;.Folio</code>: Choices, the bookshelf (Shelf, Covers), reading places (Places), ebook page counts (Layouts), dictionary entries (Dict), and your handwritten signature.</li>
+<li><b>Trusting your own certificates.</b> Put them in <code>&lt;Choices$Write&gt;.Folio.Trusted</code> as PEM (<a href="#ch19">Chapter 19</a>).</li>
+<li><b>Incremental saving.</b> Folio adds changes to the end of a PDF wherever it can, as Acrobat does, so signatures stay good. Setting or removing a password writes the whole file again.</li>
+<li><b>Lossless pictures.</b> JPEGs go into new PDFs, and come out of Save page pictures, byte for byte: nothing is compressed again.</li>
+<li><b>Searchable scans.</b> Recognise all pages, then Add recognised text to the PDF, and the PDF is searchable everywhere, not just in Folio.</li>
+<li><b>Is my scanner eSCL?</b> Open <code>http://&lt;its address&gt;/eSCL/ScannerCapabilities</code> in a web browser: a page of XML means it is.</li>
+<li><b>Restrictions.</b> To have Folio ignore a PDF's limits on printing and copying, untick <b>Keep to a PDF's limits on printing and copying</b> in Choices. Respect the author's wishes where they apply to you.</li>
+<li><b>A form's JavaScript</b> runs only if Choices allows it, and even then it can't reach your files or the network.</li>
+</ol>
+
+<h3 class="chapter" id="ch22"><span>22</span> Ten problems and what to do about them</h3>
+<table>
+<tr><th>Problem</th><th>What to do</th></tr>
+<tr><td>Folio says it needs a 32 thousand or more colour screen mode.</td><td>Folio needs a 32 thousand or more colour screen mode. Change it in Display Manager.</td></tr>
+<tr><td>Double-clicking an EPUB does nothing.</td><td>RISC OS shows it as a Data file. Drag it to Folio's icon, or rename it to end <code>/epub</code> (<a href="#ch6">Chapter 6</a>).</td></tr>
+<tr><td>Find doesn't find text I can see.</td><td>The page is probably a scan: a picture of text. Use the OCR plugin (<a href="#ch8">Chapter 8</a>).</td></tr>
+<tr><td>Highlight and Note are grey.</td><td>Select some text first. Ebooks can't be marked yet; signed or restricted PDFs may not allow notes.</td></tr>
+<tr><td>Print or Copy says the author doesn't allow it.</td><td>Type the owner password if you have it, or see Chapter 21, number 9.</td></tr>
+<tr><td>A web link does nothing.</td><td>Folio asks before following it; check the question box isn't behind a window. You need a web browser that has been seen by the Filer.</td></tr>
+<tr><td>User guide says there's no web browser.</td><td>Run NetSurf (or another browser) once, so RISC OS knows it, then try again. Or open <code>!Folio.Guide.index/html</code> yourself.</td></tr>
+<tr><td>A document opens at the wrong page.</td><td>Folio opens at the place you left it. Press <kbd>Home</kbd> for the first page.</td></tr>
+<tr><td>Define says it can't reach the dictionary.</td><td>It needs the network. Words looked up before still work.</td></tr>
+<tr><td>Something else went wrong.</td><td>Copy <code>&lt;Wimp$ScrapDir&gt;.FolioLog</code> before running Folio again, and report it, with the log, in Folio's thread on the RISC OS Open forum (forum.riscosopen.org), or as an issue at github.com/adyoull/riscos-folio/issues.</td></tr>
+</table>
+
+<!-- ======================================================================= -->
+<h2 class="part" id="appA">Appendix: keys, mouse and menus</h2>
+
+<h4>Keys in a document window</h4>
+<table>
+<tr><th>Key</th><th>Does</th></tr>
+<tr><td><kbd>Page Down</kbd> / <kbd>Page Up</kbd></td><td>Next / previous page (a pair at a time with two pages)</td></tr>
+<tr><td><kbd>Home</kbd> / <kbd>End</kbd></td><td>First / last page</td></tr>
+<tr><td><kbd>&darr;</kbd> / <kbd>&uarr;</kbd></td><td>Scroll a little</td></tr>
+<tr><td><kbd>F3</kbd></td><td>Save</td></tr>
+<tr><td><kbd>F4</kbd></td><td>Find</td></tr>
+<tr><td><kbd>F5</kbd></td><td>Go to page</td></tr>
+<tr><td><kbd>F11</kbd></td><td>Full screen on and off (<kbd>Escape</kbd> also leaves it)</td></tr>
+<tr><td><kbd>Print</kbd></td><td>Print</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>N</kbd></td><td>Dark page on and off</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>&larr;</kbd></td><td>Back</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd></td><td>Copy</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>A</kbd></td><td>Select the whole page</td></tr>
+<tr><td><kbd>Escape</kbd></td><td>Clear the selection</td></tr>
+<tr><td><kbd>Delete</kbd></td><td>Delete the annotation clicked on</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Undo / redo</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>R</kbd> / <kbd>Ctrl</kbd>+<kbd>L</kbd></td><td>Turn the page under the pointer clockwise / anticlockwise</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>F2</kbd></td><td>Close the window</td></tr>
+</table>
+
+<h4>Mouse</h4>
+<table>
+<tr><th>Where</th><th>Select</th><th>Adjust</th></tr>
+<tr><td>Icon bar icon</td><td>Open the bookshelf</td><td>&ndash;</td></tr>
+<tr><td>Text on the page</td><td>Drag to select; double-click a word</td><td>Extend the selection</td></tr>
+<tr><td>Link</td><td>Follow it</td><td>&ndash;</td></tr>
+<tr><td>Annotation</td><td>Select it; a note opens</td><td>&ndash;</td></tr>
+<tr><td>Form field</td><td>Fill it in</td><td>&ndash;</td></tr>
+<tr><td>Signature</td><td>Check it (sign it, if empty)</td><td>&ndash;</td></tr>
+<tr><td>Thumbnail</td><td>Go to that page</td><td>&ndash;</td></tr>
+<tr><td>Page, while drawing</td><td>Draw</td><td>Take the last stroke off</td></tr>
+<tr><td>Page, while measuring</td><td>Add a point</td><td>Take the last point off</td></tr>
+<tr><td>Window's close icon</td><td>Close</td><td>Close and open the document's directory</td></tr>
+<tr><td>Bookshelf cover</td><td>Double-click: open the book</td><td>&ndash;</td></tr>
+</table>
+
+<h4>Menus</h4>
+<p>Click <b>Menu</b> over the pages for the document menu. As everywhere on RISC OS, choosing with <b>Adjust</b> keeps the menu open.</p>
+<div class="pair">
+<figure><img src="images/menu-navigate.png" alt="The Navigate menu"><figcaption>The Navigate menu.</figcaption></figure>
+</div>
+<table>
+<tr><th>Menu</th><th>Items</th></tr>
+<tr><td>Document</td><td>Save... (<kbd>F3</kbd>); Print...; Export page as Draw...; Save pages as PDF...; Save page pictures...; Save pages as text...; Pages &rarr;; Password...; Sign...; Document info...; Edit &rarr;; View &rarr;; Navigate &rarr;; Find... (<kbd>F4</kbd>); Define "word"; On bookshelf. With the plugins: Text recognition &rarr;; Read aloud, Speak selection, Reading speed &rarr;.</td></tr>
+<tr><td>Pages</td><td>Rotate &rarr;; Delete pages...; Move pages...; Insert pages from file...; Overlay from file...</td></tr>
+<tr><td>Edit</td><td>Undo; Redo; Copy; Select all; Clear selection; Highlight; Underline; Strike out; Note...; Delete annotation; Colour &rarr;; Measure...; Draw...; Stamp &rarr;; Form fields...</td></tr>
+<tr><td>Stamp</td><td>My signature; Set up my signature...; Picture...; Approved, Not approved, Draft, Final, Confidential, For comment, For public release, Not for public release, Experimental, Expired, As is, Departmental, Sold, Top secret</td></tr>
+<tr><td>View</td><td>Dark page; Sepia page; Zoom in; Zoom out; Actual size; Fit width; Use this scale for new documents; Two pages; First page alone; Toolbar; Thumbnails; Full screen (<kbd>F11</kbd>)</td></tr>
+<tr><td>Navigate</td><td>Next page; Previous page; First page; Last page; Go to page... (<kbd>F5</kbd>); Contents...; Annotations...; Back (<kbd>Ctrl</kbd>+<kbd>&larr;</kbd>)</td></tr>
+<tr><td>Icon bar</td><td>Info &rarr;; Bookshelf...; Create PDF...; Scan...; Choices...; Help...; User guide; Quit</td></tr>
+<tr><td>Bookshelf</td><td>Open (<kbd>Return</kbd>); Remove from bookshelf (<kbd>Delete</kbd>); Show in Filer; Sort by recent; Sort by title; Sort by author; Watched folders...; Refresh; Remove missing books</td></tr>
+</table>
+
+<p class="small">Folio is free software under the AGPL-3.0 licence, and includes MuPDF (Copyright Artifex Software, AGPL). Its source is at github.com/adyoull/riscos-folio. Meanings shown by Define come from Wiktionary, under CC BY-SA.</p>
+
+</main>
+</body>
+</html>

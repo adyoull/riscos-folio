@@ -1,9 +1,11 @@
-Folio (test build 0.0.1-test75)
+Folio (test build 0.0.1-test76)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
-MuPDF. This is an early test: it opens and shows documents, selects and
-copies text, and looks words up. Markup, notebooks and the rest come later.
+MuPDF, that also marks up, fills in, signs and makes PDFs. This is a test
+build. This file describes everything briefly; for the User Guide, with
+pictures, choose User guide from the icon bar menu (it opens in your web
+browser), or open !Folio.Guide.index/html.
 
 The bookshelf
   Click Select on Folio's icon bar icon (or choose Bookshelf... from its

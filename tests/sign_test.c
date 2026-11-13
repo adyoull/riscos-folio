@@ -226,6 +226,8 @@ int main(int argc, char **argv)
 				CHECK(d && (i == 3 ? s[0].cert == FOLIO_CERT_TRUSTED || s[0].cert == FOLIO_CERT_UNTRUSTED
 					: s[0].cert == FOLIO_CERT_SELF_SIGNED), "%s: certificate %d %s", kinds[i], d ? s[0].cert : -1,
 					d ? s[0].cert_why : "");
+				/* Clicking it finds it by its page (test76: there was no /P). */
+				CHECK(d && s[0].page == 0, "%s: new field is on page %d", kinds[i], d ? s[0].page : -2);
 				if (d)
 					folio_close(d);
 			}

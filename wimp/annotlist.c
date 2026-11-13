@@ -258,6 +258,13 @@ int annotlist_background(void)
 		if (!core_trylock())
 			return 1;
 	}
+	/* Nothing left to look at: leave the window alone. Setting its title or
+	 * asking for a redraw on every poll keeps the Wimp redrawing it for
+	 * ever, and the desktop stops. */
+	if (al.next_page < 0) {
+		core_unlock();
+		return 0;
+	}
 	if (al.next_page == 0)
 		al.changes = folio_change_count(doc);
 	_swix(OS_ReadMonotonicTime, _OUT(0), &t0);

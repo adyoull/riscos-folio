@@ -1,0 +1,27 @@
+From 5d728f61790bf7309ee5c035b70f1ad041fab69c Mon Sep 17 00:00:00 2001
+From: Andrew Youll <adyoull@users.noreply.github.com>
+Date: Fri, 13 Nov 2026 11:40:21 +0000
+Subject: [PATCH] Signature appearance: write the date with %Y-%m-%d %H:%M:%S
+
+UnixLib's strftime has no %F or %z, so the date on a signature made on
+RISC OS came out as 'FT11:39:07z'. Spell it out (local time, as before).
+---
+ source/pdf/pdf-appearance.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/source/pdf/pdf-appearance.c b/source/pdf/pdf-appearance.c
+index 7a47bd9..087f9e1 100644
+--- a/source/pdf/pdf-appearance.c
++++ b/source/pdf/pdf-appearance.c
+@@ -3601,7 +3601,7 @@ pdf_signature_info(fz_context *ctx, const char *name, pdf_pkcs7_distinguished_na
+ 
+ 		if (date >= 0)
+ 		{
+-			len = strftime(now_str, sizeof now_str, "%FT%T%z", tm);
++			len = strftime(now_str, sizeof now_str, "%Y-%m-%d %H:%M:%S", tm);
+ 			if (len)
+ 			{
+ 				fz_append_string(ctx, fzbuf, "\n");
+-- 
+2.43.0
+

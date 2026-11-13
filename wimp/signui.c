@@ -157,6 +157,10 @@ void signui_click(docwin *w, int page, const char *field)
 		if (s[i].page == page && !strcmp(s[i].field, field))
 			break;
 	if (i >= n) {
+		app_log("signature '%s' on page %d not found: %d field(s)%s%s", field, page, n, n < 0 ? ": " : "",
+			n < 0 ? folio_error(app.fc) : "");
+		for (i = 0; i < n; i++)
+			app_log("  '%s' on page %d", s[i].field, s[i].page);
 		tbx_report("Folio couldn't find that signature.");
 		return;
 	}

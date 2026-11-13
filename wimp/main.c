@@ -6,6 +6,7 @@
  * on a PDF or EPUB (Message_DataOpen) or on the command line. */
 #include "app.h"
 #include "worker.h"
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
@@ -113,15 +114,16 @@ static void create_objects(void)
 	pi.version = FOLIO_VERSION;
 	check(tbx_create(Class_ProgInfo, 101, 0, &pi, sizeof pi, &app.proginfo));
 
-	/* Icon bar menu: Info, Help..., Quit (Style Guide p46). */
+	/* Icon bar menu: Info, ..., Help..., User guide, Quit (Style Guide p46). */
 	entry(&ib, 0, 0, "Info", MENU_SUBMENU, 0, "Move right to see information about this version of Folio.");
 	entry(&ib, 1, 3, "Bookshelf...", 0, EV_BOOKSHELF, "Click to see your bookshelf.");
 	entry(&ib, 2, 5, "Create PDF...", 0, EV_CREATE_PDF, "Click to open a window to drag PDFs, pictures and other documents into, in order, and join them into one new PDF.");
 	entry(&ib, 3, 6, "Scan...", 0, EV_SCAN, "Click to scan pages from a network scanner (eSCL, AirScan) into a new PDF.");
 	entry(&ib, 4, 4, "Choices...", 0, EV_CHOICES, "Click to change Folio's choices.");
-	entry(&ib, 5, 1, "Help...", 0, EV_HELP, "Click to read Folio's help.");
-	entry(&ib, 6, 2, "Quit", 0, EV_QUIT, "Click to leave Folio.");
-	app.iconbar_menu = make_menu(&ib, "Folio", 7, 0);
+	entry(&ib, 5, 1, "Help...", 0, EV_HELP, "Click to read Folio's short help.");
+	entry(&ib, 6, 7, "User guide", 0, EV_GUIDE, "Click to read the Folio User Guide in your web browser.");
+	entry(&ib, 7, 2, "Quit", 0, EV_QUIT, "Click to leave Folio.");
+	app.iconbar_menu = make_menu(&ib, "Folio", 8, 0);
 	check(menu_set_submenu(app.iconbar_menu, 0, app.proginfo));
 
 	/* Document menu: View and Navigate submenus. */
@@ -410,6 +412,34 @@ static docwin *window_for_event(void)
 	return docwin_from_object(self);
 }
 
+/* The User Guide (!Folio.Guide.index/html) in the web browser.
+ * With no browser seen yet, an HTML file runs whatever else claims it
+ * (often a text editor, which shows its source), so say so instead. */
+static void open_guide(void)
+{
+	char run[256];
+	int type = 0, obj = 0, n = 0, i;
+	if (_swix(OS_File, _INR(0, 1) | _OUT(0) | _OUT(6), 23, "<Folio$Dir>.Guide.index/html", &obj, &type) || obj != 1) {
+		tbx_report("The User Guide isn't in this copy of Folio (it should be in !Folio.Guide).");
+		return;
+	}
+	run[0] = 0;
+	if (!_swix(OS_ReadVarVal, _INR(0, 4) | _OUT(2), "Alias$@RunType_FAF", run, sizeof run - 1, 0, 0, &n) &&
+			n >= 0 && n < (int)sizeof run)
+		run[n] = 0;
+	else
+		run[0] = 0;
+	for (i = 0; run[i]; i++)
+		run[i] = (char)tolower((unsigned char)run[i]);
+	if (!run[0] || strstr(run, "!edit") || strstr(run, "zap") || strstr(run, "stronged")) {
+		tbx_report("Folio can't find a web browser to show the User Guide in. Open the directory with "
+			"NetSurf (or another browser) in it once, so the Filer sees it, then try again; or open "
+			"!Folio.Guide.index/html yourself.");
+		return;
+	}
+	_swix(Wimp_StartTask, _IN(0), "Filer_Run <Folio$Dir>.Guide.index/html");
+}
+
 static int toolbox_event(int *b)
 {
 	int code = b[2];
@@ -436,6 +466,9 @@ static int toolbox_event(int *b)
 		break;
 	case EV_HELP:
 		_swix(OS_CLI, _IN(0), "Filer_Run <Folio$Dir>.!Help");
+		break;
+	case EV_GUIDE:
+		open_guide();
 		break;
 	case EV_DOCMENU_SHOWN:
 		app.menu_window = app.idb.parent_id;

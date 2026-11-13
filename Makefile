@@ -57,7 +57,7 @@ WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c wimp/clip.c wimp/
 	wimp/readtext.c wimp/speaker.c wimp/speech.c wimp/print.c wimp/printlay.c wimp/export.c wimp/ocrui.c wimp/gotopage.c wimp/docinfo.c wimp/choices.c wimp/ask.c wimp/formui.c wimp/fontsetup.c wimp/pagesave.c wimp/combine.c wimp/scanui.c wimp/pageorg.c wimp/annotlist.c wimp/measure.c wimp/signui.c wimp/xfaui.c wimp/drawui.c wimp/mysig.c wimp/overlay.c
 WIMP_HDR := wimp/app.h wimp/tbx.h wimp/worker.h wimp/shelfdata.h wimp/readtext.h wimp/speaker.h \
 	core/folio.h core/dict.h
-VERSION ?= 0.0.1-test75
+VERSION ?= 0.0.1-test76
 # The plugins and the font pack have versions of their own, raised only
 # when what's in them changes (not with each Folio build).
 SPEECH_VERSION ?= 1.0
@@ -147,10 +147,23 @@ app: build/ro/folio.elf
 	cp crypto/out/LICENSE 'build/app/!Folio/MbedTLSLicence,fff'
 	mkdir -p 'build/app/!Folio/Plugins'
 	cp app/Plugins-ReadMe 'build/app/!Folio/Plugins/ReadMe,fff'
+	# The User Guide: !Folio.Guide.index/html and images.*/png, the names
+	# keeping their endings so the page's links to its pictures work.
+	mkdir -p 'build/app/!Folio/Guide/images'
+	cp docs/guide/index.html 'build/app/!Folio/Guide/index.html,faf'
+	for f in docs/guide/images/*.png; do [ -e "$$f" ] && cp "$$f" "build/app/!Folio/Guide/images/$$(basename $$f),b60"; done; true
 	python3 $(RCD_DIR)/package/rozip.py build/Folio-$(VERSION).zip -C build/app '!Folio'
 	@ls -l build/Folio-$(VERSION).zip
 
 # The Speech plugin: a voice, eSpeak NG's English data and LoadSound, in a
+# The User Guide on its own, to read before installing: Folio-User-Guide.zip
+# (guide/index.html and guide/images, for any computer's browser).
+guide-zip:
+	rm -rf build/guidezip && mkdir -p build/guidezip/guide/images
+	cp docs/guide/index.html build/guidezip/guide/index.html
+	cp docs/guide/images/*.png build/guidezip/guide/images/
+	cd build/guidezip && rm -f ../Folio-User-Guide.zip && zip -q -r -X ../Folio-User-Guide.zip guide
+
 # Speech folder for !Folio.Plugins (or <Choices$Write>.Folio.Plugins).
 SPEECH_VOICE ?= $(PVOICE_DIR)/voices/en_GB-southern_english_female-low.voice
 # FolioSpeech-<version>.zip: a !Folio holding just Plugins.Speech, to drag
@@ -321,4 +334,4 @@ ci:
 clean:
 	rm -rf build tests/data/*.epub tests/data/*.pdf tests/data/stamp tests/out
 
-.PHONY: all app plugin ocrplugin cjkpack test check ci clean
+.PHONY: all app plugin ocrplugin cjkpack guide-zip test check ci clean

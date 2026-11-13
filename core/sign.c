@@ -792,6 +792,22 @@ static void judge_changes(fz_context *ctx, pdf_document *pdf, pdf_obj *field, fo
 	s->certified = p;
 }
 
+/* The page whose /Annots holds this widget: for a widget with no /P, which
+ * is allowed (and what Folio's own signatures had before test76). */
+static pdf_obj *page_holding(fz_context *ctx, pdf_document *pdf, pdf_obj *widget)
+{
+	int i, j, n = pdf_count_pages(ctx, pdf), num = pdf_to_num(ctx, widget);
+	if (num <= 0)
+		return NULL;
+	for (i = 0; i < n; i++) {
+		pdf_obj *page = pdf_lookup_page_obj(ctx, pdf, i), *annots = pdf_dict_get(ctx, page, PDF_NAME(Annots));
+		for (j = 0; j < pdf_array_len(ctx, annots); j++)
+			if (pdf_to_num(ctx, pdf_array_get(ctx, annots, j)) == num)
+				return page;
+	}
+	return NULL;
+}
+
 static void one_field(fz_context *ctx, pdf_document *pdf, folio_verifier *v, pdf_obj *field, folio_signature *s)
 {
 	pdf_obj *val, *pg;
@@ -806,6 +822,10 @@ static void one_field(fz_context *ctx, pdf_document *pdf, folio_verifier *v, pdf
 	if (!pg)
 		pg = pdf_dict_get(ctx, pdf_array_get(ctx, pdf_dict_get(ctx, field, PDF_NAME(Kids)), 0), PDF_NAME(P));
 	fz_try(ctx) {
+		if (!pg)
+			pg = page_holding(ctx, pdf, field);
+		if (!pg)
+			pg = page_holding(ctx, pdf, pdf_array_get(ctx, pdf_dict_get(ctx, field, PDF_NAME(Kids)), 0));
 		if (pg)
 			s->page = pdf_lookup_page_number(ctx, pdf, pg);
 		if (s->page >= 0) {
@@ -1659,6 +1679,9 @@ static void sign_value(fz_context *ctx, pdf_document *pdf, pdf_annot *w, struct 
 			pdf_dict_put(ctx, lock, PDF_NAME(Action), PDF_NAME(All));
 			pdf_dict_put_int(ctx, lock, PDF_NAME(P), 1);
 		}
+		/* Say which page it's on: readers (Folio among them) find it by that. */
+		if (!pdf_dict_get(ctx, wobj, PDF_NAME(P)) && pdf_annot_page(ctx, w))
+			pdf_dict_put(ctx, wobj, PDF_NAME(P), pdf_annot_page(ctx, w)->obj);
 		pdf_dirty_annot(ctx, w);
 		if (!fz_is_empty_rect(rect)) {
 			info = pdf_signature_info(ctx, who[0] ? who : NULL, NULL, reason, location, now, 1);
