@@ -1,0 +1,106 @@
+UnixLib (GCCSDK 4.7.4, gcc4/recipe/files/gcc/libunixlib): run the pthread
+ticker routine from the RMA, not from application space.
+
+UnixLib registers pthread_call_every with OS_CallEvery. It lives in the
+program, and the Filter Manager filters that stop the ticker while the task
+is swapped out don't cover every case: on RISC OS 4 and 6, which page tasks
+out eagerly, the ticker then jumps into unmapped memory and the machine
+reports an instruction abort (seen with Folio on a Kinetic Risc PC; found
+under RPCEmu with RISC OS 4.00). RISC OS 5's lazy task swapping hides it.
+The routine only uses its RMA block and SWIs, so static builds now copy it
+into that block at start-up and register the copy. Apply in libunixlib/:
+  patch -p1 < unixlib-ticker-in-rma.patch
+
+--- a/incl-local/internal/asm_dec.s
++++ b/incl-local/internal/asm_dec.s
+@@ -389,6 +389,9 @@
+ PTHREAD_CALLEVERY_RMA_WORKSEMAPHORE:		.skip 4
+ PTHREAD_CALLEVERY_RMA_CALLBACK_SEMAPHORE:	.skip 4
+ PTHREAD_CALLEVERY_RMA_FILTER_NAME:		.skip 20
++	@ A copy of pthread_call_every, so that the ticker never calls into
++	@ application space, which may not be paged in.
++PTHREAD_CALLEVERY_RMA_TICKER_CODE:		.skip 96
+ PTHREAD_CALLEVERY_STRUCT_SIZE:
+ 
+ 	.text
+--- a/pthread/_context.s
++++ b/pthread/_context.s
+@@ -133,7 +133,11 @@
+ 	BNE	start_call_every_end
+ 
+ 	MOV	a1, #1
++#ifdef PIC
+ 	ADR	a2, pthread_call_every
++#else
++	ADD	a2, r12, #PTHREAD_CALLEVERY_RMA_TICKER_CODE
++#endif
+ 	MOV	a3, r12
+ 	SWI	XOS_CallEvery
+ 
+@@ -155,7 +159,11 @@
+ 	LDR	a2, [r12, #PTHREAD_CALLEVERY_RMA_TICKER_STARTED]
+ 	SUBS	a2, a2, #1
+ 	STREQ	a2, [r12, #PTHREAD_CALLEVERY_RMA_TICKER_STARTED]
++#ifdef PIC
+ 	ADREQ	a1, pthread_call_every
++#else
++	ADDEQ	a1, r12, #PTHREAD_CALLEVERY_RMA_TICKER_CODE
++#endif
+ 	MOVEQ	a2, r12
+ 	SWIEQ	XOS_RemoveTickerEvent
+ 	MSR	CPSR_f, a3
+@@ -232,8 +240,13 @@
+ @ for the shared library). We can't be certain the application is paged in
+ @ (despite the filters), so we dare not attempt to access its address space,
+ @ which is why these are in RMA.
++	@ Copied into the RMA block (PTHREAD_CALLEVERY_RMA_TICKER_CODE) at start-up
++	@ by _syslib.s, and run from there: it must be position independent.
++	.global	__pthread_call_every_code
++	.global	__pthread_call_every_code_end
+ 	NAME	pthread_call_every
+ pthread_call_every:
++__pthread_call_every_code:
+ 	STMFD	sp!, {a1-a4, lr}
+ 
+ 	@ First check that our upcall handler is paged in. If it is not
+@@ -272,6 +285,7 @@
+ 	SWIEQ	XOS_SetCallBack
+ 0:
+ 	LDMFD	sp!, {a1-a4, pc}
++__pthread_call_every_code_end:
+ 	DECLARE_FUNCTION pthread_call_every
+ 
+ @ This is called from _signal.s::__h_cback and pthread_yield.
+--- a/sys/_syslib.s
++++ b/sys/_syslib.s
+@@ -528,6 +528,30 @@
+ 
+ 	STR	v4, [v1, #PTHREAD_CALLEVERY_RMA_GOT_PTR]
+ 
++#ifndef PIC
++	@ Copy the ticker routine into the RMA block: the ticker must never call
++	@ into application space, which isn't paged in while another task runs
++	@ (RISC OS 4 and 6 swap tasks eagerly). Static builds only; the shared
++	@ library keeps calling it in place.
++	LDR	a1, .Ltick
++	LDR	a2, .Ltick+4
++	ADD	a3, v1, #PTHREAD_CALLEVERY_RMA_TICKER_CODE
++1:
++	LDR	a4, [a1], #4
++	STR	a4, [a3], #4
++	CMP	a1, a2
++	BCC	1b
++	MOV	a1, #1
++	ADD	a2, v1, #PTHREAD_CALLEVERY_RMA_TICKER_CODE
++	SUB	a3, a3, #4
++	SWI	XOS_SynchroniseCodeAreas
++	B	2f
++.Ltick:
++	WORD	__pthread_call_every_code
++	WORD	__pthread_call_every_code_end
++2:
++#endif
++
+ 	@ Now we'll initialise the C library, then call the user program.
+ 
+ 	MOV	a1, #SUL_MIN_VERSION

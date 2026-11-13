@@ -1,0 +1,9 @@
+The RiscPC build (make riscpc, make riscpc-app) uses GCCSDK GCC 4.7.4
+(arm-unknown-riscos: APCS-32, soft float, UnixLib), from RPC_TOOLCHAIN.
+
+Its UnixLib needs unixlib-ticker-in-rma.patch (see the top of that file):
+without it, Folio aborts on RISC OS 4 and 6 when its drawing thread runs
+while another task is paged in. Rebuild UnixLib after patching
+(builddir/cross-gcc/arm-unknown-riscos/libunixlib: make && make install).
+
+Tested under RPCEmu (StrongARM Risc PC): RISC OS 4.00 and 5.30.
