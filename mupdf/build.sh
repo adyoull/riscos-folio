@@ -53,12 +53,14 @@ fi
 # GCC 4.7's soft float stores a double's high word first (FPA order), so
 # lcms2's fast floor, which reads the low word through a union, is turned off
 # (CMS_DONT_USE_FAST_FLOOR): with it, DeviceGray black came out light grey.
+# ARMv3M, not ARMv4: the Risc PC can't do halfword loads and stores (see
+# the Makefile).
 if [ "$WHAT" = riscpc ]; then
 	RPC_TOOLCHAIN=${RPC_TOOLCHAIN:-$HOME/rpc/cross}
 	P=$RPC_TOOLCHAIN/bin/arm-unknown-riscos-
 	HB=$HERE/harfbuzz-1.9.0 OUT=build/rpc-release-tofu-tofu_cjk
 	[ -d "$HB" ] || git clone -q --depth 1 --branch 1.9.0 https://github.com/harfbuzz/harfbuzz "$HB"
-	RPC_FLAGS="-O2 -march=armv4 -mtune=strongarm"
+	RPC_FLAGS="-O2 -march=armv3m -mtune=strongarm"
 	make -C "$HB/src" -f "$HERE/harfbuzz-rpc.mk" -j"$JOBS" OUT="$SRC/$OUT/hb19" \
 		CC=${P}gcc CXX=${P}g++ AR=${P}ar \
 		FLAGS="$RPC_FLAGS -mstructure-size-boundary=8 -w -I. -Ihb-ucdn -I$SRC/include/mupdf \

@@ -47,7 +47,7 @@ build() {   # target, cc, ar, cflags
 # RPC_TOOLCHAIN), for make riscpc.
 if [ "${1:-}" = riscpc ]; then
 	R=${RPC_TOOLCHAIN:-$HOME/rpc/cross}/bin/arm-unknown-riscos-
-	PREFIX_MAP= build rpc ${R}gcc ${R}ar "-O2 -march=armv4 -mtune=strongarm -std=gnu99"
+	PREFIX_MAP= build rpc ${R}gcc ${R}ar "-O2 -march=armv3m -mtune=strongarm -std=gnu99"
 	exit 0
 fi
 build ro arm-riscos-gnueabihf-gcc arm-riscos-gnueabihf-ar \

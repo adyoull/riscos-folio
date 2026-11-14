@@ -57,7 +57,7 @@ WIMP_SRC := wimp/main.c wimp/docwin.c wimp/tbx.c wimp/worker.c wimp/clip.c wimp/
 	wimp/readtext.c wimp/speaker.c wimp/speech.c wimp/print.c wimp/printlay.c wimp/export.c wimp/ocrui.c wimp/gotopage.c wimp/docinfo.c wimp/choices.c wimp/ask.c wimp/formui.c wimp/fontsetup.c wimp/pagesave.c wimp/combine.c wimp/scanui.c wimp/pageorg.c wimp/annotlist.c wimp/measure.c wimp/signui.c wimp/xfaui.c wimp/drawui.c wimp/mysig.c wimp/overlay.c
 WIMP_HDR := wimp/app.h wimp/tbx.h wimp/worker.h wimp/shelfdata.h wimp/readtext.h wimp/speaker.h \
 	core/folio.h core/dict.h
-VERSION ?= 0.0.1-test76.2
+VERSION ?= 0.0.1-test76.3
 # The plugins and the font pack have versions of their own, raised only
 # when what's in them changes (not with each Folio build).
 SPEECH_VERSION ?= 1.0
@@ -134,13 +134,17 @@ build/ro/folio.elf: $(WIMP_SRC:wimp/%.c=build/ro/wimp/%.o) build/ro/libfolio.a b
 # No plugins: wimp/noplugins.c stands in for speech, speaker, readtext and
 # ocrui. MuPDF from mupdf/build.sh riscpc; mbedTLS and fontconfig from their
 # build.sh riscpc.
+# Everything is compiled for ARMv3M, tuned for the StrongARM: the StrongARM
+# has halfword loads and stores (ARMv4), but the Risc PC's memory system
+# can't do 16-bit transfers, so they give wrong data on a real machine (not
+# under RPCEmu). tools/check-halfword.py makes sure none get in.
 RPC_TOOLCHAIN ?= $(HOME)/rpc/cross
 RPC_CC := $(RPC_TOOLCHAIN)/bin/arm-unknown-riscos-gcc
 RPC_AR := $(RPC_TOOLCHAIN)/bin/arm-unknown-riscos-ar
 # GCCSDK's SharedUnixLibrary module (libunixlib/sul from its build), kept
 # with the toolchain as riscos/SharedULib,ffa.
 RPC_SUL ?= $(RPC_TOOLCHAIN)/riscos/SharedULib,ffa
-RPC_CFLAGS := -O2 -march=armv4 -mtune=strongarm -D_FILE_OFFSET_BITS=64 -DFOLIO_RISCPC
+RPC_CFLAGS := -O2 -march=armv3m -mtune=strongarm -D_FILE_OFFSET_BITS=64 -DFOLIO_RISCPC
 MU_RPC := $(MUPDF)/build/rpc-release-tofu-tofu_cjk
 RPC_MU_LIBS := -Wl,--start-group -lfontconfig -lexpat -lftextra -lmupdf -lmupdf-third -lfzhb -lmbedfolio -lstdc++ -lm -Wl,--end-group
 RPC_WIMP_SRC := $(filter-out wimp/speech.c wimp/speaker.c wimp/readtext.c wimp/ocrui.c,$(WIMP_SRC)) wimp/noplugins.c
@@ -179,6 +183,7 @@ riscpc-app: build/rpc/folio.elf
 	rm -rf build/rpcapp && mkdir -p build/rpcapp
 	cp -r app/!Folio build/rpcapp/
 	cp 'app-riscpc/!Run,feb' 'build/rpcapp/!Folio/!Run,feb'
+	python3 tools/check-halfword.py $(RPC_TOOLCHAIN)/bin/arm-unknown-riscos-objdump build/rpc/folio.elf
 	$(RPC_TOOLCHAIN)/bin/arm-unknown-riscos-strip -o build/rpc/folio.stripped build/rpc/folio.elf
 	$(RPC_TOOLCHAIN)/bin/elf2aif build/rpc/folio.stripped 'build/rpcapp/!Folio/!RunImage,ff8'
 	cp $(RPC_SUL) 'build/rpcapp/!Folio/SharedULib,ffa'

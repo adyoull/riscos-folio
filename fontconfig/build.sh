@@ -133,7 +133,7 @@ fi
 if [ "$WHAT" = riscpc ]; then
 	R=${RPC_TOOLCHAIN:-$HOME/rpc/cross}/bin
 	PREFIX_MAP= PATH=$R:$PATH build rpc $R/arm-unknown-riscos-gcc $R/arm-unknown-riscos-ar arm-unknown-riscos \
-		"-O2 -march=armv4 -mtune=strongarm -std=gnu99 -D_FILE_OFFSET_BITS=64" \
+		"-O2 -march=armv3m -mtune=strongarm -std=gnu99 -D_FILE_OFFSET_BITS=64" \
 		rpc-release-tofu-tofu_cjk
 fi
 if [ "$WHAT" = all ] || [ "$WHAT" = linuxarm ]; then
