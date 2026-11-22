@@ -332,7 +332,7 @@ void measure_changed(docwin *w)
 	case S_LINE:
 		if (ms.line_mm > 0) {
 			mm_per_pt = ms.line_mm;
-			snprintf(ms.scale_text, sizeof ms.scale_text, "From the line: about 1:%.0f of the paper size",
+			snprintf(ms.scale_text, sizeof ms.scale_text, "From the line: about 1:%.0f",
 				ms.line_mm / paper);
 		} else
 			snprintf(ms.scale_text, sizeof ms.scale_text,
@@ -417,6 +417,8 @@ static void set_scale(int line)
 			 * change to metres.) */
 			ms.line_mm = atof(ms.line) * unit_mm[ms.units - U_MM] / d;
 			metres_for(S_LINE);
+			/* The line over the scale bar isn't part of what's measured. */
+			docwin_measure_clear(ms.w);
 			ms.scale = S_LINE;
 			app_log("measure: scale from a line: %g mm a point", ms.line_mm);
 		}

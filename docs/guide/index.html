@@ -54,7 +54,7 @@ a { color:#1f5fa8; }
 <h1>Folio User Guide</h1>
 <p>Reading, marking up and making PDFs and ebooks on RISC OS</p>
 <p>Start here if you've only ever opened a PDF to read it. If you know PDFs inside out, the Technical Stuff boxes and Chapter 21 are for you.</p>
-<span class="badge">Folio 0.0.1-test76</span>
+<span class="badge">Folio 0.0.1-test77</span>
 </div>
 </header>
 <main>
@@ -123,7 +123,7 @@ a { color:#1f5fa8; }
 <h3 class="chapter" id="ch2"><span>2</span> Installing and starting</h3>
 <h4>What you need</h4>
 <ul>
-<li>RISC OS 5 on an ARMv7 computer or later: a Raspberry Pi 2 or newer, for example.</li>
+<li>RISC OS 5 on an ARMv7 computer or later: a Raspberry Pi 2 or newer, for example. There is also a version for a Risc PC with a StrongARM card (RISC OS 4, 5 or 6), <code>Folio-RiscPC</code>, without the plugins.</li>
 <li>A screen mode with 32 thousand colours or more.</li>
 <li>The SharedUnixLibrary, ARMEABISupport and PThreadTicker modules. PThreadTicker comes in Folio's zip; the others come with RISC OS or from PackMan.</li>
 <li>To look words up: a network connection. Folio loads the URL_Fetcher, AcornHTTP and AcornSSL modules from <code>!System</code> the first time.</li>
@@ -135,7 +135,7 @@ a { color:#1f5fa8; }
 <li>Double-click <code>!Folio</code>. Its icon appears on the icon bar.</li>
 </ol>
 <p>Folio is also in PackMan. Add the source <code>https://adyoull.github.io/riscos-packages/pkg/index</code> and install <b>Folio</b> from there; PackMan then keeps it up to date.</p>
-<p>Once the Filer has seen <code>!Folio</code>, double-clicking a PDF starts Folio and opens it.</p>
+<p>While Folio is running, double-clicking a PDF or an EPUB opens it in Folio. This test version doesn't claim any filetypes, so a double-click doesn't start Folio: start it first, or drag files to its icon bar icon.</p>
 
 <h4>The plugins</h4>
 <p>Three extras are separate downloads, so the main zip stays small. Each comes as a zip with its own <code>!Folio</code> inside: drag that <code>!Folio</code> over yours in the Filer, and the Filer adds the plugin's files to it. Then quit Folio and run it again.</p>
@@ -182,7 +182,7 @@ a { color:#1f5fa8; }
 <tr><td>Find</td><td>Searches the document for words.</td></tr>
 <tr><td>Define</td><td>Looks up the selected word.</td></tr>
 <tr><td>Measure</td><td>Measures lengths and areas on the page (<a href="#ch11">Chapter 11</a>).</td></tr>
-<tr><td>Highlight, Underline, Strike out, Note</td><td>Mark the selected text, or add a note (<a href="#ch9">Chapter 9</a>). They're grey until you select some text in a PDF.</td></tr>
+<tr><td>Highlight, Underline, Strike out, Note</td><td>Mark the selected text, or add a note (<a href="#ch9">Chapter 9</a>). Highlight, Underline and Strike out are grey until you select some text in a PDF. Note works in any PDF: with nothing selected, the note goes at the top of the page.</td></tr>
 <tr><td>Read aloud</td><td>With the Speech plugin only: reads the document to you.</td></tr>
 </table>
 <p>Rest the pointer on a button for a moment to see its name. If the window is too narrow for every button, arrows appear at the toolbar's right-hand end: click them, or turn the mouse wheel over the toolbar, to see the rest. <b>View &rarr; Toolbar</b> hides the toolbar or shows it again.</p>
@@ -220,7 +220,7 @@ a { color:#1f5fa8; }
 <p>If the document has no contents list, the window says so.</p>
 
 <h4>Links</h4>
-<p>Links have a blue line under them. Click one to follow it. A link to another part of the document goes there; a web or email link opens in your web browser or mail program, after Folio has asked you (<a href="#ch17">Chapter 17</a>). To come back after following a link, choose <b>Navigate &rarr; Back</b> or press <kbd>Ctrl</kbd>+<kbd>&larr;</kbd>. Back goes back link after link, and also returns from Go to page and from Contents.</p>
+<p>Links have a blue line under them. Click one to follow it. A link to another part of the document goes there; a web or email link opens in your web browser or mail program, after Folio has asked you (<a href="#ch17">Chapter 17</a>). To come back after following a link, choose <b>Navigate &rarr; Back</b> or press <kbd>Ctrl</kbd>+<kbd>&larr;</kbd>. Back goes back link after link, and also returns from Go to page, from Contents and from a click in the Annotations window.</p>
 <div class="box tip"><b class="label">TIP</b>If you'd rather see links as the document draws them, untick <b>Underline links</b> in Choices.</div>
 
 <h4>Find</h4>
@@ -262,7 +262,7 @@ a { color:#1f5fa8; }
 <div class="box rem"><b class="label">REMEMBER</b><b>Remove from bookshelf</b> (or <kbd>Delete</kbd>) only takes a book off the shelf. The file isn't touched. A book whose file can't be found any more is shown grey; <b>Remove missing books</b> takes them all off.</div>
 <h4>Ebooks</h4>
 <p>An EPUB, FB2 or MOBI book has no pages of its own: the text flows to fit whatever reads it. Folio lays it out on pages 400 by 600 points (about the size of a paperback) with 11-point text. The first time you open a book, Folio counts its pages in the background, so the page count may grow for a moment; after that it remembers.</p>
-<div class="box warn"><b class="label">WARNING</b>RISC OS may not know the EPUB filetype, and show an ebook as a Data file. Then double-clicking it won't start Folio. Drag it to Folio's icon bar icon or to the bookshelf instead, or give it a name ending <code>/epub</code>.</div>
+<div class="box warn"><b class="label">WARNING</b>RISC OS may not know the EPUB filetype, and show an ebook as a Data file. Then double-clicking it won't open it. Drag it to Folio's icon bar icon or to the bookshelf instead.</div>
 <div class="box tech"><b class="label">TECHNICAL STUFF</b>The bookshelf is kept in <code>&lt;Choices$Write&gt;.Folio.Shelf</code>, its covers in <code>&lt;Choices$Write&gt;.Folio.Covers</code>, and ebook page counts in <code>&lt;Choices$Write&gt;.Folio.Layouts</code>.</div>
 
 <h3 class="chapter" id="ch7"><span>7</span> Selecting, copying and looking words up</h3>
@@ -345,10 +345,10 @@ a { color:#1f5fa8; }
 <tr><td>Paper</td><td>The page as printed, at its paper size.</td></tr>
 <tr><td>Drawing's own</td><td>A plan or drawing whose PDF gives it a scale of its own (1 inch = 10 feet, say). Folio starts with this one when there is one, in the drawing's units.</td></tr>
 <tr><td>1:</td><td>A ratio of the paper size. Type it (<code>1250</code> for 1:1250) and press <kbd>Return</kbd>. Use it for a map or plan printed at a known scale, as long as the PDF's page is the size it was drawn for: a plan "1:1250 at A3" saved on an A3 page.</td></tr>
-<tr><td>Last line is</td><td>Something of known length. Draw a line over a scale bar (or a wall whose length you know), type its real length and press <kbd>Return</kbd> or click <b>Set</b>. Folio works the scale out from that, so it works whatever size the page is, and for a map printed to PDF with no scale in it.</td></tr>
+<tr><td>Last line is</td><td>Something of known length. Draw a line over a scale bar (or a wall whose length you know), type its real length, in the units shown beside the box, and press <kbd>Return</kbd> or click <b>Set</b>. Folio works the scale out from that, takes the line away, so it works whatever size the page is, and for a map printed to PDF with no scale in it.</td></tr>
 </table>
 <p><b>Units</b> chooses mm, cm, m, km, inches, feet or points. Choosing a scale other than Paper switches mm, cm and points to metres.</p>
-<div class="box tip"><b class="label">TIP</b>For a map from RiscOSM (or any map printed to PDF), draw a line along its scale bar, type the bar's length, press <kbd>Return</kbd>, then measure.</div>
+<div class="box tip"><b class="label">TIP</b>For a map from RiscOSM (or any map printed to PDF), choose <b>m</b> under Units, draw a line along its scale bar, choose <b>Last line is</b>, type the bar's length in metres and press <kbd>Return</kbd>. Then measure.</div>
 <h4>Keeping a measurement</h4>
 <p><b>Add to page</b> keeps the measurement on the page, in red: a line with its length written along it, or lines and an area with their figures beside them. <kbd>Ctrl</kbd>+<kbd>Z</kbd> takes it off again. <b>Clear</b> starts again. Close the window to stop measuring.</p>
 
@@ -389,12 +389,12 @@ a { color:#1f5fa8; }
 <ul>
 <li><b>Select</b> on a page chooses it; <b>Adjust</b> adds a page or takes it away; <kbd>Shift</kbd> with <b>Select</b> chooses every page from the last one clicked; <kbd>Ctrl</kbd>+<kbd>A</kbd> chooses them all.</li>
 <li>Drag over the space between pages to choose every page the box touches (with <b>Adjust</b>, they're added).</li>
-<li>Drag the chosen pages and let go where they should go: in front of the page you let go over, or after the last one.</li>
+<li>Drag the chosen pages and let go in the gap where they should go: over the left half of a page puts them in front of it, over the right half after it, and past the last page at the end.</li>
 <li><kbd>Delete</kbd> deletes the chosen pages. <b>Delete pages...</b> and <b>Move pages...</b> on the Pages menu start with the chosen pages typed in.</li>
-<li>Double-click a page (or press <kbd>Return</kbd>) to go back to reading at that page; <kbd>Escape</kbd> clears the choice, and again goes back to reading. Choosing <b>Arrange pages</b> again does too.</li>
+<li>Double-click a page to go back to reading at that page, or press <kbd>Return</kbd> to read from the first chosen page; <kbd>Escape</kbd> clears the choice, and again goes back to reading. Choosing <b>Arrange pages</b> again does too.</li>
 </ul>
 <h4>Typing pages</h4>
-<p>Wherever Folio asks which pages, you can type one page (<code>3</code>), a range (<code>1-10</code>), several (<code>1-3, 20, 45-50</code>), from a page to the end (<code>20-</code>), or <code>all</code>.</p>
+<p>In the Delete, Move, Overlay, Save pages and Save page pictures boxes, you can type one page (<code>3</code>), a range (<code>1-10</code>), several (<code>1-3, 20, 45-50</code>), from a page to the end (<code>20-</code>), from the start (<code>-5</code>), or <code>all</code>.</p>
 <p>Each change is one step: <kbd>Ctrl</kbd>+<kbd>Z</kbd> puts it back, and <kbd>F3</kbd> keeps it. Recognised text (<a href="#ch8">Chapter 8</a>) goes with its page when it moves.</p>
 <div class="box rem"><b class="label">REMEMBER</b>A PDF whose author doesn't allow its pages to be changed says so, and offers to lift that with the owner password. A signed PDF's pages can't be changed at all, since that would break the signature.</div>
 
@@ -445,7 +445,7 @@ a { color:#1f5fa8; }
 <table>
 <tr><th>Item</th><th>Makes</th></tr>
 <tr><td>Save pages as PDF...</td><td>A new PDF of some of the pages. Type which, click <b>Save</b>, and drag the icon to a directory. A PDF's pages are copied just as they are. Other documents' pages (CBZ, XPS, ebooks) are drawn into PDF pages; a CBZ of JPEGs becomes a PDF of the same JPEGs.</td></tr>
-<tr><td>Save page pictures...</td><td>A directory of pictures, Page001, Page002 and so on. A page that is one picture (a scanned page) gives that picture just as the PDF stores it: a JPEG comes out as the same JPEG, byte for byte. Any other page is drawn as a PNG, at 150 dpi unless you change it.</td></tr>
+<tr><td>Save page pictures...</td><td>A directory of pictures, Page001, Page002 and so on. A page that is one picture (a scanned page) gives that picture just as the PDF stores it: a JPEG comes out as the same JPEG, byte for byte, and any other picture as a PNG of it. Other pages are drawn as PNGs, at 150 dpi unless you change it.</td></tr>
 <tr><td>Save pages as text...</td><td>A text file of the pages' text, a paragraph to a line (Edit and StrongED wrap it to the window), with a blank line between paragraphs. Words split at a line's end are joined again.</td></tr>
 <tr><td>Export page as Draw...</td><td>The page you're reading as a Draw file: drag its icon to a directory, or straight into Draw. Lines and shapes become Draw paths, text becomes outlines (so it looks the same without the document's fonts), and each picture becomes a sprite of its own.</td></tr>
 </table>
@@ -464,7 +464,7 @@ a { color:#1f5fa8; }
 <figure><img src="images/docinfo.png" alt="Document info"><figcaption>Document info for a walking guide.</figcaption></figure>
 <div class="box tech"><b class="label">TECHNICAL STUFF</b>A font that isn't embedded is drawn with the nearest font the computer has, so the document may look a little different from how its author saw it. For scripts Folio has no font of its own for, it uses the computer's fonts through fontconfig: PackMan's FontConfig setup if it's installed, else the fonts in <code>!Folio.Fonts</code>.</div>
 <h4>Warnings about what a PDF can do</h4>
-<p>A PDF can contain JavaScript, attached files, links that would start a program, and ways to send a form somewhere. When you open one that does, Folio says so, and doesn't do any of those things.</p>
+<p>A PDF can contain JavaScript, attached files, links that would start a program, and ways to send a form somewhere. When you open one that does, Folio says so, and doesn't do any of those things (unless you let forms' JavaScript run in Choices).</p>
 <figure><img src="images/security.png" alt="The Security warning"><figcaption>Folio's warning on opening a form with JavaScript, an attachment, a program link and a way to send it.</figcaption></figure>
 <p>Folio also asks before following a link out of a document (to a web page, an email address or another file), showing where it goes. Links to other programs are never followed.</p>
 <h4>A PDF's restrictions</h4>
@@ -542,7 +542,7 @@ a { color:#1f5fa8; }
 Filer_Run SDFS::Disc.$.Docs.Manual/pdf</pre>
 <code>Run &lt;Folio$Dir&gt;.!Run -page 12 &lt;file&gt;</code> does the same.</li>
 <li><b>The log.</b> <code>&lt;Wimp$ScrapDir&gt;.FolioLog</code> records what Folio did. It starts afresh each time Folio runs, so copy it before running Folio again if you want to report a problem.</li>
-<li><b>Your settings</b> are in <code>&lt;Choices$Write&gt;.Folio</code>: Choices, the bookshelf (Shelf, Covers), reading places (Places), ebook page counts (Layouts), dictionary entries (Dict), and your handwritten signature.</li>
+<li><b>Your settings</b> are in <code>&lt;Choices$Write&gt;.Folio</code>: Choices, the bookshelf (Shelf, Covers), reading places (Places), ebook page counts (Layouts), dictionary entries (Dict), your handwritten signature (Signature), the scanner you last used (Scanner), and recognised text (with the OCR plugin).</li>
 <li><b>Trusting your own certificates.</b> Put them in <code>&lt;Choices$Write&gt;.Folio.Trusted</code> as PEM (<a href="#ch19">Chapter 19</a>).</li>
 <li><b>Incremental saving.</b> Folio adds changes to the end of a PDF wherever it can, as Acrobat does, so signatures stay good. Setting or removing a password writes the whole file again.</li>
 <li><b>Lossless pictures.</b> JPEGs go into new PDFs, and come out of Save page pictures, byte for byte: nothing is compressed again.</li>
@@ -556,9 +556,9 @@ Filer_Run SDFS::Disc.$.Docs.Manual/pdf</pre>
 <table>
 <tr><th>Problem</th><th>What to do</th></tr>
 <tr><td>Folio says it needs a 32 thousand or more colour screen mode.</td><td>Folio needs a 32 thousand or more colour screen mode. Change it in Display Manager.</td></tr>
-<tr><td>Double-clicking an EPUB does nothing.</td><td>RISC OS shows it as a Data file. Drag it to Folio's icon, or rename it to end <code>/epub</code> (<a href="#ch6">Chapter 6</a>).</td></tr>
+<tr><td>Double-clicking a PDF or an EPUB does nothing.</td><td>A double-click only opens a document while Folio is running: start Folio first. If RISC OS shows an ebook as a Data file, drag it to Folio's icon or to the bookshelf (<a href="#ch6">Chapter 6</a>).</td></tr>
 <tr><td>Find doesn't find text I can see.</td><td>The page is probably a scan: a picture of text. Use the OCR plugin (<a href="#ch8">Chapter 8</a>).</td></tr>
-<tr><td>Highlight and Note are grey.</td><td>Select some text first. Ebooks can't be marked yet; signed or restricted PDFs may not allow notes.</td></tr>
+<tr><td>Highlight is grey.</td><td>Select some text first (Highlight, Underline and Strike out need a selection; Note doesn't). Only PDFs can be marked: ebooks, comics and XPS files can't. In a signed or restricted PDF, Folio says why when a change isn't allowed.</td></tr>
 <tr><td>Print or Copy says the author doesn't allow it.</td><td>Type the owner password if you have it, or see Chapter 21, number 9.</td></tr>
 <tr><td>A web link does nothing.</td><td>Folio asks before following it; check the question box isn't behind a window. You need a web browser that has been seen by the Filer.</td></tr>
 <tr><td>User guide says there's no web browser.</td><td>Run NetSurf (or another browser) once, so RISC OS knows it, then try again. Or open <code>!Folio.Guide.index/html</code> yourself.</td></tr>
@@ -598,10 +598,10 @@ Filer_Run SDFS::Disc.$.Docs.Manual/pdf</pre>
 <tr><td>Icon bar icon</td><td>Open the bookshelf</td><td>&ndash;</td></tr>
 <tr><td>Text on the page</td><td>Drag to select; double-click a word</td><td>Extend the selection</td></tr>
 <tr><td>Link</td><td>Follow it</td><td>&ndash;</td></tr>
-<tr><td>Annotation</td><td>Select it; a note opens</td><td>&ndash;</td></tr>
+<tr><td>Annotation</td><td>Select it (a note opens its text)</td><td>&ndash;</td></tr>
 <tr><td>Form field</td><td>Fill it in</td><td>&ndash;</td></tr>
 <tr><td>Signature</td><td>Check it (sign it, if empty)</td><td>&ndash;</td></tr>
-<tr><td>Thumbnail</td><td>Go to that page</td><td>&ndash;</td></tr>
+<tr><td>Thumbnail</td><td>Go to that page (Arrange pages: choose it, and only it)</td><td>Go to that page (Arrange pages: choose it too, or not)</td></tr>
 <tr><td>Page, while drawing</td><td>Draw</td><td>Take the last stroke off</td></tr>
 <tr><td>Page, while measuring</td><td>Add a point</td><td>Take the last point off</td></tr>
 <tr><td>Window's close icon</td><td>Close</td><td>Close and open the document's directory</td></tr>

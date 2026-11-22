@@ -297,7 +297,7 @@ void contents_click(int *b)
 	}
 	if (page >= 0) {
 		app_log("contents: '%s' -> page %d", ct.rows[i].title, page + 1);
-		docwin_go_to(ct.w, page);
+		docwin_jump(ct.w, page);   /* Back returns from it */
 	}
 	/* Adjust keeps the window; Select too (it's a list to come back to). */
 }

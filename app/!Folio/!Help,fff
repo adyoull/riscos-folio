@@ -188,8 +188,9 @@ Measuring
   a plan's PDF gives it (chosen when there is one); 1: takes a ratio of
   the paper size (type 1250 for 1:1250 and press Return); Last line is
   sets the scale from something of known length: draw a line over a scale
-  bar, type its real length and press Return (or click Set). Units are
-  mm, cm, m, km, inches, feet or points.
+  bar, type its real length in the units shown beside the box (choose m
+  first for metres) and press Return (or click Set); the line is then
+  taken away. Units are mm, cm, m, km, inches, feet or points.
   Add to page keeps the measurement on the page in red: a line with its
   length written along it, or lines and an area with their figures beside
   them. Close the window to stop measuring.
@@ -434,9 +435,10 @@ Turning, deleting, moving and inserting pages (PDFs)
   Arrange pages shows the pages as a grid of thumbnails over the whole
   window. Select chooses a page, Adjust adds or takes one away, Shift-Select
   chooses a run, Ctrl-A all of them, and a drag over the space between
-  pages chooses those it touches. Drag chosen pages to move them; Delete
-  deletes them (Ctrl-Z undoes). Double-click a page, or press Return, to
-  read from it; Escape clears the choice, then goes back to reading.
+  pages chooses those it touches. Drag chosen pages into the gap where
+  they should go; Delete deletes them (Ctrl-Z undoes). Double-click a page
+  to read from it (Return: from the first chosen page); Escape clears the
+  choice, then goes back to reading.
   Overlay from file lays the first page of another file over the pages
   you choose (all of them to start with), or behind them: initials, a
   reference, a "Copy" mark, headed paper. Draw it in Draw and print it to
