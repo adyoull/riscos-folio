@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 #define FOLIO_VERSION_NUM "0.0.1"
-#define FOLIO_VERSION FOLIO_VERSION_NUM "-test76.3 (14-Nov-2026)"
+#define FOLIO_VERSION FOLIO_VERSION_NUM "-test77 (22-Nov-2026)"
 
 /* Client Toolbox event codes (0x1-0xffff are the client's). */
 enum {
@@ -24,7 +24,7 @@ enum {
 	EV_ADD_SHELF, EV_PASSWORD, EV_READ_ALOUD, EV_SPEAK_SEL, EV_PRINT, EV_EXPORT_DRAW, EV_MEASURE,
 	EV_OCR_PAGE = 0x170, EV_OCR_ALL, EV_GOTO, EV_DOCINFO, EV_ANNOTS, EV_OCR_EMBED, EV_SIGN, EV_XFA, EV_DRAW, EV_STAMP_PICTURE, EV_MYSIG_PLACE, EV_MYSIG_SETUP,
 	EV_ROT_CW = 0x180, EV_ROT_ACW, EV_ROT_180, EV_ROTALL_CW, EV_ROTALL_ACW,
-	EV_PG_DELETE = 0x188, EV_PG_MOVE, EV_PG_INSERT, EV_PG_OVERLAY,
+	EV_PG_DELETE = 0x188, EV_PG_MOVE, EV_PG_INSERT, EV_PG_OVERLAY, EV_PG_ARRANGE,
 	EV_COL_USUAL = 0x190, EV_COL_YELLOW, EV_COL_GREEN, EV_COL_BLUE, EV_COL_PINK, EV_COL_RED,
 	EV_COL_ORANGE, EV_COL_PURPLE, EV_COL_GREY,
 	EV_STAMP_0 = 0x1a0,     /* to 0x1ad: the standard stamps (folio_stamp_name) */
@@ -44,7 +44,7 @@ enum {
 	EV_FULL_SCREEN = 0x2b0, EV_SAVE_PAGES, EV_SAVE_PICTURES, EV_SAVE_TEXT,
 	EV_PAGES_OK = 0x2c0, EV_PAGES_CANCEL,
 	EV_PO_DELETE = 0x2c4, EV_PO_MOVE, EV_PO_CANCEL,     /* the Delete and Move pages boxes */
-	EV_MEAS_CLEAR = 0x2c8, EV_MEAS_ADD, EV_MEAS_CLOSE, EV_MEAS_UNITS, EV_MEAS_HIDDEN,
+	EV_MEAS_CLEAR = 0x2c8, EV_MEAS_ADD, EV_MEAS_CLOSE, EV_MEAS_UNITS, EV_MEAS_HIDDEN, EV_MEAS_MODE, EV_MEAS_SET,
 	EV_CREATE_PDF = 0x2d0, EV_CP_UP, EV_CP_DOWN, EV_CP_REMOVE, EV_CP_SORT, EV_CP_CLEAR, EV_CP_CREATE,
 	EV_SG_SIGN = 0x2d8, EV_SG_CANCEL,                    /* the Sign box */
 	EV_XF_OK = 0x2da, EV_XF_CANCEL,                      /* Form fields' typing box */
@@ -58,14 +58,14 @@ enum {
 
 /* View menu entries (component ids). */
 enum { EDIT_COPY = 1, EDIT_SELECT_ALL, EDIT_CLEAR, EDIT_UNDO, EDIT_REDO, EDIT_HILITE,
-	EDIT_ULINE, EDIT_STRIKE, EDIT_NOTE, EDIT_DELANNOT, EDIT_COLOUR, EDIT_MEASURE, EDIT_XFA, EDIT_DRAW, EDIT_STAMP };
+	EDIT_ULINE, EDIT_STRIKE, EDIT_NOTE, EDIT_DELANNOT, EDIT_COLOUR, EDIT_MEASURE_GONE, EDIT_XFA, EDIT_DRAW, EDIT_STAMP };
 /* Document menu entries. */
 enum { DOC_FIND = 5, DOC_DEFINE = 4, DOC_SAVE = 6, DOC_SHELF = 7, DOC_PASSWORD = 8,
 	DOC_READ = 9, DOC_SPEAKSEL = 10, DOC_SPEED = 11, DOC_PRINT = 12, DOC_EXPORT_DRAW = 13,
 	DOC_OCR = 14, DOC_INFO = 15, DOC_SAVE_PAGES = 16, DOC_SAVE_PICTURES = 17,
-	DOC_ROTATE = 18, DOC_SAVE_TEXT = 19, DOC_SIGN = 20 };
+	DOC_ROTATE = 18, DOC_SAVE_TEXT = 19, DOC_SIGN = 20, DOC_MEASURE = 21 };
 /* Pages submenu entries. */
-enum { PG_ROTATE = 1, PG_DELETE, PG_MOVE, PG_INSERT, PG_OVERLAY };
+enum { PG_ROTATE = 1, PG_DELETE, PG_MOVE, PG_INSERT, PG_OVERLAY, PG_ARRANGE };
 /* Colour submenu entries: COL_USUAL, then the colours in COL order. */
 enum { COL_USUAL = 1, COL_YELLOW, COL_GREEN, COL_BLUE, COL_PINK, COL_RED, COL_ORANGE,
 	COL_PURPLE, COL_GREY, COL_COUNT };
@@ -235,6 +235,18 @@ void thumbs_forget(thumbs *t, int page);   /* -1: every page */
 void thumbs_redraw(thumbs *t, int *block);
 void thumbs_click(thumbs *t, int *block);
 void thumbs_open_request(thumbs *t, int *block);
+/* Arranging pages: the thumbnails as a grid over the window. */
+void thumbs_arrange(thumbs *t, int on, int top);
+int thumbs_arranging(thumbs *t);
+int thumbs_chosen(thumbs *t, unsigned char *sel, int pages);
+int thumbs_pointer_page(thumbs *t);
+void thumbs_choose_range(thumbs *t, int first, int n);   /* first -1: none */
+int thumbs_drag_done(const int *box);
+int thumbs_key(const int *block);
+void docwin_arrange_move(docwin *w, const unsigned char *chosen, int before);
+void docwin_arrange_delete(docwin *w, const unsigned char *chosen);
+void docwin_arrange_read(docwin *w, int page);
+void docwin_menu_from_arrange(docwin *w);
 
 /* contents.c */
 void contents_open(docwin *w);
@@ -296,6 +308,7 @@ int export_event(int *block);            /* 1 if it was its SaveAs box's */
 /* Organising pages (pageorg.c): Delete, Move and Insert boxes. */
 enum { PO_DELETE, PO_MOVE, PO_INSERT };
 void pageorg_open(docwin *w, int kind, int page);   /* page: 0-based, the one to suggest */
+void pageorg_set_pages(const char *text);           /* the open box's Pages field */
 void pageorg_event(int code);
 int pageorg_data_load(int *block);
 void pageorg_forget(docwin *w);
@@ -324,10 +337,12 @@ int docwin_colour_rgb(int code);   /* EV_COL_* to 0xRRGGBB, -1 for the usual col
 void measure_open(docwin *w);
 void measure_forget(docwin *w);
 void measure_event(int code);
+int measure_key(const int *block);
 void measure_changed(docwin *w);
 void docwin_measure_mode(docwin *w, int on);
 int docwin_measure_points(docwin *w, int *page, folio_point *pt, int max);
-int docwin_measure_scale(docwin *w, int page, double *per_point, char *unit, size_t size);
+int docwin_measure_scale(docwin *w, int page, double *per_point, char *unit, size_t size,
+		char *ratio, size_t ratio_size, double *paper);
 void docwin_measure_clear(docwin *w);
 void docwin_measure_keep(docwin *w, const char *utf8);
 int docwin_can_annotate(docwin *w);

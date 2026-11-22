@@ -78,6 +78,7 @@ struct docwin {
 	/* Toolbar and thumbnail drawer. */
 	ObjectId toolbar;
 	int show_toolbar, show_thumbs;
+	int arrange, arrange_drawer;   /* arranging pages (thumbs.c), and whether the drawer was open */
 	thumbs *thumbs;
 	int top, left;            /* work area kept clear for them, OS units */
 	/* The annotation clicked on (PDFs): page -1 if none. */
@@ -1494,6 +1495,8 @@ static int wanted_page(docwin *w, int visible_only)
 	int st[9], vis_h, top, bottom, i0, i1, i, k, nvis;
 	int order[64], n = 0;
 	const render_job *cur = worker_current();
+	if (w->arrange)          /* the pages are covered: thumbnails only */
+		return -1;
 	get_state(w, st);
 	vis_h = st[4] - st[2];
 	top = st[6];
@@ -2635,7 +2638,10 @@ void docwin_doc_menu_shown(docwin *w)
 		folio_point pt;
 		_swix(Wimp_GetPointerInfo, _IN(1), ptr);
 		w->menu_page = point_at(w, ptr[0], ptr[1], &pt, -1);
+		if (w->arrange && (w->menu_page = thumbs_pointer_page(w->thumbs)) < 0)
+			w->menu_page = current_page(w);
 	}
+	menu_set_tick(app.pages_menu, PG_ARRANGE, w->arrange);
 	menu_set_fade(app.doc_menu, DOC_ROTATE, !w->can_annotate);
 	menu_set_fade(app.doc_menu, DOC_SAVE, !w->can_annotate);
 	menu_set_fade(app.doc_menu, DOC_PASSWORD, !w->can_annotate);
@@ -2796,11 +2802,15 @@ static void make_room_for_drawer(docwin *w, int opening)
  * screen, above everything (the icon bar too), with its title bar, scroll
  * bars and toolbar taken away, and the pages in the middle. F11 or Escape
  * puts back the window as it was. (F12 is left to the OS: the command line.) */
+static void toggle_arrange(docwin *w);
+
 static void full_screen(docwin *w, int on)
 {
 	int st[9], ob[9], page;
 	if (!on == !w->full)
 		return;
+	if (on && w->arrange)
+		toggle_arrange(w);
 	formui_commit(w);
 	page = current_page(w);
 	get_state(w, st);
@@ -2888,6 +2898,139 @@ static void toggle_thumbs(docwin *w)
 	w->fit_polls = 25;
 	w->want_render = 1;
 	tb_update(w);
+}
+
+/* Arranging pages: the thumbnails as a grid over the whole window
+ * (thumbs.c), or back to reading. The drawer, if it was open, comes back. */
+static void toggle_arrange(docwin *w)
+{
+	if (!w->thumbs)
+		return;
+	if (!w->arrange) {
+		if (w->full)
+			full_screen(w, 0);
+		w->arrange_drawer = w->show_thumbs;
+		if (w->show_thumbs) {
+			thumbs_show(w->thumbs, 0, w->top);
+			w->show_thumbs = 0;
+			relayout_furniture(w);
+		}
+		w->arrange = 1;
+		thumbs_set_current(w->thumbs, current_page(w), 0);
+		thumbs_arrange(w->thumbs, 1, w->top);
+		thumbs_set_current(w->thumbs, current_page(w), 1);
+		app_log("%s: arranging pages", w->title);
+	} else {
+		thumbs_arrange(w->thumbs, 0, w->top);
+		w->arrange = 0;
+		if (w->arrange_drawer) {
+			w->show_thumbs = 1;
+			relayout_furniture(w);
+			thumbs_show(w->thumbs, 1, w->top);
+		}
+		w->want_render = 1;
+		redraw_all(w);
+		_swix(Wimp_SetCaretPosition, _INR(0, 5), w->wimp, -1, 0, 0, 1 << 25, -1);
+		app_log("%s: reading again", w->title);
+	}
+	tb_update(w);
+}
+
+/* Arranging: pages dragged to before page 'before' (0 to pages). */
+void docwin_arrange_move(docwin *w, const unsigned char *chosen, int before)
+{
+	unsigned char *sel;
+	int i, n = 0, k = 0, first = -1, last = -1;
+	if (!is_window(w) || !w->can_annotate) {
+		tbx_report("Only a PDF's pages can be moved. Save pages as PDF, or Create PDF, makes one.");
+		return;
+	}
+	if (!allowed(w, EV_PG_MOVE) || !(sel = malloc((size_t)w->pages)))
+		return;
+	for (i = 0; i < w->pages; i++) {
+		sel[i] = chosen[i];
+		if (sel[i]) {
+			n++;
+			if (first < 0)
+				first = i;
+			last = i;
+			if (i < before)
+				k++;
+		}
+	}
+	/* Let go where they already are (one block, dropped on or beside it). */
+	if (!n || (last - first + 1 == n && before >= first && before <= last + 1)) {
+		free(sel);
+		return;
+	}
+	if (docwin_organise(w, PO_MOVE, sel, before, NULL) == 0)
+		thumbs_choose_range(w->thumbs, (before > w->pages ? w->pages : before) - k, n);
+	free(sel);
+}
+
+/* Arranging: Delete. */
+void docwin_arrange_delete(docwin *w, const unsigned char *chosen)
+{
+	unsigned char *sel;
+	int i, n = 0;
+	if (!is_window(w) || !w->can_annotate) {
+		tbx_report("Only a PDF's pages can be deleted. Save pages as PDF, or Create PDF, makes one.");
+		return;
+	}
+	if (!allowed(w, EV_PG_DELETE) || !(sel = malloc((size_t)w->pages)))
+		return;
+	for (i = 0; i < w->pages; i++)
+		n += (sel[i] = chosen[i]) != 0;
+	if (n == w->pages)
+		tbx_report("A PDF has to keep at least one page.");
+	else if (n && docwin_organise(w, PO_DELETE, sel, 0, NULL) == 0)
+		thumbs_choose_range(w->thumbs, -1, 0);
+	free(sel);
+}
+
+/* Arranging: back to reading, at this page. */
+void docwin_arrange_read(docwin *w, int page)
+{
+	if (!is_window(w))
+		return;
+	if (w->arrange)
+		toggle_arrange(w);
+	if (page >= 0 && page < w->pages)
+		go_to_page(w, page);
+}
+
+/* Arranging: Menu over the thumbnails opens the document's menu. */
+void docwin_menu_from_arrange(docwin *w)
+{
+	if (is_window(w))
+		tbx_show(app.doc_menu, 0, 0, NULL, w->obj, -1);
+}
+
+/* The chosen pages as text for the Delete and Move boxes ("1-3, 7"), or
+ * "" when none are chosen. */
+static void chosen_text(docwin *w, char *out, size_t size)
+{
+	unsigned char *sel;
+	int i, n, len = 0;
+	out[0] = 0;
+	if (!w->arrange || !(sel = malloc((size_t)(w->pages > 0 ? w->pages : 1))))
+		return;
+	n = thumbs_chosen(w->thumbs, sel, w->pages);
+	for (i = 0; n && i < w->pages; i++) {
+		int j = i;
+		if (!sel[i])
+			continue;
+		while (j + 1 < w->pages && sel[j + 1])
+			j++;
+		len += snprintf(out + len, size > (size_t)len ? size - (size_t)len : 0, j > i ? "%s%d-%d" : "%s%d",
+			len ? ", " : "", i + 1, j + 1);
+		if ((size_t)len >= size) {
+			out[0] = 0;   /* too many to type: the box starts empty */
+			break;
+		}
+		i = j;
+	}
+	free(sel);
 }
 
 /* One page or two side by side (and whether the first is alone). The page
@@ -3001,8 +3144,14 @@ void docwin_event(docwin *w, int code)
 		if (!w->can_annotate)
 			tbx_report("Only a PDF's pages can be organised. Save pages as PDF, or Create PDF, makes one.");
 		else if (allowed(w, code))
+		{
+			char chosen[200];
 			pageorg_open(w, code == EV_PG_DELETE ? PO_DELETE : code == EV_PG_MOVE ? PO_MOVE : PO_INSERT,
 				app.idb.self_id == app.pages_menu && w->menu_page >= 0 ? w->menu_page : current_page(w));
+			chosen_text(w, chosen, sizeof chosen);
+			if (chosen[0] && code != EV_PG_INSERT)
+				pageorg_set_pages(chosen);
+		}
 		break;
 	case EV_PG_OVERLAY:
 		if (!w->can_annotate)
@@ -3122,7 +3271,8 @@ void docwin_event(docwin *w, int code)
 			speech_read(w, 0);
 		break;
 	case EV_SPEAK_SEL: if (allowed(w, code)) speech_read(w, 1); break;
-	case EV_THUMBS: toggle_thumbs(w); break;
+	case EV_THUMBS: if (!w->arrange) toggle_thumbs(w); break;
+	case EV_PG_ARRANGE: toggle_arrange(w); break;
 	case EV_CONTENTS: contents_open(w); break;
 	}
 }
@@ -3136,7 +3286,7 @@ void docwin_view_menu_shown(docwin *w)
 	menu_set_tick(app.view_menu, VIEW_THUMBS, w->show_thumbs);
 	menu_set_tick(app.view_menu, VIEW_FULL_SCREEN, w->full);
 	menu_set_fade(app.view_menu, VIEW_TOOLBAR, !w->toolbar || w->full);
-	menu_set_fade(app.view_menu, VIEW_THUMBS, !w->thumbs || w->full);
+	menu_set_fade(app.view_menu, VIEW_THUMBS, !w->thumbs || w->full || w->arrange);
 	menu_set_tick(app.view_menu, VIEW_DEFAULT_ZOOM, fabsf(w->zoom - app.ch.zoom) < 0.005f);
 	menu_set_tick(app.view_menu, VIEW_TWO_PAGES, w->cols == 2);
 	menu_set_tick(app.view_menu, VIEW_COVER_ALONE, w->cover);
@@ -4018,16 +4168,19 @@ int docwin_measure_points(docwin *w, int *page, folio_point *pt, int max)
 	return n;
 }
 
-int docwin_measure_scale(docwin *w, int page, double *per_point, char *unit, size_t size)
+int docwin_measure_scale(docwin *w, int page, double *per_point, char *unit, size_t size,
+		char *ratio, size_t ratio_size, double *paper)
 {
 	folio_loc loc;
 	int own = 0;
 	*per_point = 25.4 / 72;
+	if (paper)
+		*paper = *per_point;
 	snprintf(unit, size, "mm");
 	if (!is_window(w) || folio_loc_from_number(w->doc, page < 0 ? current_page(w) : page, &loc))
 		return 0;
 	if (core_trylock()) {
-		own = folio_page_measure(w->doc, loc, per_point, unit, size);
+		own = folio_page_measure(w->doc, loc, per_point, unit, size, ratio, ratio_size, paper);
 		core_unlock();
 	}
 	return own;

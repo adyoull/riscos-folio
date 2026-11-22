@@ -153,6 +153,18 @@ def note():
         d.line([(u(6), u(y)), (u(18), u(y))], fill=INK, width=S)
     return im
 
+def measure():
+    im, d = canvas()
+    # A ruler on the slant, with its marks.
+    d.polygon([(u(2), u(16)), (u(16), u(2)), (u(22), u(8)), (u(8), u(22))], fill=(250, 215, 120, 255), outline=INK)
+    d.line([(u(2), u(16)), (u(16), u(2)), (u(22), u(8)), (u(8), u(22)), (u(2), u(16))], fill=INK, width=LW)
+    for i in range(1, 7):
+        x, y = 2 + i * 2, 16 - i * 2
+        k = 3.5 if i % 2 == 0 else 2
+        d.line([(u(x), u(y)), (u(x + k * 0.7), u(y + k * 0.7))], fill=INK, width=S)
+    return im
+
+
 def twopages():
     im, d = canvas()
     page(d, u(1.5), u(4), u(11.5), u(20))
@@ -176,7 +188,7 @@ ICONS = [
     ('tb_thumbs', thumbs), ('tb_contents', contents), ('tb_prev', lambda: arrow(True)),
     ('tb_next', lambda: arrow(False)), ('tb_zoomout', lambda: zoom(False)),
     ('tb_zoomin', lambda: zoom(True)), ('tb_fitw', fitwidth), ('tb_twoup', twopages), ('tb_dark', dark),
-    ('tb_find', find), ('tb_define', define), ('tb_hilite', highlight),
+    ('tb_find', find), ('tb_define', define), ('tb_measure', measure), ('tb_hilite', highlight),
     ('tb_uline', underline), ('tb_strike', strikeout), ('tb_note', note), ('tb_speak', speak),
 ]
 

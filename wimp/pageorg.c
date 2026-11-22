@@ -219,6 +219,12 @@ void pageorg_open(docwin *w, int kind, int page)
 	tbx_show(po.box[kind], kind == PO_INSERT ? 0 : 1, 2, pos, 0, -1);
 }
 
+void pageorg_set_pages(const char *text)
+{
+	if (po.w && po.box[po.kind])
+		tbx_method(po.box[po.kind], 512 /* WritableField_SetValue */, P_PAGES, (int)text, 0);
+}
+
 void pageorg_forget(docwin *w)
 {
 	int k;

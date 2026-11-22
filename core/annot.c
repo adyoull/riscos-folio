@@ -638,7 +638,8 @@ int folio_annot_recolour(folio_doc *doc, folio_loc loc, int n, int rgb)
 
 /* ---- Measuring ------------------------------------------------------------ */
 
-int folio_page_measure(folio_doc *doc, folio_loc loc, double *per_point, char *unit, size_t unit_size)
+int folio_page_measure(folio_doc *doc, folio_loc loc, double *per_point, char *unit, size_t unit_size,
+		char *ratio, size_t ratio_size, double *paper)
 {
 	fz_context *ctx = doc->ctx;
 	pdf_document *pdf = pdf_of(doc);
@@ -646,6 +647,10 @@ int folio_page_measure(folio_doc *doc, folio_loc loc, double *per_point, char *u
 	double uu = 1;
 	*per_point = 25.4 / 72;
 	snprintf(unit, unit_size, "mm");
+	if (ratio && ratio_size)
+		ratio[0] = 0;
+	if (paper)
+		*paper = *per_point;
 	if (!pdf)
 		return 0;
 	fz_var(own);
@@ -657,6 +662,8 @@ int folio_page_measure(folio_doc *doc, folio_loc loc, double *per_point, char *u
 		if (uu <= 0)
 			uu = 1;
 		*per_point = 25.4 / 72 * uu;
+		if (paper)
+			*paper = *per_point;
 		/* The drawing's own scale: the first viewport's rectilinear measure,
 		 * its X number format's conversion factor and unit. */
 		m = pdf_dict_gets(ctx, pdf_array_get(ctx, vp, 0), "Measure");
@@ -668,6 +675,9 @@ int folio_page_measure(folio_doc *doc, folio_loc loc, double *per_point, char *u
 			if (c > 0) {
 				*per_point = c * uu;
 				snprintf(unit, unit_size, "%s", u && *u ? u : "units");
+				/* Its scale as the drawing says it, e.g. "1 in = 40 ft". */
+				if (ratio && ratio_size)
+					snprintf(ratio, ratio_size, "%s", pdf_dict_get_text_string(ctx, m, PDF_NAME(R)));
 				own = 1;
 			}
 		}
@@ -703,6 +713,10 @@ int folio_annot_measure(folio_doc *doc, folio_loc loc, const folio_point *pt, in
 			a = pdf_create_annot(ctx, page, PDF_ANNOT_LINE);
 			pdf_set_annot_line(ctx, a, to_page(cp, pt[0]), to_page(cp, pt[1]));
 			pdf_set_annot_line_ending_styles(ctx, a, PDF_ANNOT_LE_BUTT, PDF_ANNOT_LE_BUTT);
+			/* The figures on the line itself (its caption, drawn from the
+			 * note), so they show on the page and in other readers. */
+			if (text && *text)
+				pdf_set_annot_line_caption(ctx, a, 1);
 		} else {
 			a = pdf_create_annot(ctx, page, closed ? PDF_ANNOT_POLYGON : PDF_ANNOT_POLY_LINE);
 			for (i = 0; i < n; i++)
@@ -712,6 +726,41 @@ int folio_annot_measure(folio_doc *doc, folio_loc loc, const folio_point *pt, in
 		pdf_set_annot_border_width(ctx, a, 1);
 		if (text)
 			pdf_set_annot_contents(ctx, a, text);
+		/* Lines and areas have no caption: the figures go beside them as a
+		 * label (a FreeText annotation, in the same change, so Undo takes
+		 * both), in the middle of an area or after the last point. */
+		if (n >= 3 && text && *text) {
+			pdf_annot *t;
+			fz_point c = { 0, 0 };
+			float size = 9, w = 0, lines = 1;
+			const char *q;
+			float cw = 0;
+			for (q = text; *q; q++) {
+				if (*q == '\n') {
+					lines++;
+					cw = 0;
+				} else if ((*q & 0xc0) != 0x80 && (cw += size * 0.55f) > w)
+					w = cw;
+			}
+			if (closed) {
+				for (i = 0; i < n; i++) {
+					fz_point v = to_page(cp, pt[i]);
+					c.x += v.x / n;
+					c.y += v.y / n;
+				}
+				c.x -= w / 2 + 3;
+				c.y -= lines * size * 0.6f + 3;
+			} else {
+				c = to_page(cp, pt[n - 1]);
+				c.x += 4;
+				c.y += 4;
+			}
+			t = pdf_create_annot(ctx, page, PDF_ANNOT_FREE_TEXT);
+			pdf_set_annot_rect(ctx, t, fz_make_rect(c.x, c.y, c.x + w + 6, c.y + lines * size * 1.2f + 6));
+			pdf_set_annot_default_appearance(ctx, t, "Helv", size, 3, red);
+			pdf_set_annot_border_width(ctx, t, 0);
+			pdf_set_annot_contents(ctx, t, text);
+		}
 		pdf_update_page(ctx, page);
 		pdf_end_operation(ctx, pdf);
 		op = 0;

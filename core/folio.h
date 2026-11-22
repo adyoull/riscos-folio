@@ -602,7 +602,8 @@ int folio_annot_recolour(folio_doc *doc, folio_loc loc, int n, int rgb);
  * default millimetres (allowing for the page's UserUnit); if the PDF gives
  * the page a scale of its own (a /VP viewport with a /Measure, as plans and
  * drawings do), that scale and its unit, and it returns 1. */
-int folio_page_measure(folio_doc *doc, folio_loc loc, double *per_point, char *unit, size_t unit_size);
+int folio_page_measure(folio_doc *doc, folio_loc loc, double *per_point, char *unit, size_t unit_size,
+		char *ratio, size_t ratio_size, double *paper);
 /* A measurement kept on the page: a line (two points), lines or (closed) a
  * polygon through the points (folio points), red, with text as its note.
  * One change in the journal. 0 or -1. */

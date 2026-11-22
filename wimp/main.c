@@ -166,12 +166,11 @@ static void create_objects(void)
 	entry(&em, 7, EDIT_STRIKE, "Strike out", 0, EV_STRIKE, "Click to strike out the selected text (PDFs).");
 	entry(&em, 8, EDIT_NOTE, "Note...", 0, EV_NOTE, "Click to add a note at the selection, or at the top of the page (PDFs).");
 	entry(&em, 9, EDIT_DELANNOT, "Delete annotation Del", 0, EV_DEL_ANNOT, "Click to delete the annotation you clicked on.");
-	entry(&em, 10, EDIT_COLOUR, "Colour", MENU_SUBMENU, 0, "Move right to choose the colour for new highlights, underlines, strike-outs and notes, or to recolour the annotation you clicked on.");
-	entry(&em, 11, EDIT_MEASURE, "Measure...", MENU_DOTTED, EV_MEASURE, "Click to measure on the page: lengths between the points you click, and the area they enclose.");
-	entry(&em, 12, EDIT_DRAW, "Draw...", 0, EV_DRAW, "Click to draw on the page with the mouse: drag with Select (PDFs).");
-	entry(&em, 13, EDIT_STAMP, "Stamp", MENU_SUBMENU | MENU_DOTTED, 0, "Move right to put a stamp (Approved, Draft...) or a picture on the page (PDFs).");
-	entry(&em, 14, EDIT_XFA, "Form fields...", 0, EV_XFA, "Click to fill in an XFA form (one made with Adobe's form designer) as a list of its fields.");
-	app.edit_menu = make_menu(&em, "Edit", 15, EV_EDIT_SHOWN);
+	entry(&em, 10, EDIT_COLOUR, "Colour", MENU_SUBMENU | MENU_DOTTED, 0, "Move right to choose the colour for new highlights, underlines, strike-outs and notes, or to recolour the annotation you clicked on.");
+	entry(&em, 11, EDIT_DRAW, "Draw...", 0, EV_DRAW, "Click to draw on the page with the mouse: drag with Select (PDFs).");
+	entry(&em, 12, EDIT_STAMP, "Stamp", MENU_SUBMENU | MENU_DOTTED, 0, "Move right to put a stamp (Approved, Draft...) or a picture on the page (PDFs).");
+	entry(&em, 13, EDIT_XFA, "Form fields...", 0, EV_XFA, "Click to fill in an XFA form (one made with Adobe's form designer) as a list of its fields.");
+	app.edit_menu = make_menu(&em, "Edit", 14, EV_EDIT_SHOWN);
 	{
 		static const char *const name[] = { "Approved", "Not approved", "Draft", "Final", "Confidential",
 			"For comment", "For public release", "Not for public release", "Experimental", "Expired",
@@ -209,10 +208,11 @@ static void create_objects(void)
 	entry(&dm, 12, 2, "Navigate", MENU_SUBMENU | MENU_DOTTED, 0, "Move right for moving through the document.");
 	/* The context item (DESIGN §3.4): its text names the word when it's shown. */
 	entry(&dm, 13, DOC_FIND, "Find...        F4", 0, EV_FIND, "Click to find text in the document.");
-	entry(&dm, 14, DOC_DEFINE, "Define", MENU_FADED | MENU_DOTTED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
+	entry(&dm, 14, DOC_DEFINE, "Define", MENU_FADED, EV_DEFINE, "Click to see what the selected word means (from Wiktionary; needs the network).");
 	dm.e[14].max_text = 80;
-	entry(&dm, 15, DOC_SHELF, "On bookshelf", 0, EV_ADD_SHELF, "Click to put this document on the bookshelf, or take it off.");
-	ndm = 16;
+	entry(&dm, 15, DOC_MEASURE, "Measure...", MENU_DOTTED, EV_MEASURE, "Click to measure on the page: lengths between the points you click, and the area they enclose.");
+	entry(&dm, 16, DOC_SHELF, "On bookshelf", 0, EV_ADD_SHELF, "Click to put this document on the bookshelf, or take it off.");
+	ndm = 17;
 	/* Text recognition: only with the OCR plugin. */
 	if (ocr_available()) {
 		entry(&dm, ndm++, DOC_OCR, "Text recognition", MENU_SUBMENU, 0, "Move right to read the text in scanned pages, so it can be found, selected, copied and read aloud.");
@@ -247,8 +247,9 @@ static void create_objects(void)
 	entry(&pm, 1, PG_DELETE, "Delete pages...", 0, EV_PG_DELETE, "Click to delete pages (this one, or others you type). Undo (^Z) puts them back.");
 	entry(&pm, 2, PG_MOVE, "Move pages...", 0, EV_PG_MOVE, "Click to move pages to another place in the document.");
 	entry(&pm, 3, PG_INSERT, "Insert pages from file...", 0, EV_PG_INSERT, "Click to add the pages of another PDF, a picture, a text file or a document, here or at the end.");
-	entry(&pm, 4, PG_OVERLAY, "Overlay from file...", 0, EV_PG_OVERLAY, "Click to lay a page from another file (such as a Draw drawing printed to PDF) over these pages, or under them.");
-	app.pages_menu = make_menu(&pm, "Pages", 5, 0);
+	entry(&pm, 4, PG_OVERLAY, "Overlay from file...", MENU_DOTTED, EV_PG_OVERLAY, "Click to lay a page from another file (such as a Draw drawing printed to PDF) over these pages, or under them.");
+	entry(&pm, 5, PG_ARRANGE, "Arrange pages", 0, EV_PG_ARRANGE, "Click to see the pages as a grid of thumbnails, to drag them into a new order or choose some to delete; click again to go back to reading.");
+	app.pages_menu = make_menu(&pm, "Pages", 6, 0);
 	app.doc_menu = make_menu(&dm, "Folio", ndm, EV_DOCMENU_SHOWN);
 	if (app.speed_menu)
 		check(menu_set_submenu(app.doc_menu, DOC_SPEED, app.speed_menu));
@@ -533,6 +534,7 @@ static int toolbox_event(int *b)
 		pageorg_event(code);
 		break;
 	case EV_MEAS_CLEAR: case EV_MEAS_ADD: case EV_MEAS_CLOSE: case EV_MEAS_UNITS: case EV_MEAS_HIDDEN:
+	case EV_MEAS_MODE: case EV_MEAS_SET:
 		measure_event(code);
 		break;
 	case EV_CREATE_PDF: case EV_CP_UP: case EV_CP_DOWN: case EV_CP_REMOVE: case EV_CP_SORT:
@@ -820,7 +822,7 @@ int main(int argc, char **argv)
 			break;
 		case Wimp_EUserDrag:
 			/* A selection drag's button was let go. */
-			if (!mysig_drag_done())
+			if (!mysig_drag_done() && !thumbs_drag_done(block))
 				docwin_user_drag_done();
 			break;
 		case Wimp_EScrollRequest:
@@ -866,6 +868,10 @@ int main(int argc, char **argv)
 			if (formui_key(block))
 				break;
 			if (bookshelf_key(block))
+				break;
+			if (measure_key(block))
+				break;
+			if (thumbs_key(block))
 				break;
 			if (!(w && docwin_toolbar_key(w, block[6])))
 				_swix(Wimp_ProcessKey, _IN(0), block[6]);

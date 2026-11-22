@@ -5,7 +5,7 @@ It's built on [MuPDF](https://mupdf.com) with a native front end that follows
 the RISC OS Style Guide, and takes its ideas for markup and reading from
 Flexcil. "Folio" is a working name.
 
-Status: **test builds** (0.0.1-test76.3). It's used day to day on a Raspberry Pi
+Status: **test builds** (0.0.1-test77). It's used day to day on a Raspberry Pi
 running RISC OS 5, but expect rough edges. The design is in
 [`docs/DESIGN.md`](docs/DESIGN.md).
 
@@ -40,12 +40,14 @@ running RISC OS 5, but expect rough edges. The design is in
   pages open as a new PDF with the scanner's JPEGs as they came.
 - **Pages** (PDFs): turn the page under the pointer (Ctrl-R, Ctrl-L) or every
   page; delete pages; move them; insert the pages of another PDF, picture or
-  document. Each is undoable and kept when saved; recognised text goes with
-  its page.
+  document; or *Arrange pages*: a grid of thumbnails to drag pages into a
+  new order and choose pages to delete. Each is undoable and kept when
+  saved; recognised text goes with its page.
 - **Annotations:** a list of every annotation in the document (go to one by
   clicking it), and a choice of colour for new markings, or to recolour one.
 - **Measuring:** lengths and areas between points you click, at the page's
-  paper size or a drawing's own scale; keep a measurement as an annotation.
+  paper size, a drawing's own scale, a ratio (1:1250) or a scale set from a
+  line of known length; keep a measurement on the page, its figures shown.
 - **Drawing, stamps and pictures:** freehand drawing with the mouse (Ink
   annotations), the standard stamps (Approved, Draft...), and pictures such
   as a scanned signature, with white made see-through; "My signature",

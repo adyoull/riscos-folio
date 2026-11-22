@@ -1,4 +1,4 @@
-Folio (test build 0.0.1-test76.3)
+Folio (test build 0.0.1-test77)
 ===============================
 
 A reader for PDF and ebook files (EPUB, FB2, MOBI, CBZ, XPS), built on
@@ -179,15 +179,20 @@ My signature
   signature" puts it beside your name in a digital signature too.
 
 Measuring
-  Measure... on the Edit menu opens the Measure window. While it's open,
-  click Select on the page to add points: red lines join them, and Adjust
-  takes the last one off. The window shows the last line's length, all the
-  lines together, and with three points or more the area they enclose.
-  Lengths are in mm, cm, inches or points, at the page's paper size; a
-  plan or drawing whose PDF gives it a scale of its own (1 in = 10 ft,
-  say) is measured in its own units. Add to page keeps the measurement on
-  the page as an annotation, with the figures as its note. Close the
-  window to stop measuring.
+  The ruler on the toolbar, or Measure... on the document menu, opens the
+  Measure window. While it's open, click Select on the page to add points:
+  red lines join them, and Adjust takes the last one off. The window shows
+  the last line's length, all the lines together, and with three points
+  or more the area they enclose.
+  Scale: Paper measures the page as printed; Drawing's own uses the scale
+  a plan's PDF gives it (chosen when there is one); 1: takes a ratio of
+  the paper size (type 1250 for 1:1250 and press Return); Last line is
+  sets the scale from something of known length: draw a line over a scale
+  bar, type its real length and press Return (or click Set). Units are
+  mm, cm, m, km, inches, feet or points.
+  Add to page keeps the measurement on the page in red: a line with its
+  length written along it, or lines and an area with their figures beside
+  them. Close the window to stop measuring.
 
 Printing
   Print... on the document's menu (or the Print key) opens the Print box:
@@ -414,7 +419,8 @@ Scanning (network scanners)
 
 Turning, deleting, moving and inserting pages (PDFs)
   Pages on the document menu has Rotate, Delete pages..., Move pages...,
-  Insert pages from file... and Overlay from file.... Rotate turns the page you pressed Menu
+  Insert pages from file..., Overlay from file... and Arrange pages.
+  Rotate turns the page you pressed Menu
   over (or all pages) a quarter turn either way or a half turn: for a page
   fed in the wrong way up, or a landscape page scanned upright. Ctrl-R and
   Ctrl-L turn the page under the pointer clockwise and anticlockwise.
@@ -425,6 +431,12 @@ Turning, deleting, moving and inserting pages (PDFs)
   pages go in front of (empty: the end); then drag a PDF, a picture, a
   text file or another document Folio reads into the box, and its pages go
   in.
+  Arrange pages shows the pages as a grid of thumbnails over the whole
+  window. Select chooses a page, Adjust adds or takes one away, Shift-Select
+  chooses a run, Ctrl-A all of them, and a drag over the space between
+  pages chooses those it touches. Drag chosen pages to move them; Delete
+  deletes them (Ctrl-Z undoes). Double-click a page, or press Return, to
+  read from it; Escape clears the choice, then goes back to reading.
   Overlay from file lays the first page of another file over the pages
   you choose (all of them to start with), or behind them: initials, a
   reference, a "Copy" mark, headed paper. Draw it in Draw and print it to

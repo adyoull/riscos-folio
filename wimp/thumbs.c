@@ -8,7 +8,15 @@
  *
  * Thumbnails are drawn by the page worker, after the pages the window shows
  * (docwin_background asks thumbs_wanted for one when the worker is free).
- * The page being read is framed; a click goes to a page. */
+ * The page being read is framed; a click goes to a page.
+ *
+ * Arranging pages (Pages > Arrange pages): the same window covers the whole
+ * document window, as a grid of thumbnails, as many across as fit. Select
+ * picks a page, Adjust adds or takes one away, and dragging over the space
+ * between pages picks every page the box touches. Dragging chosen pages
+ * moves them to where they're let go; Delete deletes them; ^Z undoes. A
+ * double-click goes back to reading at that page. Moving and deleting are
+ * docwin_organise's, as from the Pages menu. */
 #include "app.h"
 #include <stdlib.h>
 #include <string.h>
@@ -38,9 +46,17 @@ struct thumbs {
 	int current;
 	int **area;              /* per page: sprite area, or NULL */
 	signed char *state;
+	unsigned char *sel;      /* per page: chosen, when arranging */
 	size_t bytes;
 	int cap;
+	int arrange;             /* a grid over the whole window */
+	int cols;                /* thumbnails across (1 in the drawer) */
+	int anchor;              /* the last page clicked, for Shift-clicks */
+	int dragging;            /* 0, DRAG_MOVE or DRAG_BAND */
+	int drag_page;           /* the page a move drag started on */
 };
+
+enum { DRAG_MOVE = 1, DRAG_BAND };
 
 static thumbs *all;
 static const unsigned window_flags = 0x80000000u | (1u << 28);   /* vertical scroll bar; new format */
@@ -53,6 +69,61 @@ int thumbs_width(void)
 static int row_h(const thumbs *t)
 {
 	return t->th + PAD + LABEL;
+}
+
+#define CELL_W (TW + PAD)
+
+static int cols(const thumbs *t)
+{
+	return t->arrange && t->cols > 0 ? t->cols : 1;
+}
+
+static int rows(const thumbs *t)
+{
+	int n = t->pages > 0 ? t->pages : 1;
+	return (n + cols(t) - 1) / cols(t);
+}
+
+/* Page i's thumbnail: its left and top edges in work area coordinates. */
+static void cell(const thumbs *t, int i, int *x0, int *y1)
+{
+	*x0 = PAD + (i % cols(t)) * CELL_W;
+	*y1 = -PAD - (i / cols(t)) * row_h(t);
+}
+
+/* The page at a work area point, or -1. */
+static int page_at(const thumbs *t, int x, int y)
+{
+	int col = (x - PAD / 2) / CELL_W, row = (-y - PAD / 2) / row_h(t), i;
+	if (x < PAD / 2 || y > -PAD / 2 || col >= cols(t))
+		return -1;
+	i = row * cols(t) + col;
+	return i < t->pages ? i : -1;
+}
+
+/* Where pages dropped at a work area point go: before this page (0 to
+ * pages). */
+static int gap_at(const thumbs *t, int x, int y)
+{
+	int row = (-y - PAD / 2) / row_h(t), col = (x - PAD / 2 + CELL_W / 2) / CELL_W, i;
+	if (row < 0)
+		return 0;
+	if (col < 0)
+		col = 0;
+	if (col > cols(t))
+		col = cols(t);
+	i = row * cols(t) + col;
+	return i > t->pages ? t->pages : i;
+}
+
+/* Screen to work area coordinates. */
+static void to_work(const thumbs *t, int *x, int *y)
+{
+	int st[9];
+	st[0] = t->wimp;
+	_swix(Wimp_GetWindowState, _IN(1), st);
+	*x -= st[1] - st[5];
+	*y -= st[4] - st[6];
 }
 
 static int create_wimp_window(void)
@@ -69,7 +140,7 @@ static int create_wimp_window(void)
 	b[9] = 3 | (1 << 8) | (12 << 16);
 	b[10] = 0; b[11] = -400; b[12] = VIS_W; b[13] = 0;   /* extent */
 	b[14] = 0;                       /* title flags: none */
-	b[15] = 3 << 12;                 /* work area: click */
+	b[15] = 10 << 12;                /* work area: click, drag and double-click */
 	b[16] = 1;                       /* sprite area: Wimp pool */
 	b[17] = 0;                       /* min size */
 	b[21] = 0;                       /* no icons */
@@ -119,6 +190,7 @@ void thumbs_free(thumbs *t)
 	forget_all(t);
 	free(t->area);
 	free(t->state);
+	free(t->sel);
 	{
 		int b[1];
 		b[0] = t->wimp;
@@ -145,10 +217,28 @@ static void set_extent(thumbs *t)
 {
 	int box[4];
 	box[0] = 0;
-	box[1] = -(PAD + (t->pages > 0 ? t->pages : 1) * row_h(t));
-	box[2] = VIS_W;
+	box[1] = -(PAD + rows(t) * row_h(t));
+	/* Arranging: at least the screen's height, as the Wimp keeps a window
+	 * no taller than its work area, and the grid fills the window. */
+	if (t->arrange && box[1] > -app.screen_h)
+		box[1] = -app.screen_h;
+	box[2] = t->arrange ? app.screen_w : VIS_W;    /* (wide enough for any window) */
 	box[3] = 0;
 	_swix(Wimp_SetExtent, _INR(0, 1), t->wimp, box);
+}
+
+/* Arranging: as many across as the window's width takes. 1 if that's
+ * changed. */
+static int fit_cols(thumbs *t, int vis_w)
+{
+	int c = (vis_w - PAD) / CELL_W;
+	if (c < 1)
+		c = 1;
+	if (c == t->cols)
+		return 0;
+	t->cols = c;
+	set_extent(t);
+	return 1;
 }
 
 /* Opens it in the parent at the left, below the toolbar, keeping its scroll. */
@@ -162,8 +252,10 @@ static void place(thumbs *t, int scroll_y)
 	b[0] = t->wimp;
 	b[1] = ps[1];
 	b[2] = ps[2];
-	b[3] = ps[1] + VIS_W;
+	b[3] = t->arrange ? ps[3] - SCROLL_W : ps[1] + VIS_W;   /* its scroll bar inside the window */
 	b[4] = ps[4] - t->top;
+	if (t->arrange)
+		fit_cols(t, b[3] - b[1]);
 	if (b[4] < b[2] + 64)
 		b[4] = b[2] + 64;
 	b[5] = 0;
@@ -172,7 +264,7 @@ static void place(thumbs *t, int scroll_y)
 	b[8] = (int)window_flags;
 	/* Left and right edges tied to the parent's left edge, bottom to its
 	 * bottom, top to its top; scroll offsets tied to left and top. */
-	nest = 1u | (1u << 16) | (1u << 18) | (1u << 20) | (2u << 22) | (1u << 24) | (2u << 26);
+	nest = 1u | (1u << 16) | (1u << 18) | ((t->arrange ? 2u : 1u) << 20) | (2u << 22) | (1u << 24) | (2u << 26);
 	if (_swix(Wimp_OpenWindow, _INR(1, 4), b, TASK, ps[0], nest))
 		app_log("thumbs: can't open the drawer (needs the nested Window Manager)");
 }
@@ -224,9 +316,14 @@ static int grow(thumbs *t, int pages)
 		if (!s)
 			return -1;
 		t->state = s;
+		s = realloc(t->sel, (size_t)cap);
+		if (!s)
+			return -1;
+		t->sel = (unsigned char *)s;
 		for (i = t->cap; i < cap; i++) {
 			t->area[i] = NULL;
 			t->state[i] = T_NONE;
+			t->sel[i] = 0;
 		}
 		t->cap = cap;
 	}
@@ -252,8 +349,11 @@ void thumbs_layout(thumbs *t, float page_w, float page_h, int pages, folio_page_
 			_swix(Wimp_ForceRedraw, _INR(0, 4), t->wimp, 0, -0x1000000, VIS_W, 0);
 	}
 	if (pages != t->pages) {
+		int i;
 		if (grow(t, pages))
 			return;
+		for (i = pages; i < t->cap; i++)   /* pages gone: not chosen if they come back */
+			t->sel[i] = 0;
 		t->pages = pages;
 		set_extent(t);
 		if (t->shown)
@@ -263,8 +363,16 @@ void thumbs_layout(thumbs *t, float page_w, float page_h, int pages, folio_page_
 
 static void redraw_row(thumbs *t, int i)
 {
-	int y1 = -(PAD / 2 + i * row_h(t));
-	_swix(Wimp_ForceRedraw, _INR(0, 4), t->wimp, 0, y1 - row_h(t), VIS_W, y1);
+	int x0, y1;
+	cell(t, i, &x0, &y1);
+	_swix(Wimp_ForceRedraw, _INR(0, 4), t->wimp, x0 - PAD / 2, y1 + PAD / 2 - row_h(t),
+		x0 - PAD / 2 + CELL_W, y1 + PAD / 2);
+}
+
+static void redraw_all(thumbs *t)
+{
+	if (t->shown)
+		_swix(Wimp_ForceRedraw, _INR(0, 4), t->wimp, 0, -0x1000000, 0x1000000, 0);
 }
 
 /* The page being read: framed, and kept in view. */
@@ -290,7 +398,7 @@ void thumbs_set_current(thumbs *t, int page, int scroll)
 		vis_h = st[4] - st[2];
 		top = st[6];
 		bottom = top - vis_h;
-		y1 = -(PAD / 2 + page * row_h(t));
+		y1 = -(PAD / 2 + (page / cols(t)) * row_h(t));
 		if (y1 > top || y1 - row_h(t) < bottom) {
 			int b[9];
 			st[6] = y1 + vis_h / 3;
@@ -312,8 +420,8 @@ int thumbs_wanted(thumbs *t, int busy_page, int *px_w, int *px_h, float *ppp, in
 	st[0] = t->wimp;
 	_swix(Wimp_GetWindowState, _IN(1), st);
 	vis_h = st[4] - st[2];
-	i0 = (-st[6]) / row_h(t);
-	i1 = (-st[6] + vis_h) / row_h(t) + 3;
+	i0 = (-st[6]) / row_h(t) * cols(t);
+	i1 = ((-st[6] + vis_h) / row_h(t) + 3) * cols(t) + cols(t) - 1;
 	if (i0 < 0) i0 = 0;
 	if (i1 >= t->pages) i1 = t->pages - 1;
 	for (i = i0; i <= i1; i++) {
@@ -383,9 +491,16 @@ static void fill(unsigned c, int x0, int y0, int x1, int y1)
 
 void thumbs_redraw(thumbs *t, int *b)
 {
-	int more = 0;
+	int more = 0, refit = 0;
 	int dark = t->mode == FOLIO_PAGE_DARK;
 	unsigned bg = dark ? 0x30303000u : 0xd8d8d800u;
+	if (t->arrange) {
+		/* The window was made wider or narrower: as many across as fit. */
+		int st[9];
+		st[0] = t->wimp;
+		_swix(Wimp_GetWindowState, _IN(1), st);
+		refit = fit_cols(t, st[3] - st[1]);
+	}
 	b[0] = t->wimp;
 	_swix(Wimp_RedrawWindow, _IN(1) | _OUT(0), b, &more);
 	while (more) {
@@ -393,15 +508,20 @@ void thumbs_redraw(thumbs *t, int *b)
 		int top = oy - b[10], bottom = oy - b[8];
 		int rh = row_h(t), i0, i1, i;
 		fill(bg, b[7], b[8], b[9], b[10]);
-		i0 = top / rh - 1;
-		i1 = bottom / rh + 1;
+		i0 = (top / rh - 1) * cols(t);
+		i1 = (bottom / rh + 2) * cols(t) - 1;
 		if (i0 < 0) i0 = 0;
 		if (i1 >= t->pages) i1 = t->pages - 1;
 		for (i = i0; i <= i1; i++) {
-			int y1 = oy - PAD / 2 - i * rh - PAD / 2, x0 = ox + PAD;
-			int y0 = y1 - t->th;
+			int x0, y1, y0;
 			char num[16];
-			if (i == t->current)
+			cell(t, i, &x0, &y1);
+			x0 += ox;
+			y1 += oy;
+			y0 = y1 - t->th;
+			if (t->arrange && t->sel[i])
+				fill(0xc8643c00u, x0 - 12, y0 - LABEL + 4, x0 + TW + 11, y1 + 11);
+			else if (i == t->current && !t->arrange)
 				fill(0xbe5a1e00u, x0 - 8, y0 - 8, x0 + TW + 7, y1 + 7);
 			if (t->area[i])
 				_swix(OS_SpriteOp, _INR(0, 7), 52 + 512, t->area[i], t->area[i] + 4, x0, y0, 0, 0, 0);
@@ -411,22 +531,285 @@ void thumbs_redraw(thumbs *t, int *b)
 			{
 				int tw = 0;
 				_swix(Wimp_TextOp, _INR(0, 2) | _OUT(0), 1, num, 0, &tw);   /* width */
-				_swix(Wimp_TextOp, _INR(0, 2), 0, dark ? 0xffffff00u : 0x00000000u, bg);
+				int chosen = t->arrange && t->sel[i];
+				_swix(Wimp_TextOp, _INR(0, 2), 0, chosen || dark ? 0xffffff00u : 0x00000000u,
+					chosen ? 0xc8643c00u : bg);
 				_swix(Wimp_TextOp, _INR(0, 5), 2 | (1u << 28), num, -1, -1,
 					x0 + (TW - tw) / 2, y0 - LABEL / 2);
 			}
 		}
 		_swix(Wimp_GetRectangle, _IN(1) | _OUT(0), b, &more);
 	}
+	if (refit)
+		redraw_all(t);
+}
+
+/* ---- Arranging -------------------------------------------------------------- */
+
+static int chosen_count(const thumbs *t)
+{
+	int i, n = 0;
+	for (i = 0; i < t->pages; i++)
+		n += t->sel[i] != 0;
+	return n;
+}
+
+static void choose_none(thumbs *t)
+{
+	int i;
+	for (i = 0; i < t->pages; i++)
+		if (t->sel[i]) {
+			t->sel[i] = 0;
+			redraw_row(t, i);
+		}
+}
+
+static void choose(thumbs *t, int i, int on)
+{
+	if (i >= 0 && i < t->pages && !t->sel[i] != !on) {
+		t->sel[i] = (unsigned char)(on != 0);
+		redraw_row(t, i);
+	}
+}
+
+void thumbs_arrange(thumbs *t, int on, int top)
+{
+	if (!t || !on == !t->arrange)
+		return;
+	if (t->shown) {
+		int b[1];
+		b[0] = t->wimp;
+		_swix(Wimp_CloseWindow, _IN(1), b);
+		t->shown = 0;
+	}
+	t->arrange = on;
+	t->cols = 0;
+	t->anchor = -1;
+	if (t->sel)
+		memset(t->sel, 0, (size_t)t->cap);
+	if (on) {
+		thumbs_show(t, 1, top);
+		/* The keys (Delete, ^A, Escape) come here. */
+		_swix(Wimp_SetCaretPosition, _INR(0, 5), t->wimp, -1, 0, 0, 1 << 25, -1);
+	} else
+		set_extent(t);
+}
+
+int thumbs_arranging(thumbs *t)
+{
+	return t && t->arrange;
+}
+
+/* The chosen pages: a copy of the flags (pages long), and how many. */
+int thumbs_chosen(thumbs *t, unsigned char *sel, int pages)
+{
+	int i, n = 0;
+	for (i = 0; i < pages; i++) {
+		sel[i] = t && t->arrange && i < t->pages ? t->sel[i] : 0;
+		n += sel[i] != 0;
+	}
+	return n;
+}
+
+/* The page under the pointer, or -1. */
+int thumbs_pointer_page(thumbs *t)
+{
+	int ptr[5];
+	if (!t || !t->shown)
+		return -1;
+	_swix(Wimp_GetPointerInfo, _IN(1), ptr);
+	if (ptr[3] != t->wimp)
+		return -1;
+	to_work(t, &ptr[0], &ptr[1]);
+	return page_at(t, ptr[0], ptr[1]);
+}
+
+/* After pages were moved: the same pages, chosen at their new place. */
+void thumbs_choose_range(thumbs *t, int first, int n)
+{
+	int i;
+	if (!t || !t->arrange)
+		return;
+	for (i = 0; i < t->pages; i++)
+		t->sel[i] = i >= first && i < first + n;
+	t->anchor = first;
+	redraw_all(t);
+}
+
+/* A drag: a box the size of a thumbnail for pages being moved, or a
+ * rubber box to choose pages with (Wimp_DragBox, PRM 3-170). */
+static void start_drag(thumbs *t, int kind, int x, int y)
+{
+	int b[10], st[9];
+	st[0] = t->wimp;
+	_swix(Wimp_GetWindowState, _IN(1), st);
+	b[0] = t->wimp;
+	if (kind == DRAG_MOVE) {
+		b[1] = 5;                     /* fixed size, drawn by the Wimp */
+		b[2] = x - TW / 2;
+		b[3] = y - t->th / 2;
+		b[4] = x + TW / 2;
+		b[5] = y + t->th / 2;
+		b[6] = -0x10000;
+		b[7] = -0x10000;
+		b[8] = 0x10000;
+		b[9] = 0x10000;
+	} else {
+		b[1] = 6;                     /* a rubber box from where it started */
+		b[2] = b[4] = x;
+		b[3] = b[5] = y;
+		b[6] = st[1];                 /* within the window */
+		b[7] = st[2];
+		b[8] = st[3];
+		b[9] = st[4];
+	}
+	t->dragging = kind;
+	_swix(Wimp_DragBox, _IN(1), b);
+}
+
+/* Wimp_EUserDrag: let go. 1 if it was an arranging drag. */
+int thumbs_drag_done(const int *box)
+{
+	thumbs *t;
+	for (t = all; t; t = t->next)
+		if (t->dragging)
+			break;
+	if (!t)
+		return 0;
+	if (t->dragging == DRAG_BAND) {
+		int x0 = box[0], y0 = box[1], x1 = box[2], y1 = box[3], i;
+		to_work(t, &x0, &y0);
+		to_work(t, &x1, &y1);
+		if (x0 > x1) { int k = x0; x0 = x1; x1 = k; }
+		if (y0 > y1) { int k = y0; y0 = y1; y1 = k; }
+		for (i = 0; i < t->pages; i++) {
+			int cx0, cy1;
+			cell(t, i, &cx0, &cy1);
+			if (cx0 <= x1 && cx0 + TW >= x0 && cy1 - t->th - LABEL <= y1 && cy1 >= y0)
+				choose(t, i, 1);
+		}
+	} else {
+		int ptr[5], before;
+		_swix(Wimp_GetPointerInfo, _IN(1), ptr);
+		if (ptr[3] == t->wimp) {
+			to_work(t, &ptr[0], &ptr[1]);
+			before = gap_at(t, ptr[0], ptr[1]);
+			docwin_arrange_move(t->w, t->sel, before);
+		}
+	}
+	t->dragging = 0;
+	return 1;
+}
+
+static void arrange_click(thumbs *t, int *b)
+{
+	int x = b[0], y = b[1], i;
+	to_work(t, &x, &y);
+	i = page_at(t, x, y);
+	_swix(Wimp_SetCaretPosition, _INR(0, 5), t->wimp, -1, 0, 0, 1 << 25, -1);
+	switch (b[2]) {
+	case 2:          /* Menu: the document's menu, for the page under it */
+		docwin_menu_from_arrange(t->w);
+		break;
+	case 4 << 8:     /* Select click: just this page (Shift: as far as it) */
+	case 4:          /* ... double-click: read from it */
+		if (b[2] == 4 && i >= 0) {
+			docwin_arrange_read(t->w, i);
+			break;
+		}
+		if (i < 0) {
+			choose_none(t);
+			break;
+		}
+		{
+			int shift = 0, k;
+			_swix(OS_Byte, _INR(0, 1) | _OUT(1), 121, 0x80, &shift);   /* Shift down? */
+			if (shift == 0xff && t->anchor >= 0 && t->anchor < t->pages) {
+				int a = t->anchor < i ? t->anchor : i, z = t->anchor < i ? i : t->anchor;
+				for (k = 0; k < t->pages; k++)
+					choose(t, k, k >= a && k <= z);
+				break;
+			}
+		}
+		if (!t->sel[i]) {
+			choose_none(t);
+			choose(t, i, 1);
+		}
+		t->anchor = i;
+		break;
+	case 1 << 8:     /* Adjust click: this page too, or not */
+		if (i >= 0) {
+			choose(t, i, !t->sel[i]);
+			t->anchor = i;
+		}
+		break;
+	case 4 << 4:     /* Select drag: move the chosen pages, or choose with a box */
+	case 1 << 4:     /* Adjust drag: a box that adds to them */
+		if (i >= 0 && b[2] == (4 << 4)) {
+			if (!t->sel[i]) {
+				choose_none(t);
+				choose(t, i, 1);
+			}
+			t->drag_page = i;
+			start_drag(t, DRAG_MOVE, b[0], b[1]);
+		} else {
+			if (b[2] == (4 << 4))
+				choose_none(t);
+			start_drag(t, DRAG_BAND, b[0], b[1]);
+		}
+		break;
+	}
+}
+
+/* Keys while arranging. 1 if taken. */
+int thumbs_key(const int *block)
+{
+	thumbs *t = thumbs_from_wimp(block[0]);
+	int key = block[6], i;
+	if (!t || !t->arrange)
+		return 0;
+	switch (key) {
+	case 0x7f:       /* Delete */
+	case 8:          /* Backspace */
+		if (chosen_count(t))
+			docwin_arrange_delete(t->w, t->sel);
+		return 1;
+	case 1:          /* ^A */
+		for (i = 0; i < t->pages; i++)
+			choose(t, i, 1);
+		return 1;
+	case 27:         /* Escape: none chosen; again, back to reading */
+		if (chosen_count(t))
+			choose_none(t);
+		else
+			docwin_event(t->w, EV_PG_ARRANGE);
+		return 1;
+	case 13:         /* Return: read from the first chosen page */
+		for (i = 0; i < t->pages && !t->sel[i]; i++)
+			;
+		docwin_arrange_read(t->w, i < t->pages ? i : t->current);
+		return 1;
+	case 26: docwin_event(t->w, EV_UNDO); return 1;     /* ^Z */
+	case 25: docwin_event(t->w, EV_REDO); return 1;     /* ^Y */
+	case 0x183: docwin_event(t->w, EV_SAVE); return 1;  /* F3 */
+	}
+	return 0;
 }
 
 void thumbs_click(thumbs *t, int *b)
 {
-	int st[9], i;
-	st[0] = t->wimp;
-	_swix(Wimp_GetWindowState, _IN(1), st);
-	i = (-(b[1] - (st[4] - st[6])) - PAD / 2) / row_h(t);
-	if (i >= 0 && i < t->pages)
+	int x = b[0], y = b[1], i;
+	if (t->arrange) {
+		arrange_click(t, b);
+		return;
+	}
+	if (b[2] & 0xff)       /* drags and double-clicks: nothing in the drawer */
+		return;
+	to_work(t, &x, &y);
+	i = page_at(t, x, y);
+	if (i < 0)
+		i = (-y - PAD / 2) / row_h(t);
+	if (b[2] != 2 && i >= 0 && i < t->pages)
 		docwin_go_to(t->w, i);
 }
 

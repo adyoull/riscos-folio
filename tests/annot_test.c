@@ -139,15 +139,19 @@ int main(int argc, char **argv)
 		folio_point pts[3] = { { 100, 100 }, { 200, 100 }, { 200, 200 } };
 		folio_annot_info info[8];
 		int k;
-		CHECK(folio_page_measure(d, p2, &per, unit, sizeof unit) == 0 && !strcmp(unit, "mm") &&
+		CHECK(folio_page_measure(d, p2, &per, unit, sizeof unit, NULL, 0, NULL) == 0 && !strcmp(unit, "mm") &&
 			per > 0.3527 && per < 0.3528, "paper scale: %g %s", per, unit);
 		CHECK(folio_annot_measure(d, p2, pts, 2, 0, "35.3 mm") == 0, "a line: %s", folio_error(fc));
-		CHECK(folio_annot_measure(d, p2, pts, 3, 1, "area") == 0, "a polygon: %s", folio_error(fc));
+		CHECK(folio_annot_measure(d, p2, pts, 3, 1, "Lines 70.6 mm\nArea 17.6 mm\xc2\xb2") == 0, "a polygon: %s", folio_error(fc));
 		CHECK(folio_annot_measure(d, p2, pts, 1, 0, NULL) == -1, "one point refused");
+		/* The area's figures shown beside it, as a label. */
 		k = folio_annot_list(d, p2, info, 8);
-		CHECK(k == 5 && !strcmp(info[3].type, "Line") && !strcmp(info[3].text, "35.3 mm") &&
-			!strcmp(info[4].type, "Polygon") && info[4].rgb == 0xd91a1a,
-			"listed: %d %s '%s' %s", k, k > 3 ? info[3].type : "", k > 3 ? info[3].text : "", k > 4 ? info[4].type : "");
+		CHECK(k == 6 && !strcmp(info[3].type, "Line") && !strcmp(info[3].text, "35.3 mm") &&
+			!strcmp(info[4].type, "Polygon") && info[4].rgb == 0xd91a1a &&
+			!strcmp(info[5].type, "FreeText") && !strncmp(info[5].text, "Lines 70.6 mm", 13),
+			"listed: %d %s '%s' %s %s", k, k > 3 ? info[3].type : "", k > 3 ? info[3].text : "",
+			k > 4 ? info[4].type : "", k > 5 ? info[5].type : "");
+		/* One Undo each: the area and its label went on together. */
 		CHECK(folio_undo(d) == 0 && folio_undo(d) == 0 && folio_annot_list(d, p2, info, 8) == 3, "undone");
 	}
 	/* A drawing with its own scale: 1 in = 10 ft (1/72 in = 0.138889 ft). */
@@ -161,7 +165,7 @@ int main(int argc, char **argv)
 		FILE *f = fopen("tests/out/scaled.pdf", "wb");
 		folio_doc *sd;
 		double per;
-		char unit[16];
+		char unit[16], ratio[32];
 		if (f) {
 			fwrite(pdfs, 1, sizeof pdfs - 1, f);
 			fclose(f);
@@ -169,8 +173,9 @@ int main(int argc, char **argv)
 		sd = folio_open(fc, "tests/out/scaled.pdf", NULL);
 		CHECK(sd != NULL, "open scaled.pdf");
 		if (sd) {
-			CHECK(folio_page_measure(sd, (folio_loc){ 0, 0 }, &per, unit, sizeof unit) == 1 &&
-				!strcmp(unit, "ft") && per > 0.1388 && per < 0.1389, "its own scale: %g %s", per, unit);
+			CHECK(folio_page_measure(sd, (folio_loc){ 0, 0 }, &per, unit, sizeof unit, ratio, sizeof ratio, NULL) == 1 &&
+				!strcmp(unit, "ft") && per > 0.1388 && per < 0.1389 && !strcmp(ratio, "1 in = 10 ft"),
+				"its own scale: %g %s '%s'", per, unit, ratio);
 			folio_close(sd);
 		}
 	}

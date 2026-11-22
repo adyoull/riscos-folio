@@ -181,6 +181,7 @@ a { color:#1f5fa8; }
 <tr><td>Dark page</td><td>Shows light text on black.</td></tr>
 <tr><td>Find</td><td>Searches the document for words.</td></tr>
 <tr><td>Define</td><td>Looks up the selected word.</td></tr>
+<tr><td>Measure</td><td>Measures lengths and areas on the page (<a href="#ch11">Chapter 11</a>).</td></tr>
 <tr><td>Highlight, Underline, Strike out, Note</td><td>Mark the selected text, or add a note (<a href="#ch9">Chapter 9</a>). They're grey until you select some text in a PDF.</td></tr>
 <tr><td>Read aloud</td><td>With the Speech plugin only: reads the document to you.</td></tr>
 </table>
@@ -335,9 +336,21 @@ a { color:#1f5fa8; }
 <p>Each drawing, stamp or picture is an annotation: <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes it, and <kbd>Delete</kbd> removes it once you've clicked on it.</p>
 
 <h3 class="chapter" id="ch11"><span>11</span> Measuring</h3>
-<p><b>Edit &rarr; Measure...</b> opens the Measure window. While it's open, click with <b>Select</b> on the page to add points. Red lines join them; <b>Adjust</b> takes the last point off. The window shows the last line's length, all the lines together, and, with three points or more, the area they enclose.</p>
-<figure><img src="images/measure.png" alt="Measuring"><figcaption>Three points: the last line, all the lines, and the area inside them.</figcaption></figure>
-<p>Lengths are in mm, cm, inches or points, at the page's paper size. A plan or drawing whose PDF gives it a scale of its own (1 inch = 10 feet, say) is measured in its own units, and the window says so. <b>Add to page</b> keeps the measurement on the page, with the figures as its note. <b>Clear</b> starts again. Close the window to stop measuring.</p>
+<p>The ruler on the toolbar (or <b>Measure...</b> on the document menu) opens the Measure window. While it's open, click with <b>Select</b> on the page to add points. Red lines join them; <b>Adjust</b> takes the last point off. The window shows the last line's length, all the lines together, and, with three points or more, the area they enclose.</p>
+<figure><img src="images/measure.png" alt="Measuring"><figcaption>Round a room on a 1:100 plan: the last line, all the lines, and the area inside them, in metres at the drawing's own scale.</figcaption></figure>
+<h4>The scale</h4>
+<p><b>Scale</b> says what the figures are worked out at. Choose one of:</p>
+<table>
+<tr><th>Scale</th><th>Measures</th></tr>
+<tr><td>Paper</td><td>The page as printed, at its paper size.</td></tr>
+<tr><td>Drawing's own</td><td>A plan or drawing whose PDF gives it a scale of its own (1 inch = 10 feet, say). Folio starts with this one when there is one, in the drawing's units.</td></tr>
+<tr><td>1:</td><td>A ratio of the paper size. Type it (<code>1250</code> for 1:1250) and press <kbd>Return</kbd>. Use it for a map or plan printed at a known scale, as long as the PDF's page is the size it was drawn for: a plan "1:1250 at A3" saved on an A3 page.</td></tr>
+<tr><td>Last line is</td><td>Something of known length. Draw a line over a scale bar (or a wall whose length you know), type its real length and press <kbd>Return</kbd> or click <b>Set</b>. Folio works the scale out from that, so it works whatever size the page is, and for a map printed to PDF with no scale in it.</td></tr>
+</table>
+<p><b>Units</b> chooses mm, cm, m, km, inches, feet or points. Choosing a scale other than Paper switches mm, cm and points to metres.</p>
+<div class="box tip"><b class="label">TIP</b>For a map from RiscOSM (or any map printed to PDF), draw a line along its scale bar, type the bar's length, press <kbd>Return</kbd>, then measure.</div>
+<h4>Keeping a measurement</h4>
+<p><b>Add to page</b> keeps the measurement on the page, in red: a line with its length written along it, or lines and an area with their figures beside them. <kbd>Ctrl</kbd>+<kbd>Z</kbd> takes it off again. <b>Clear</b> starts again. Close the window to stop measuring.</p>
 
 <h3 class="chapter" id="ch12"><span>12</span> Filling in forms</h3>
 <p>Many PDFs are forms with boxes to fill in. Click on a box to fill it in.</p>
@@ -368,7 +381,18 @@ a { color:#1f5fa8; }
 <tr><td>Move pages...</td><td>Moves the pages you type, in their order, in front of another page, or to the end if you leave that empty.</td></tr>
 <tr><td>Insert pages from file...</td><td>Asks which page the new pages go in front of (leave it empty for the end); then drag a PDF, a picture, a text file or another document into the box, and its pages go in.</td></tr>
 <tr><td>Overlay from file...</td><td>Lays a page from another file over the pages (<a href="#ch14">Chapter 14</a>).</td></tr>
+<tr><td>Arrange pages</td><td>Shows the pages as a grid of thumbnails, to put them in order (below).</td></tr>
 </table>
+<h4>Arranging pages</h4>
+<p><b>Pages &rarr; Arrange pages</b> fills the window with the pages as thumbnails, as many across as fit. Choose pages, then drag them or delete them:</p>
+<figure><img src="images/arrange.png" alt="Arranging pages"><figcaption>Arranging pages: pages 3 and 5 chosen, ready to drag or delete.</figcaption></figure>
+<ul>
+<li><b>Select</b> on a page chooses it; <b>Adjust</b> adds a page or takes it away; <kbd>Shift</kbd> with <b>Select</b> chooses every page from the last one clicked; <kbd>Ctrl</kbd>+<kbd>A</kbd> chooses them all.</li>
+<li>Drag over the space between pages to choose every page the box touches (with <b>Adjust</b>, they're added).</li>
+<li>Drag the chosen pages and let go where they should go: in front of the page you let go over, or after the last one.</li>
+<li><kbd>Delete</kbd> deletes the chosen pages. <b>Delete pages...</b> and <b>Move pages...</b> on the Pages menu start with the chosen pages typed in.</li>
+<li>Double-click a page (or press <kbd>Return</kbd>) to go back to reading at that page; <kbd>Escape</kbd> clears the choice, and again goes back to reading. Choosing <b>Arrange pages</b> again does too.</li>
+</ul>
 <h4>Typing pages</h4>
 <p>Wherever Folio asks which pages, you can type one page (<code>3</code>), a range (<code>1-10</code>), several (<code>1-3, 20, 45-50</code>), from a page to the end (<code>20-</code>), or <code>all</code>.</p>
 <p>Each change is one step: <kbd>Ctrl</kbd>+<kbd>Z</kbd> puts it back, and <kbd>F3</kbd> keeps it. Recognised text (<a href="#ch8">Chapter 8</a>) goes with its page when it moves.</p>
@@ -591,9 +615,9 @@ Filer_Run SDFS::Disc.$.Docs.Manual/pdf</pre>
 </div>
 <table>
 <tr><th>Menu</th><th>Items</th></tr>
-<tr><td>Document</td><td>Save... (<kbd>F3</kbd>); Print...; Export page as Draw...; Save pages as PDF...; Save page pictures...; Save pages as text...; Pages &rarr;; Password...; Sign...; Document info...; Edit &rarr;; View &rarr;; Navigate &rarr;; Find... (<kbd>F4</kbd>); Define "word"; On bookshelf. With the plugins: Text recognition &rarr;; Read aloud, Speak selection, Reading speed &rarr;.</td></tr>
-<tr><td>Pages</td><td>Rotate &rarr;; Delete pages...; Move pages...; Insert pages from file...; Overlay from file...</td></tr>
-<tr><td>Edit</td><td>Undo; Redo; Copy; Select all; Clear selection; Highlight; Underline; Strike out; Note...; Delete annotation; Colour &rarr;; Measure...; Draw...; Stamp &rarr;; Form fields...</td></tr>
+<tr><td>Document</td><td>Save... (<kbd>F3</kbd>); Print...; Export page as Draw...; Save pages as PDF...; Save page pictures...; Save pages as text...; Pages &rarr;; Password...; Sign...; Document info...; Edit &rarr;; View &rarr;; Navigate &rarr;; Find... (<kbd>F4</kbd>); Define "word"; Measure...; On bookshelf. With the plugins: Text recognition &rarr;; Read aloud, Speak selection, Reading speed &rarr;.</td></tr>
+<tr><td>Pages</td><td>Rotate &rarr;; Delete pages...; Move pages...; Insert pages from file...; Overlay from file...; Arrange pages</td></tr>
+<tr><td>Edit</td><td>Undo; Redo; Copy; Select all; Clear selection; Highlight; Underline; Strike out; Note...; Delete annotation; Colour &rarr;; Draw...; Stamp &rarr;; Form fields...</td></tr>
 <tr><td>Stamp</td><td>My signature; Set up my signature...; Picture...; Approved, Not approved, Draft, Final, Confidential, For comment, For public release, Not for public release, Experimental, Expired, As is, Departmental, Sold, Top secret</td></tr>
 <tr><td>View</td><td>Dark page; Sepia page; Zoom in; Zoom out; Actual size; Fit width; Use this scale for new documents; Two pages; First page alone; Toolbar; Thumbnails; Full screen (<kbd>F11</kbd>)</td></tr>
 <tr><td>Navigate</td><td>Next page; Previous page; First page; Last page; Go to page... (<kbd>F5</kbd>); Contents...; Annotations...; Back (<kbd>Ctrl</kbd>+<kbd>&larr;</kbd>)</td></tr>

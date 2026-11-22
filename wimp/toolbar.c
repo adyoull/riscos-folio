@@ -6,7 +6,7 @@
  * the only way), a page number to type into, and the zoom.
  *
  *   [Thumbnails][Contents] | [Up][page] of N [Down] | [-] 100% [+] [Fit] [Two] |
- *   [Dark] | [Find][Define] | [Highlight][Underline][Strike][Note] | [Read aloud]
+ *   [Dark] | [Find][Define][Measure] | [Highlight][Underline][Strike][Note] | [Read aloud]
  *
  * Read aloud is there only with the Speech plugin (it's the last gadget, so
  * the template simply has one fewer without it).
@@ -32,7 +32,7 @@
 
 enum {
 	T_THUMBS = 1, T_CONTENTS, T_PREV, T_PAGE, T_OF, T_NEXT, T_ZOOMOUT, T_ZOOM, T_ZOOMIN,
-	T_FITW, T_TWOUP, T_DARK, T_FIND, T_DEFINE, T_HILITE, T_ULINE, T_STRIKE, T_NOTE, T_SPEAK, T_COUNT
+	T_FITW, T_TWOUP, T_DARK, T_FIND, T_DEFINE, T_MEASURE, T_HILITE, T_ULINE, T_STRIKE, T_NOTE, T_SPEAK, T_COUNT
 };
 
 typedef struct {
@@ -70,7 +70,7 @@ static struct {
 	display_gadget of;
 	button_gadget next, zoomout;
 	display_gadget zoom;
-	button_gadget zoomin, fitw, twoup, dark, find, define, hilite, uline, strike, note, speak;
+	button_gadget zoomin, fitw, twoup, dark, find, define, measure, hilite, uline, strike, note, speak;
 } g;
 
 static void hdr(gadget_hdr *h, int type, int size, int id, int x0, int x1, const char *help)
@@ -104,7 +104,7 @@ static const char *const tips[T_COUNT] = {
 	"Thumbnails", "Contents", "Previous page (Page Up)",
 	"Page number: type one and press Return", NULL, "Next page (Page Down)",
 	"Zoom out", "Scale", "Zoom in", "Fit width", "Two pages side by side", "Dark page (Ctrl-N)", "Find (F4)",
-	"Define the selected word", "Highlight the selection",
+	"Define the selected word", "Measure", "Highlight the selection",
 	"Underline the selection", "Strike out the selection", "Add a note", "Read aloud (click again to stop)"
 };
 
@@ -148,7 +148,8 @@ static void build_template(void)
 	button(&g.twoup, T_TWOUP, x, "R5;Stb_twoup", "Click to show two pages side by side; click again for one."); x += BTN + 20;
 	button(&g.dark, T_DARK, x, "R5;Stb_dark", "Click for a black page with light text (^N); click again for white."); x += BTN + 20;
 	button(&g.find, T_FIND, x, "R5;Stb_find", "Click to find text (F4)."); x += BTN + 4;
-	button(&g.define, T_DEFINE, x, "R5;Stb_define", "Click to see what the selected word means."); x += BTN + 20;
+	button(&g.define, T_DEFINE, x, "R5;Stb_define", "Click to see what the selected word means."); x += BTN + 4;
+	button(&g.measure, T_MEASURE, x, "R5;Stb_measure", "Click to measure lengths and areas on the page."); x += BTN + 20;
 	button(&g.hilite, T_HILITE, x, "R5;Stb_hilite", "Click to highlight the selected text (PDFs).|MSave the document (F3) to keep it."); x += BTN + 4;
 	button(&g.uline, T_ULINE, x, "R5;Stb_uline", "Click to underline the selected text (PDFs)."); x += BTN + 4;
 	button(&g.strike, T_STRIKE, x, "R5;Stb_strike", "Click to strike out the selected text (PDFs)."); x += BTN + 4;
@@ -161,7 +162,8 @@ static void build_template(void)
 	gadgets[T_NEXT] = &g.next.h; gadgets[T_ZOOMOUT] = &g.zoomout.h; gadgets[T_ZOOM] = &g.zoom.h;
 	gadgets[T_ZOOMIN] = &g.zoomin.h; gadgets[T_FITW] = &g.fitw.h; gadgets[T_TWOUP] = &g.twoup.h;
 	gadgets[T_DARK] = &g.dark.h;
-	gadgets[T_FIND] = &g.find.h; gadgets[T_DEFINE] = &g.define.h; gadgets[T_HILITE] = &g.hilite.h;
+	gadgets[T_FIND] = &g.find.h; gadgets[T_DEFINE] = &g.define.h;
+	gadgets[T_MEASURE] = &g.measure.h; gadgets[T_HILITE] = &g.hilite.h;
 	gadgets[T_ULINE] = &g.uline.h; gadgets[T_STRIKE] = &g.strike.h; gadgets[T_NOTE] = &g.note.h;
 	gadgets[T_SPEAK] = speech_available() ? &g.speak.h : NULL;
 	/* Shaded until there's something to mark up (toolbar_update). */
@@ -378,6 +380,7 @@ int toolbar_event_for(int component)
 	case T_DARK: return EV_DARK;
 	case T_FIND: return EV_FIND;
 	case T_DEFINE: return EV_DEFINE;
+	case T_MEASURE: return EV_MEASURE;
 	case T_HILITE: return EV_HIGHLIGHT;
 	case T_ULINE: return EV_UNDERLINE;
 	case T_STRIKE: return EV_STRIKE;
