@@ -341,7 +341,7 @@ int measure_key(const int *block);
 void measure_changed(docwin *w);
 void docwin_measure_mode(docwin *w, int on);
 int docwin_measure_points(docwin *w, int *page, folio_point *pt, int max);
-int docwin_measure_scale(docwin *w, int page, double *per_point, char *unit, size_t size,
+int docwin_measure_scale(docwin *w, int page, const folio_point *at, double *per_point, char *unit, size_t size,
 		char *ratio, size_t ratio_size, double *paper);
 void docwin_measure_clear(docwin *w);
 void docwin_measure_keep(docwin *w, const char *utf8);

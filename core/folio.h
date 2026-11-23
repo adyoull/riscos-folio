@@ -601,9 +601,12 @@ int folio_annot_recolour(folio_doc *doc, folio_loc loc, int n, int rgb);
 /* Measuring: how much one point on this page is (*per_point), in unit. By
  * default millimetres (allowing for the page's UserUnit); if the PDF gives
  * the page a scale of its own (a /VP viewport with a /Measure, as plans and
- * drawings do), that scale and its unit, and it returns 1. */
-int folio_page_measure(folio_doc *doc, folio_loc loc, double *per_point, char *unit, size_t unit_size,
-		char *ratio, size_t ratio_size, double *paper);
+ * drawings do), that scale and its unit ("" if the PDF leaves it blank),
+ * and it returns 1. at (or NULL): a point on the page, from its top left as
+ * shown, to choose the viewport it's in. ratio: the drawing's scale as it
+ * says it; paper: the paper's mm a point. */
+int folio_page_measure(folio_doc *doc, folio_loc loc, const folio_point *at, double *per_point, char *unit,
+		size_t unit_size, char *ratio, size_t ratio_size, double *paper);
 /* A measurement kept on the page: a line (two points), lines or (closed) a
  * polygon through the points (folio points), red, with text as its note.
  * One change in the journal. 0 or -1. */

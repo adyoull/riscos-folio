@@ -14,6 +14,7 @@
 #include "folio_int.h"
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 static pdf_document *pdf_of(folio_doc *doc)
 {
@@ -638,8 +639,8 @@ int folio_annot_recolour(folio_doc *doc, folio_loc loc, int n, int rgb)
 
 /* ---- Measuring ------------------------------------------------------------ */
 
-int folio_page_measure(folio_doc *doc, folio_loc loc, double *per_point, char *unit, size_t unit_size,
-		char *ratio, size_t ratio_size, double *paper)
+int folio_page_measure(folio_doc *doc, folio_loc loc, const folio_point *at, double *per_point, char *unit,
+		size_t unit_size, char *ratio, size_t ratio_size, double *paper)
 {
 	fz_context *ctx = doc->ctx;
 	pdf_document *pdf = pdf_of(doc);
@@ -656,7 +657,10 @@ int folio_page_measure(folio_doc *doc, folio_loc loc, double *per_point, char *u
 	fz_var(own);
 	fz_try(ctx) {
 		pdf_obj *page = pdf_lookup_page_obj(ctx, pdf, folio_page_number(doc, loc));
-		pdf_obj *vp = pdf_dict_gets(ctx, page, "VP"), *m, *x;
+		pdf_obj *vp = pdf_dict_gets(ctx, page, "VP"), *m = NULL, *x = NULL;
+		int i, n = pdf_array_len(ctx, vp), best = -1;
+		float best_area = -1;
+		fz_point q = { 0, 0 };
 		if (pdf_is_number(ctx, pdf_dict_get(ctx, page, PDF_NAME(UserUnit))))
 			uu = pdf_to_real(ctx, pdf_dict_get(ctx, page, PDF_NAME(UserUnit)));
 		if (uu <= 0)
@@ -664,22 +668,72 @@ int folio_page_measure(folio_doc *doc, folio_loc loc, double *per_point, char *u
 		*per_point = 25.4 / 72 * uu;
 		if (paper)
 			*paper = *per_point;
-		/* The drawing's own scale: the first viewport's rectilinear measure,
-		 * its X number format's conversion factor and unit. */
-		m = pdf_dict_gets(ctx, pdf_array_get(ctx, vp, 0), "Measure");
-		x = pdf_array_get(ctx, pdf_dict_gets(ctx, m, "X"), 0);
-		if (pdf_name_eq(ctx, pdf_dict_get(ctx, m, PDF_NAME(Subtype)), PDF_NAME(RL)) &&
-				pdf_is_number(ctx, pdf_dict_get(ctx, x, PDF_NAME(C)))) {
+		if (at) {
+			/* The point, from the page's top left as shown, into the PDF's
+			 * own coordinates, which the viewports' boxes are in. */
+			fz_rect box;
+			fz_matrix ctm;
+			fz_rect b;
+			pdf_page_obj_transform(ctx, page, &box, &ctm);
+			b = fz_transform_rect(box, ctm);
+			q = fz_transform_point(fz_make_point(at->x + b.x0, at->y + b.y0), fz_invert_matrix(ctm));
+		}
+		/* The drawing's own scale: from a viewport (a part of the page with a
+		 * rectilinear measure), its X number format's conversion factor and
+		 * unit. A plan from AutoCAD has one for the whole sheet, in mm on
+		 * paper, and one for the drawing on it: the one the point is in
+		 * counts (the last such in the list, as the PDF standard has it), or
+		 * with no point the biggest that isn't just the paper. */
+		for (i = 0; i < n; i++) {
+			pdf_obj *v = pdf_array_get(ctx, vp, i), *vm = pdf_dict_gets(ctx, v, "Measure");
+			pdf_obj *vx = pdf_array_get(ctx, pdf_dict_gets(ctx, vm, "X"), 0);
+			fz_rect r = pdf_to_rect(ctx, pdf_dict_get(ctx, v, PDF_NAME(BBox)));
+			float t;
+			double c;
+			if (!pdf_name_eq(ctx, pdf_dict_get(ctx, vm, PDF_NAME(Subtype)), PDF_NAME(RL)) ||
+					!pdf_is_number(ctx, pdf_dict_get(ctx, vx, PDF_NAME(C))) ||
+					(c = pdf_to_real(ctx, pdf_dict_get(ctx, vx, PDF_NAME(C)))) <= 0)
+				continue;
+			if (r.x0 > r.x1) { t = r.x0; r.x0 = r.x1; r.x1 = t; }   /* (some boxes are back to front) */
+			if (r.y0 > r.y1) { t = r.y0; r.y0 = r.y1; r.y1 = t; }
+			if (!pdf_dict_get(ctx, v, PDF_NAME(BBox)))
+				r = fz_infinite_rect;
+			if (at) {
+				if (q.x >= r.x0 && q.x <= r.x1 && q.y >= r.y0 && q.y <= r.y1)
+					best = i;
+			} else {
+				float area = fz_is_infinite_rect(r) ? 1e30f : (r.x1 - r.x0) * (r.y1 - r.y0);
+				if (fabs(c / (25.4 / 72) - 1) < 0.002)     /* just the paper, in mm */
+					area = 0;
+				if (area > best_area) {
+					best_area = area;
+					best = i;
+				}
+			}
+		}
+		if (best >= 0) {
+			m = pdf_dict_gets(ctx, pdf_array_get(ctx, vp, best), "Measure");
+			x = pdf_array_get(ctx, pdf_dict_gets(ctx, m, "X"), 0);
+		}
+		if (x) {
 			const char *u = pdf_dict_get_text_string(ctx, x, PDF_NAME(U));
 			double c = pdf_to_real(ctx, pdf_dict_get(ctx, x, PDF_NAME(C)));
-			if (c > 0) {
-				*per_point = c * uu;
-				snprintf(unit, unit_size, "%s", u && *u ? u : "units");
-				/* Its scale as the drawing says it, e.g. "1 in = 40 ft". */
-				if (ratio && ratio_size)
-					snprintf(ratio, ratio_size, "%s", pdf_dict_get_text_string(ctx, m, PDF_NAME(R)));
-				own = 1;
+			size_t k;
+			*per_point = c * uu;
+			/* Its unit, without spaces: AutoCAD leaves it blank (" "). */
+			while (u && *u == ' ')
+				u++;
+			snprintf(unit, unit_size, "%s", u ? u : "");
+			for (k = strlen(unit); k > 0 && unit[k - 1] == ' '; k--)
+				unit[k - 1] = 0;
+			/* Its scale as the drawing says it, e.g. "1 in = 40 ft". */
+			if (ratio && ratio_size) {
+				const char *rs = pdf_dict_get_text_string(ctx, m, PDF_NAME(R));
+				while (*rs == ' ')
+					rs++;
+				snprintf(ratio, ratio_size, "%s", rs);
 			}
+			own = 1;
 		}
 	}
 	fz_catch(ctx) {

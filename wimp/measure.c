@@ -101,7 +101,7 @@ static struct {
 	char text[160];       /* the figures, for the page (UTF-8) */
 } ms;
 
-#define BOX_W 840
+#define BOX_W 900
 #define BOX_H 640
 #define LX 224            /* the labels' right edge */
 #define FX 240            /* the fields' left edge */
@@ -282,6 +282,21 @@ static int known_unit(const char *u)
 	return -1;
 }
 
+/* The drawing's unit as one of ours (U_MM.. less U_MM), or -1. A PDF from
+ * AutoCAD leaves it blank: a viewport that's the paper itself is in mm,
+ * and anything else is taken to be in metres (*assumed set), as plans
+ * are; the scale it gives is then shown, to check against the drawing. */
+static int own_unit(const char *u, double per, double paper, int *assumed)
+{
+	*assumed = 0;
+	if (*u)
+		return known_unit(u);
+	if (fabs(per / paper - 1) < 0.002)
+		return 0;
+	*assumed = 1;
+	return 2;
+}
+
 /* A number to show: two decimal places, or more for small ones. */
 static void figure(char *out, size_t size, double v, const char *u, const char *sq)
 {
@@ -292,7 +307,7 @@ static void figure(char *out, size_t size, double v, const char *u, const char *
 void measure_changed(docwin *w)
 {
 	folio_point pt[MEASURE_MAX];
-	int page, n, i, own, own_k = -1, units_free = 1;
+	int page, n, i, own, own_k = -1, units_free = 1, assumed = 0;
 	double paper, per_own, len = 0, last = 0, area = 0, mm_per_pt, k = 1;
 	char unit[16], ratio[48];
 	const char *u;
@@ -300,25 +315,32 @@ void measure_changed(docwin *w)
 		return;
 	n = docwin_measure_points(w, &page, pt, MEASURE_MAX);
 	/* The paper size (with the page's UserUnit), and the drawing's own. */
-	own = docwin_measure_scale(w, page, &per_own, unit, sizeof unit, ratio, sizeof ratio, &paper);
+	/* (The viewport the first point is in, if the page has several.) */
+	own = docwin_measure_scale(w, page, n ? &pt[0] : NULL, &per_own, unit, sizeof unit, ratio, sizeof ratio,
+		&paper);
 	if (!own) {
 		if (ms.scale == S_OWN)
 			ms.scale = S_PAPER;
 	} else
-		own_k = known_unit(unit);
+		own_k = own_unit(unit, per_own, paper, &assumed);
 	fade(S_OWN, !own);
 	tbx_method(ms.obj, 388 /* RadioButton_SetState */, ms.scale, 1, 0);
 	mm_per_pt = paper;
 	switch (ms.scale) {
 	case S_OWN:
-		if (own_k >= 0)
+		if (own_k >= 0) {
 			mm_per_pt = per_own * unit_mm[own_k];
-		else {
+			/* As the drawing gives it, or worked out (1:4000). */
+			if (ratio[0] && !assumed)
+				snprintf(ms.scale_text, sizeof ms.scale_text, "Drawing's own: %s", ratio);
+			else
+				snprintf(ms.scale_text, sizeof ms.scale_text, "Drawing's own: 1:%.0f%s",
+					mm_per_pt / paper, assumed ? " (if in metres)" : "");
+		} else {
 			mm_per_pt = 0;      /* its own units, which Folio doesn't know */
 			units_free = 0;
+			snprintf(ms.scale_text, sizeof ms.scale_text, "Drawing's own, in %s", unit);
 		}
-		snprintf(ms.scale_text, sizeof ms.scale_text, "The drawing's own%s%s, in %s",
-			ratio[0] ? ": " : "", ratio, unit);
 		break;
 	case S_RATIO: {
 		double r = atof(ms.ratio);
@@ -444,10 +466,12 @@ void measure_open(docwin *w)
 		char unit[16];
 		ms.doc = docwin_doc(w);
 		ms.line_mm = 0;
-		ms.scale = docwin_measure_scale(w, -1, &per, unit, sizeof unit, NULL, 0, NULL) ? S_OWN : S_PAPER;
+		double paper;
+		int assumed, k;
+		ms.scale = docwin_measure_scale(w, -1, NULL, &per, unit, sizeof unit, NULL, 0, &paper) ? S_OWN : S_PAPER;
 		/* A drawing with its own scale: its units to start with. */
-		if (ms.scale == S_OWN && known_unit(unit) >= 0)
-			ms.units = U_MM + known_unit(unit);
+		if (ms.scale == S_OWN && (k = own_unit(unit, per, paper, &assumed)) >= 0)
+			ms.units = U_MM + k;
 	}
 	ms.w = w;
 	docwin_measure_mode(w, 1);

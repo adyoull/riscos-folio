@@ -4168,7 +4168,7 @@ int docwin_measure_points(docwin *w, int *page, folio_point *pt, int max)
 	return n;
 }
 
-int docwin_measure_scale(docwin *w, int page, double *per_point, char *unit, size_t size,
+int docwin_measure_scale(docwin *w, int page, const folio_point *at, double *per_point, char *unit, size_t size,
 		char *ratio, size_t ratio_size, double *paper)
 {
 	folio_loc loc;
@@ -4180,7 +4180,7 @@ int docwin_measure_scale(docwin *w, int page, double *per_point, char *unit, siz
 	if (!is_window(w) || folio_loc_from_number(w->doc, page < 0 ? current_page(w) : page, &loc))
 		return 0;
 	if (core_trylock()) {
-		own = folio_page_measure(w->doc, loc, per_point, unit, size, ratio, ratio_size, paper);
+		own = folio_page_measure(w->doc, loc, at, per_point, unit, size, ratio, ratio_size, paper);
 		core_unlock();
 	}
 	return own;

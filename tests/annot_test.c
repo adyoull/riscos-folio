@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <sys/stat.h>
 
 static int fails, checks;
@@ -139,7 +140,7 @@ int main(int argc, char **argv)
 		folio_point pts[3] = { { 100, 100 }, { 200, 100 }, { 200, 200 } };
 		folio_annot_info info[8];
 		int k;
-		CHECK(folio_page_measure(d, p2, &per, unit, sizeof unit, NULL, 0, NULL) == 0 && !strcmp(unit, "mm") &&
+		CHECK(folio_page_measure(d, p2, NULL, &per, unit, sizeof unit, NULL, 0, NULL) == 0 && !strcmp(unit, "mm") &&
 			per > 0.3527 && per < 0.3528, "paper scale: %g %s", per, unit);
 		CHECK(folio_annot_measure(d, p2, pts, 2, 0, "35.3 mm") == 0, "a line: %s", folio_error(fc));
 		CHECK(folio_annot_measure(d, p2, pts, 3, 1, "Lines 70.6 mm\nArea 17.6 mm\xc2\xb2") == 0, "a polygon: %s", folio_error(fc));
@@ -173,9 +174,46 @@ int main(int argc, char **argv)
 		sd = folio_open(fc, "tests/out/scaled.pdf", NULL);
 		CHECK(sd != NULL, "open scaled.pdf");
 		if (sd) {
-			CHECK(folio_page_measure(sd, (folio_loc){ 0, 0 }, &per, unit, sizeof unit, ratio, sizeof ratio, NULL) == 1 &&
+			CHECK(folio_page_measure(sd, (folio_loc){ 0, 0 }, NULL, &per, unit, sizeof unit, ratio, sizeof ratio, NULL) == 1 &&
 				!strcmp(unit, "ft") && per > 0.1388 && per < 0.1389 && !strcmp(ratio, "1 in = 10 ft"),
 				"its own scale: %g %s '%s'", per, unit, ratio);
+			folio_close(sd);
+		}
+	}
+
+	/* A plan as AutoCAD makes them: a viewport for the sheet (mm on paper,
+	 * its unit left blank) and one for the drawing, at 1:4000 in metres
+	 * (also blank), with its box back to front. A point in the drawing gets
+	 * the drawing's; one in the margin, the sheet's; none, the drawing's. */
+	{
+		static const char pdfs[] =
+			"%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n"
+			"2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n"
+			"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 1191 842] /VP ["
+			"<< /Type /Viewport /BBox [22 49 1167 791] /Measure << /Type /Measure /Subtype /RL /R ( ) "
+			"/X [<< /Type /NumberFormat /U ( ) /C 0.35279 >>] >> >> "
+			"<< /Type /Viewport /BBox [946 783 30 57] /Measure << /Type /Measure /Subtype /RL /R ( ) "
+			"/X [<< /Type /NumberFormat /U ( ) /C 1.41102 >>] >> >>] >> endobj\n"
+			"trailer << /Root 1 0 R >>\n%%EOF\n";
+		FILE *f = fopen("tests/out/plan.pdf", "wb");
+		folio_doc *sd;
+		double per, paper;
+		char unit[16], ratio[32];
+		folio_point in = { 400, 400 }, margin = { 1100, 400 };   /* from the top left */
+		if (f) {
+			fwrite(pdfs, 1, sizeof pdfs - 1, f);
+			fclose(f);
+		}
+		sd = folio_open(fc, "tests/out/plan.pdf", NULL);
+		CHECK(sd != NULL, "open plan.pdf");
+		if (sd) {
+			CHECK(folio_page_measure(sd, (folio_loc){ 0, 0 }, &in, &per, unit, sizeof unit, ratio, sizeof ratio,
+				&paper) == 1 && !unit[0] && !ratio[0] && per > 1.411 && per < 1.4111 &&
+				fabs(per * 1000 / paper - 4000) < 1, "the drawing's viewport: %g '%s' '%s'", per, unit, ratio);
+			CHECK(folio_page_measure(sd, (folio_loc){ 0, 0 }, &margin, &per, unit, sizeof unit, NULL, 0, NULL) == 1 &&
+				per > 0.3527 && per < 0.3529, "the sheet's viewport: %g", per);
+			CHECK(folio_page_measure(sd, (folio_loc){ 0, 0 }, NULL, &per, unit, sizeof unit, NULL, 0, NULL) == 1 &&
+				per > 1.411 && per < 1.4111, "no point: the drawing's: %g", per);
 			folio_close(sd);
 		}
 	}
