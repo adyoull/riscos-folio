@@ -8,7 +8,8 @@
  *   - text: each piece of text as one path object of its glyphs' outlines
  *     (so it looks the same without the document's fonts); invisible text
  *     (a scan's OCR layer) is left out; Type 3 glyphs are run as drawings;
- *   - pictures: sprite objects (type 5, or 13 when turned or flipped), at
+ *   - pictures: sprite objects (type 5; turned by a quarter turn or flipped,
+ *     their pixels are turned to match; 13 only at other angles), at
  *     their own resolution, cut down to the part that shows, with a mask
  *     where they're transparent: so each bitmap can be taken out on its own;
  *   - shadings (gradients): drawn by MuPDF into a sprite, through whatever
@@ -114,6 +115,7 @@ typedef struct {
 	int nclip, clip_over;     /* clip_over: pushes past MAX_CLIPS, not kept */
 	/* Inside a tiled pattern: each thing drawn is repeated at these offsets. */
 	int tiling;
+	int max_dpi;            /* pictures finer than this shrunk to it; 0 not */
 	fz_point *toff;
 	int ntoff;
 	/* The path object being made. */
@@ -552,6 +554,21 @@ static fz_pixmap *image_part(fz_context *ctx, draw_dev *d, fz_image *img, fz_mat
 			sub = NULL;
 			*ctm = fz_concat(part, *ctm);
 		}
+		/* Finer than asked for: shrunk, averaging (MuPDF's scaler). Its
+		 * resolution on the page: pixels across over its width in inches. */
+		if (pix && d->max_dpi > 0) {
+			float wi = sqrtf(ctm->a * ctm->a + ctm->b * ctm->b) / 72;
+			float hi = sqrtf(ctm->c * ctm->c + ctm->d * ctm->d) / 72;
+			float k = wi > 0 && hi > 0 ? fz_min(d->max_dpi * wi / pix->w, d->max_dpi * hi / pix->h) : 1;
+			if (k < 0.95f) {
+				int nw = (int)(pix->w * k + 0.5f), nh = (int)(pix->h * k + 0.5f);
+				fz_pixmap *s = fz_scale_pixmap(ctx, pix, 0, 0, nw > 0 ? nw : 1, nh > 0 ? nh : 1, NULL);
+				if (s) {
+					fz_drop_pixmap(ctx, pix);
+					pix = s;
+				}
+			}
+		}
 		if (pix && (size_t)pix->w * pix->h > MAX_IMAGE_PX) {
 			float k = sqrtf((float)MAX_IMAGE_PX / ((float)pix->w * pix->h));
 			fz_pixmap *s = fz_scale_pixmap(ctx, pix, 0, 0, pix->w * k, pix->h * k, NULL);
@@ -650,8 +667,70 @@ static fz_pixmap *clip_mask(fz_context *ctx, draw_dev *d, fz_pixmap *pix, fz_mat
 	return out;
 }
 
+/* A new pixmap, or NULL if there's no memory for it. */
+static fz_pixmap *try_new_pixmap(fz_context *ctx, fz_colorspace *cs, int w, int h, int alpha)
+{
+	fz_pixmap *p = NULL;
+	fz_var(p);
+	fz_try(ctx)
+		p = fz_new_pixmap(ctx, cs, w, h, NULL, alpha);
+	fz_catch(ctx)
+		p = NULL;
+	return p;
+}
+
+/* A picture turned a quarter turn, or flipped (a scan of a landscape
+ * drawing on a portrait page, say): its pixels turned to match, so it goes
+ * in as a plain sprite (type 5), not a transformed one (13). Nothing is
+ * lost, and Draw plots a plain sprite properly: a big transformed one,
+ * scaled down on the screen, loses most of its thin lines. Returns the
+ * turned pixmap (pix dropped) with *ctm upright, or pix as it was. */
+static fz_pixmap *upright(fz_context *ctx, fz_pixmap *pix, fz_matrix *ctm)
+{
+	fz_matrix m = *ctm;
+	fz_pixmap *out = NULL;
+	int quarter = m.a == 0 && m.d == 0 && m.b != 0 && m.c != 0;
+	int w = pix->w, h = pix->h, n = pix->n, x, y, W, H;
+	if (!quarter && !(m.b == 0 && m.c == 0 && (m.a < 0 || m.d < 0) && m.a != 0 && m.d != 0))
+		return pix;
+	W = quarter ? h : w;
+	H = quarter ? w : h;
+	if (!(out = try_new_pixmap(ctx, pix->colorspace, W, H, pix->alpha)))
+		return pix;            /* no memory: a transformed sprite, then */
+	/* Pixel (x, y) is at unit square (x/w, y/h), so at device point
+	 * (x/w a + y/h c + e, x/w b + y/h d + f). */
+	for (y = 0; y < h; y++) {
+		const unsigned char *s = pix->samples + (size_t)y * pix->stride;
+		for (x = 0; x < w; x++, s += n) {
+			int X, Y;
+			if (quarter) {
+				X = m.c > 0 ? y : h - 1 - y;
+				Y = m.b > 0 ? x : w - 1 - x;
+			} else {
+				X = m.a > 0 ? x : w - 1 - x;
+				Y = m.d > 0 ? y : h - 1 - y;
+			}
+			memcpy(out->samples + (size_t)Y * out->stride + (size_t)X * n, s, (size_t)n);
+		}
+	}
+	if (quarter) {
+		ctm->a = fabsf(m.c);
+		ctm->d = fabsf(m.b);
+		ctm->e = m.e + fz_min(m.c, 0);
+		ctm->f = m.f + fz_min(m.b, 0);
+	} else {
+		ctm->a = fabsf(m.a);
+		ctm->d = fabsf(m.d);
+		ctm->e = m.e + fz_min(m.a, 0);
+		ctm->f = m.f + fz_min(m.d, 0);
+	}
+	ctm->b = ctm->c = 0;
+	fz_drop_pixmap(ctx, pix);
+	return out;
+}
+
 /* Sprite objects of pix at each offset; pix is dropped. */
-static void emit_sprites(fz_context *ctx, draw_dev *d, fz_pixmap *pix, fz_matrix ctm, int mask_only,
+static void emit_each(fz_context *ctx, draw_dev *d, fz_pixmap *pix, fz_matrix ctm, int mask_only,
 		unsigned colour)
 {
 	fz_try(ctx) {
@@ -664,6 +743,13 @@ static void emit_sprites(fz_context *ctx, draw_dev *d, fz_pixmap *pix, fz_matrix
 		fz_drop_pixmap(ctx, pix);
 	fz_catch(ctx)
 		fz_rethrow(ctx);
+}
+
+static void emit_sprites(fz_context *ctx, draw_dev *d, fz_pixmap *pix, fz_matrix ctm, int mask_only,
+		unsigned colour)
+{
+	pix = upright(ctx, pix, &ctm);
+	emit_each(ctx, d, pix, ctm, mask_only, colour);
 }
 
 static void dev_fill_image(fz_context *ctx, fz_device *dev, fz_image *img, fz_matrix ctm, float alpha,
@@ -964,6 +1050,11 @@ static void dev_drop(fz_context *ctx, fz_device *dev)
 
 int folio_export_draw(folio_doc *doc, folio_loc loc, const char *path)
 {
+	return folio_export_draw_dpi(doc, loc, path, 0);
+}
+
+int folio_export_draw_dpi(folio_doc *doc, folio_loc loc, const char *path, int max_dpi)
+{
 	fz_context *ctx = doc->ctx;
 	draw_dev *d = NULL;
 	FILE *f = NULL;
@@ -997,6 +1088,7 @@ int folio_export_draw(folio_doc *doc, folio_loc loc, const char *path)
 		d->super.end_group = dev_end_group;
 		d->super.drop_device = dev_drop;
 		d->ob = &d->b;
+		d->max_dpi = max_dpi;
 		d->page_h = cp->bounds.y1 - cp->bounds.y0;
 		d->page = fz_make_rect(0, 0, cp->bounds.x1 - cp->bounds.x0, d->page_h);
 		/* Header: "Draw", version 201.0, the program, the box (set at the end). */

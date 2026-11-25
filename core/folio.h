@@ -474,6 +474,11 @@ int folio_link_at(folio_doc *doc, folio_loc loc, folio_point p, folio_link *link
  * paths, text as outlines, each picture as a sprite of its own (core/drawfile.c).
  * The caller sets the file's type (&AFF). 0, or -1 (folio_error). */
 int folio_export_draw(folio_doc *doc, folio_loc loc, const char *path);
+/* The same, with pictures finer than max_dpi (on the page) shrunk to it,
+ * averaging their pixels; 0: as the PDF has them. Draw shows a picture by
+ * skipping pixels, so a 300 dpi scan's thin lines break up on the screen;
+ * at 90 dpi they're whole. */
+int folio_export_draw_dpi(folio_doc *doc, folio_loc loc, const char *path, int max_dpi);
 
 /* ---- Pages out, pictures in (pages.c) ------------------------------------ */
 

@@ -314,6 +314,7 @@ void choices_defaults(choices *c)
 	c->warn_content = 1;
 	c->run_js = 0;
 	c->annot_rgb = -1;
+	c->draw_dpi = 0;
 }
 
 void choices_load(void)
@@ -356,6 +357,8 @@ void choices_load(void)
 					c->warn_content = v != 0;
 				else if (!strncmp(line, "annot-colour usual", 18))
 					c->annot_rgb = -1;
+				else if (sscanf(line, "draw-dpi %d", &c->draw_dpi) == 1)
+					;
 				else if (sscanf(line, "annot-colour %x", &hv) == 1)
 					c->annot_rgb = (int)(hv & 0xffffff);
 				else if (sscanf(line, "run-javascript %d", &v) == 1)
@@ -396,6 +399,7 @@ void choices_save(void)
 		c->speed == SPEED_SLOW ? "slower" : c->speed == SPEED_FAST ? "faster" : "normal",
 		c->ocr_fast ? "fast" : "accurate", c->ocr_auto, c->obey_restrictions, c->ask_links,
 		c->warn_content, c->run_js, c->underline_links);
+	fprintf(f, "draw-dpi %d\n", c->draw_dpi);
 	if (c->annot_rgb < 0)
 		fprintf(f, "annot-colour usual\n");
 	else

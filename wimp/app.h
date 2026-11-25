@@ -94,6 +94,7 @@ typedef struct {
 	int warn_content;           /* say when a PDF has scripts, attachments, actions */
 	int run_js;                 /* let forms' JavaScript run */
 	int annot_rgb;              /* new markings' colour: 0xRRGGBB, or -1 the usual ones */
+	int draw_dpi;               /* Export as Draw: pictures at most this; 0 as in the PDF */
 } choices;
 
 typedef struct {

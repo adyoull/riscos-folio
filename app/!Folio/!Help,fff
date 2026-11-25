@@ -321,6 +321,11 @@ Export page as Draw
   the same without the document's fonts); each picture becomes a sprite of
   its own, at its own resolution, cut to the part that shows, so you can
   take it out and save it on its own. Gradients become sprites too.
+  Pictures in the box: As in the PDF keeps them as they are; 150 dpi or
+  90 dpi (screen) shrinks finer ones, averaging their pixels. Draw shows
+  a picture by skipping pixels, so a 300 dpi scan's thin lines break up
+  on the screen; at 90 dpi they're whole, though coarser zoomed in or
+  printed.
   Draw can't clip or blend, so a few things differ from the page: see-
   through effects are lost, and highlighter marks go under the text.
 
