@@ -144,15 +144,14 @@ Unzip `Folio-<version>.zip` (with filetypes) and double-click `!Folio`.
 ## Building
 
 Folio is cross-built on Linux (x86-64) with the
-[riscos-crossdev](https://github.com/adyoull/riscos-crossdev) toolchain (GCC 10.2,
-UnixLib, ELF to AIF). Releases from test79 are linked with
-[riscos-unixlib](https://github.com/adyoull/riscos-unixlib) 5.0.3.12. The tests run on ARM Linux under
+[riscos-crossdev](https://github.com/adyoull/riscos-crossdev) 1.14 toolchain (GCC 10.2,
+[riscos-unixlib](https://github.com/adyoull/riscos-unixlib) 5.0.3.12, ELF to AIF). The tests run on ARM Linux under
 `qemu-arm-aligntrap`, which applies RISC OS's alignment rules.
 
 The simplest way is riscos-crossdev's container image, which has the
 toolchain and everything else:
 
-    docker run --rm -v "$PWD":/src ghcr.io/adyoull/riscos-crossdev:1.8.1 make ci
+    docker run --rm -v "$PWD":/src ghcr.io/adyoull/riscos-crossdev:1.14 make ci
 
 `make ci` does all of it from a clean checkout: MuPDF 1.28.5 (patched),
 expat and fontconfig, the [riscos-pvoice](https://github.com/adyoull/riscos-pvoice)

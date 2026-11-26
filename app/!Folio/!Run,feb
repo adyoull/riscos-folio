@@ -1,5 +1,5 @@
 | !Run for Folio, a reader for PDF and ebook files.
-| Built with riscos-crossdev 1.4 (GCC 10.2, UnixLib 5.0.3.3), statically
+| Built with riscos-crossdev 1.14 (GCC 10.2, UnixLib 5.0.3.12), statically
 | linked with MuPDF 1.28.5, and converted to an Absolute file.
 Set Folio$Dir <Obey$Dir>
 IconSprites <Folio$Dir>.!Sprites
