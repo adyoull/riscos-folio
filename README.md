@@ -5,7 +5,7 @@ It's built on [MuPDF](https://mupdf.com) with a native front end that follows
 the RISC OS Style Guide, and takes its ideas for markup and reading from
 Flexcil. "Folio" is a working name.
 
-Status: **test builds** (0.0.1-test78). It's used day to day on a Raspberry Pi
+Status: **test builds** (0.0.1-test79). It's used day to day on a Raspberry Pi
 running RISC OS 5, but expect rough edges. The design is in
 [`docs/DESIGN.md`](docs/DESIGN.md).
 
@@ -145,7 +145,8 @@ Unzip `Folio-<version>.zip` (with filetypes) and double-click `!Folio`.
 
 Folio is cross-built on Linux (x86-64) with the
 [riscos-crossdev](https://github.com/adyoull/riscos-crossdev) toolchain (GCC 10.2,
-UnixLib, ELF to AIF). The tests run on ARM Linux under
+UnixLib, ELF to AIF). Releases from test79 are linked with
+[riscos-unixlib](https://github.com/adyoull/riscos-unixlib) 5.0.3.11. The tests run on ARM Linux under
 `qemu-arm-aligntrap`, which applies RISC OS's alignment rules.
 
 The simplest way is riscos-crossdev's container image, which has the
