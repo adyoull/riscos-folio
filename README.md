@@ -146,7 +146,7 @@ Unzip `Folio-<version>.zip` (with filetypes) and double-click `!Folio`.
 Folio is cross-built on Linux (x86-64) with the
 [riscos-crossdev](https://github.com/adyoull/riscos-crossdev) toolchain (GCC 10.2,
 UnixLib, ELF to AIF). Releases from test79 are linked with
-[riscos-unixlib](https://github.com/adyoull/riscos-unixlib) 5.0.3.11. The tests run on ARM Linux under
+[riscos-unixlib](https://github.com/adyoull/riscos-unixlib) 5.0.3.12. The tests run on ARM Linux under
 `qemu-arm-aligntrap`, which applies RISC OS's alignment rules.
 
 The simplest way is riscos-crossdev's container image, which has the

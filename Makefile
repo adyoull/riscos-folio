@@ -203,6 +203,9 @@ riscpc-app: build/rpc/folio.elf
 # !Folio in build/app, and a zip with RISC OS filetypes.
 app: build/ro/folio.elf
 	RISCOS_TOOLCHAIN=$(RISCOS_TOOLCHAIN) $(RCD_DIR)/checks/check-all.sh build/ro/folio.elf
+	# Every data object word aligned (a Pi aborts on a misaligned word access;
+	# UnixLib 5.0.3.10 and .11's own data could land on any byte).
+	python3 tools/check-data-align.py build/ro/folio.elf
 	rm -rf build/app && mkdir -p build/app
 	cp -r app/!Folio build/app/
 	$(RISCOS_TOOLCHAIN)/bin/arm-riscos-gnueabihf-strip -o build/ro/folio.stripped build/ro/folio.elf
